@@ -28,5 +28,12 @@ State5 --> State8 : action 1;
 State8 : t = 3;
 State3 --> State9: action 1;
 State9 : t = terminal;
+State5 --> State10 : action 2;
+State10 : t = 3;
+State8 --> State11 : action 1;
+State10 --> State11 : action 1;
+State11 : t = 4;
+State4 --> State8 : action 1;
+State4 --> State7 : action2;
 @enduml)
         
