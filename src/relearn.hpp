@@ -44,8 +44,8 @@ public:
     const A & action() const;
 
 private:
-    const S & state_;
-    const A & action_;
+    const S & _state_;
+    const A & _action_;
 };
 
 
@@ -53,21 +53,13 @@ private:
 template <class T> struct hash;
 
 /// \brief combining hashes
-template <class T>
-void hash_combine(std::size_t& seed, const T& v);
+template <class T> void hash_combine(std::size_t& seed, const T& v);
 
 /// \brief hash functor for policy
 /// \warning requires that state S, and action A are hashable
-template <typename S, typename A> 
-struct hash<policy<S,A>>
+template <typename S, typename A> struct hash<policy<S,A>>
 {
-    std::size_t operator()(policy const & arg) const
-    {
-        std::size_t seed;
-        hash_combine<S>(seed, arg.state());
-        hash_combine<A>(seed, arg.action());
-        return seed;
-    } 
+    std::size_t operator()(policy<S,A> const & arg) const; 
 };
 
 /**
@@ -75,6 +67,7 @@ struct hash<policy<S,A>>
  * \class episode
  * \typename S defines the state s_t
  * \typename A defines the action a_t
+ * \typename N defines the value type of policy (float, double, etc)
  */
 template <typename S, typename A, typename N>
 class episode
@@ -93,10 +86,21 @@ private:
     /// root state - immutable
     const S & _root_;
     /// episode owns policies, mapping policies to a value
-    std::unordered_map<policy, value> _policies_;
+    std::unordered_map<policy<S,A>, N> _policies_;
 };
 
 // TODO: updater (iterate policies updating them using Q-Learning or R-Learning)
 
 }
+
+/**
+ * Implementation of above definitions
+ */
+template <class T>
+void relearn::hash_combine(std::size_t& seed, const T& v)
+{
+    std::hash<T> hasher;
+    seed ^= hasher(v) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
+}
+
 #endif
