@@ -1,41 +1,41 @@
-#ifndef action
-#define action
-namespace relearn
-{
-/// action interface
-///
+#ifndef RELEARN_ACTION_HPP
+#define RELEARN_ACTION_HPP
+namespace relearn {
+/**
+ * \brief an action class - servces as an example but may be used as base
+ * \class action
+ * \version 0.1.0
+ * \date 26-8-2016
+ */
+template <typename S>
 class action
 {
 public:
-    // destructor
-    virtual ~action();
+    /// \brief construct using \param next state
+    action(S state); 
 
-    // equality
-    bool operator==(const action &arg) const
-    {
-        return typeid(*this) == typeid(arg) 
-               && is_equal(arg);
-    }
-    // compare
-    bool operator<(const action &arg) const
-    {
-        return compare(arg);
-    }
+    /// \brief get next state
+    const & S state() const;
+
+    /// equality operator
+    bool operator==(const action & arg) const;
+
+    /// descriptor used for hashing
+    std::size_t operator()() const;
 
 private:
-    // are two actions equal
-    bool is_equal(const action &) const = 0;
-    // comparison
-    bool compare(const action &) const = 0;
+    /// next state
+    S __next__;    
 };
-/// equality predicate
-struct actions_equal
+
+
+/// \brief hash functor for action
+template <> struct hash<action>
 {
-    bool operator()(const std::unique_ptr<action> & lhs,
-                    const std::unique_ptr<action> & rhs)
+    std::size_t operator()(action const & arg) const
     {
-        return (*lhs == *rhs);
-    }
+        return arg()();
+    } 
 };
 }
-#endif /*action*/
+#endif

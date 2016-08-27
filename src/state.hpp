@@ -1,42 +1,46 @@
-#ifndef state
-#define state
-namespace relearn
-{
-/// state class interface
-///
-class state 
+#ifndef RELEARN_STATE_HPP
+#define RELEARN_STATE_HPP
+namespace relearn {
+/**
+ * \brief a state class
+ * \class state
+ * \version 0.1.0
+ * \date 26-8-2016
+ *
+ * The state class owns *one to many* actions of type A
+ * Those actions lead to next states, e.g., a tree structure
+ */
+template <typename A>
+class state
 {
 public:
-    // destructor
-    virtual ~state();
-    // equality
-    bool operator==(const state & arg) const
-    {
-        return typeid(*this) == typeid(arg) 
-               && is_equal(arg);
-    }
-    // comparison
-    bool operator<(const state & arg) const
-    {
-        return compare(arg);
-    }
-    // get reward of this state
-    float reward() const = 0;
+    /// variadic constructor or initializer list of actions
 
+    /// TODO: state owns **one to many** actions - we must be able to iterate them
+
+    /// \brief add an action
+    void operator<<(A arg);
+
+    /// \brief state equality
+    bool operator==(const state & arg) const;
+
+    /// \brief descriptor used for hashing
+    std::size_t operator()() const;
+    
 private:
-    // states equality
-    bool is_equal(const state &) const = 0;
-    // compare (sort)
-    bool compare(const state &) const = 0;
+    //  unique actions - immutable set, mutable objects = (actions must have next state?)
+    //                  or can the objects be immutable too (actions will require next state beforehand)
+    std::unordered_set<A> __actions__;
 };
-// equality predicate
-struct states_equal
+
+
+/// \brief hash functor for state
+template <> struct hash<state>
 {
-    bool operator()(const std::unique_ptr<state> & lhs,
-                    const std::unique_ptr<state> & rhs)
+    std::size_t operator()(state const & arg) const
     {
-        return (*lhs == *rhs);
-    }
+        return arg()();;
+    } 
 };
 }
-#endif /*state*/
+#endif
