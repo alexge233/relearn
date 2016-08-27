@@ -1,9 +1,10 @@
 # WARNING - Work in Progress
 # relearn 0.1.0
 
-A [Reinforcement Learning][Sutton, R.S. and Barto, A.G., 1998. Reinforcement learning: An introduction (Vol. 1, No. 1). Cambridge: MIT press.] *header-only* itemplate library for C++11/14.
+A [Reinforcement Learning][Sutton, R.S. and Barto, A.G., 1998. Reinforcement learning: An introduction (Vol. 1, No. 1). Cambridge: MIT press] *header-only* itemplate library for C++11/14.
 Minimal and simple to use, for a variety of scenarios.
-It is based on (Sutton and Barto's book)[https://webdocs.cs.ualberta.ca/~sutton/book/ebook/the-book.html] and implements *some* of the functionality.
+It is based on [Sutton and Barto's book](https://webdocs.cs.ualberta.ca/~sutton/book/ebook/the-book.html) 
+and implements *some* of the functionality described in it.
 
 ## Reinforcement Learning and Markov Decision Process (MDP)
 
@@ -40,8 +41,8 @@ State4 --> State8 : action 1;
 State4 --> State7 : action2;
 @enduml)
         
-At the heart of episodic learning we implement (Q-learning)[https://webdocs.cs.ualberta.ca/~sutton/book/ebook/node65.html] 
-and (SARSA)[https://webdocs.cs.ualberta.ca/~sutton/book/ebook/node64.html]
-and for continous learning we implement (R-Learning)[https://webdocs.cs.ualberta.ca/~sutton/book/ebook/node67.html].
+At the heart of episodic learning we implement [Q-learning](https://webdocs.cs.ualberta.ca/~sutton/book/ebook/node65.html) 
+and [SARSA](https://webdocs.cs.ualberta.ca/~sutton/book/ebook/node64.html)
+and for continous learning we implement [R-Learning](https://webdocs.cs.ualberta.ca/~sutton/book/ebook/node67.html).
 
  
