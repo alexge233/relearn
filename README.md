@@ -1,7 +1,7 @@
 # WARNING - Work in Progress
 # relearn 0.1.0
 
-A [Reinforcement Learning][1] *header-only* itemplate library for C++11/14.
+A Reinforcement Learning[1] *header-only* template library for C++11/14.
 Minimal and simple to use, for a variety of scenarios.
 It is based on [Sutton and Barto's book](https://webdocs.cs.ualberta.ca/~sutton/book/ebook/the-book.html) 
 and implements *some* of the functionality described in it.
