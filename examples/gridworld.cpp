@@ -18,6 +18,7 @@
  * In other words, this is a deterministic, finite Markov Decision Process (MDP) and as always the goal is to find an agent policy
  * (shown here by arrows) that maximizes the future discounted reward.
  */
+#include <iostream>
 #include <unordered_set>
 #include <random>
 #include "relearn.hpp"
@@ -57,9 +58,9 @@ template<> struct my_hash<grid>
  */
 struct world
 {
-    std::unordered_set<grid, my_hash<grid>> blocks;
+    const grid start;
 
-    // TODO: output as plantUML so that we can visualize the grid-world?
+    std::unordered_set<grid, my_hash<grid>> blocks;
 };
 
 /**
@@ -72,13 +73,13 @@ world populate(unsigned int height, unsigned int width)
     std::default_random_engine eng((std::random_device())());    
     std::uniform_real_distribution<> dist(0, 10);
 
+    // world - start at 1,1
+    world environment = {{ 1, 1, .0f}};
+
     // pick one random block which will be the goal
     unsigned int x = dist(eng);
     unsigned int y = dist(eng);
     grid goal = { x, y, 1.f};
-
-    // world - add goal
-    world environment;
     environment.blocks.insert(goal);
 
     // iterate height first, width second and add grid blocks, 
@@ -104,25 +105,41 @@ world populate(unsigned int height, unsigned int width)
  * On-Line mode will update as exploring, whilst Off-Line will update after exploring (?)
  * The agent will internally map its experience using the State/Action pairs, and recording Policies for each pair.
  */
-template <typename S, typename A, typename N>
+template <typename S, typename A>
 void explore(
               const world & w, 
-              relearn::episode<S,A,N> & e
+              relearn::episode<S, A> & e
             )
 {
-    // TODO: run random actions, observe new state, update episode and append states/actions
-    //       avoid taking same actions, this is an exploration ala Monte Carlo
-}
+    // TODO: start from w.start, and move up/down/left/right until either we run to a state with -1, or state with 1.
+    //
+    // TODO: show how states and actions are populated and inserted
+    // 
+    // if there exists a positive valued policy?
+    // if not explore ...
 
+}
 
 /**
  * Gridworld example main function.
  * The agent will begin with stochastic exploration, and at every terminal state will update its experience.
  * It will then reset back to the start of the episode and re-do the entire process for 100 iterations.
+ * take as argc/argv the iteration count?
  */
 int main()
 {
     world w = populate(10, 10);
+    unsigned int i = 1;
+    for (const grid & block : w.blocks) {
+        std::cout << block.x << ", " << block.y << " = " << block.R;
+        if (i % 10 != 0) {
+            std::cout << "\t";
+        }
+        else {
+            std::cout << std::endl;
+        }
+        i++;
+    }
 
     // TODO: create a main loop: explore, then update, explore then update
     //       repeat for 100 times, then serialize world as plantUML and visualise it online

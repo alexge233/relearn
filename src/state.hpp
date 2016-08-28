@@ -14,23 +14,42 @@ template <typename A>
 class state
 {
 public:
-    /// variadic constructor or initializer list of actions
+ 
+    /// construct with a reward (terminal state)
+    state(float reward);   
 
-    /// TODO: state owns **one to many** actions - we must be able to iterate them
+    /// construct with [0...n] actions
+    state(std::initializer_list<A> actions);
 
-    /// \brief add an action
+    /// construct with [0...n] actions and a reward (oxymoron)
+    state(std::initializer_list<A> actions, float reward);
+
+    /// \brief add an action - unique, no duplicates
     void operator<<(A arg);
 
     /// \brief state equality
-    bool operator==(const state & arg) const;
+    bool operator==(const state<A> & arg) const;
 
-    /// \brief descriptor used for hashing
+    /// \return unique hash
     std::size_t operator()() const;
+
+    /// action const iterator
+    typedef std::unordered_set<A>::const_iterator const_iter;
+
+    /// \brief const iterator for actions: begin
+    const_iter begin() const;
+
+    /// \brief const iterator for actions: end 
+    const_iter end() const;
+
+    /// \return reward
+    float reward() const;
     
 private:
-    //  unique actions - immutable set, mutable objects = (actions must have next state?)
-    //                  or can the objects be immutable too (actions will require next state beforehand)
+    //  unique actions - immutable set
     std::unordered_set<A> __actions__;
+    // state reward
+    float __reward__ = .0f;
 };
 
 

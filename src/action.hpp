@@ -14,8 +14,8 @@ public:
     /// \brief construct using \param next state
     action(S state); 
 
-    /// \brief get next state
-    const & S state() const;
+    /// \brief get next state - mutable state
+    S & state() const;
 
     /// equality operator
     bool operator==(const action & arg) const;
@@ -27,7 +27,6 @@ private:
     /// next state
     S __next__;    
 };
-
 
 /// \brief hash functor for action
 template <> struct hash<action>

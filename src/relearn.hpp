@@ -25,7 +25,11 @@ namespace relearn
 {
 /**
  * \brief a policy is a pair of a state of type S and action of type A
- * \class policy
+ * \class policy is a pair of state,action
+ *
+ * A policy simply denotes the choice of doing A, while in S.
+ * The A decision leads to a next S, and so a tree graph is formed.
+ * We use policy in order to associate a "value" to each one.
  */
 template <typename S, typename A>
 class policy
@@ -43,20 +47,19 @@ public:
     /// \return reference to action
     const A & action() const;
 
-private:
+protected:
     const S & _state_;
     const A & _action_;
 };
 
 
-/// \brief a struct hash
+/// \brief a struct hash - use to hash classes
 template <class T> struct hash;
 
 /// \brief combining hashes
 template <class T> void hash_combine(std::size_t& seed, const T& v);
 
 /// \brief hash functor for policy
-/// \warning requires that state S, and action A are hashable
 template <typename S, typename A> struct hash<policy<S,A>>
 {
     std::size_t operator()(policy<S,A> const & arg) const; 
@@ -67,12 +70,19 @@ template <typename S, typename A> struct hash<policy<S,A>>
  * \class episode
  * \typename S defines the state s_t
  * \typename A defines the action a_t
- * \typename N defines the value type of policy (float, double, etc)
+ *
+ * This class owns a `root` state which forms a tree graph.
+ * The entire tree graph is contained in the episode,
+ * iteration requires to traverse states and their actions, leading
+ * to next states and their actions, until no more actions exist.
+ * States will have a reward R, which will be used to calculate
+ * the actual policy values.
  */
-template <typename S, typename A, typename N>
+template <typename S, typename A>
 class episode
 {
 public:
+
     /// empty default constructor
     episode() = default;
 
@@ -82,25 +92,45 @@ public:
     /// \return a reference to root state
     const S & root() const;
 
-private:
+    /// \brief update value for a policy
+    void update(policy<S,A> & pair, float value);
+
+    /// \return value of policy
+    float value(policy<S,A> & pair);
+
+    /// \brief equality is based on root state and policies
+    bool operator==(const episode<S,A> & arg) const;
+
+    /// \brief typedefine the const policy iterator
+    typedef typename std::unordered_map<policy<S,A>,float>::const_iterator const_iterator;
+
+    /// \brief begin const policy iterator 
+    const_iterator begin() const;
+
+    /// \brief end const policy iterator
+    const_iterator end() const;
+    
+protected:
     /// root state - immutable
     const S & _root_;
     /// episode owns policies, mapping policies to a value
-    std::unordered_map<policy<S,A>, N> _policies_;
+    std::unordered_map<policy<S,A>, float> _policies_;
 };
 
 // TODO: updater (iterate policies updating them using Q-Learning or R-Learning)
 
 }
 
-/**
- * Implementation of above definitions
- */
+/********************************************************************************
+ *                      Implementation of above definitions
+ ********************************************************************************/
 template <class T>
 void relearn::hash_combine(std::size_t& seed, const T& v)
 {
     std::hash<T> hasher;
     seed ^= hasher(v) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
 }
+
+// TODO: impelment all other classes and code
 
 #endif
