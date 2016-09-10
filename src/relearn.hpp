@@ -23,6 +23,13 @@
  */
 namespace relearn 
 {
+// \brief templated equality functor
+template <typename T> struct equal;
+//\ \brief templated hashing functor
+template <typename T> struct hash;
+/// \brief combining hashes
+template <class T> void hash_combine(std::size_t& seed, const T& v);
+
 /**
  * \brief a policy is a pair of a state of type S and action of type A
  * \class policy is a pair of state,action
@@ -52,19 +59,14 @@ protected:
     const A & _action_;
 };
 
-/// \brief combining hashes
-template <class T> void hash_combine(std::size_t& seed, const T& v);
-
 /// \brief hash functor for policy
-template <class S, class A>
-struct hash 
+template <class S, class A> struct hash<policy<S,A>>
 {
     size_t operator()(const policy<S,A> & arg) const;
 };
 
 /// \brief equality functor
-template <class S, class A>
-struct equal
+template <class S, class A> struct equal<policy<S,A>>
 {
     bool operator()(const policy<S,A> & lhs, const policy<S,A> & rhs) const;
 };
@@ -88,8 +90,8 @@ class episode
 public:
 
     /// \brief shortcuts for specialisations
-    using equal = relearn::equal<S,A>;
-    using hash  = relearn::hash<S,A>;
+    using equal = relearn::equal<policy<S,A>>;
+    using hash  = relearn::hash<policy<S,A>>;
 
     /// empty default constructor
     episode() = default;

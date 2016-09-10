@@ -27,6 +27,7 @@ namespace relearn {
  * or dynamic polymorphism, and so on.
  */
 class state;
+template <class T> struct hasher;
 /**
  * \brief an action class - servces as an example but may be used as base
  * \class action
@@ -54,23 +55,13 @@ private:
 };
 
 /// \brief hash functor for actions
-struct hash_action
+template <> struct hasher<action>
 {
-    std::size_t operator()(const relearn::action & arg) const
+    std::size_t operator()(const action & arg) const
     {
         return arg.hash();
     } 
 };
-
-/// \brief equality functor for actions
-struct equal_action
-{
-    bool operator()(const action & lhs, const action & rhs) const
-    {
-        return lhs == rhs;
-    }
-};
-
 /**
  * \brief a state class
  * \class state
@@ -104,7 +95,7 @@ public:
 
     // type define constant action iterator
     typedef typename
-    std::unordered_set<action, hash_action>::const_iterator action_iterator;
+    std::unordered_set<action, hasher<action>>::const_iterator action_iterator;
 
     /// \brief begin iterating actions
     action_iterator begin() const;
@@ -117,15 +108,15 @@ public:
     
 private:
     //  unique actions - immutable set
-    std::unordered_set<action, hash_action> __actions__;
+    std::unordered_set<action, hasher<action>> __actions__;
     // state reward
     float __reward__ = .0f;
 };
 
 /// \brief hash functor for state
-struct hash_state
+template <> struct hasher<state>
 {
-    std::size_t operator()(const relearn::state & arg) const
+    std::size_t operator()(const state & arg) const
     {
         return arg.hash();
     } 
