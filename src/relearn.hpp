@@ -52,17 +52,21 @@ protected:
     const A & _action_;
 };
 
-
-/// \brief a struct hash - use to hash classes
-template <class T> struct hash;
-
 /// \brief combining hashes
 template <class T> void hash_combine(std::size_t& seed, const T& v);
 
 /// \brief hash functor for policy
-template <typename S, typename A> struct hash<policy<S,A>>
+template <class S, class A>
+struct hash 
 {
-    std::size_t operator()(policy<S,A> const & arg) const; 
+    size_t operator()(const policy<S,A> & arg) const;
+};
+
+/// \brief equality functor
+template <class S, class A>
+struct equal
+{
+    bool operator()(const policy<S,A> & lhs, const policy<S,A> & rhs) const;
 };
 
 /**
@@ -83,11 +87,15 @@ class episode
 {
 public:
 
+    /// \brief shortcuts for specialisations
+    using equal = relearn::equal<S,A>;
+    using hash  = relearn::hash<S,A>;
+
     /// empty default constructor
     episode() = default;
 
     /// create episode with root state
-    episode(const S state);
+    episode(S state);
 
     /// \return a reference to root state
     const S & root() const;
@@ -100,21 +108,23 @@ public:
 
     /// \brief equality is based on root state and policies
     bool operator==(const episode<S,A> & arg) const;
-
-    /// \brief typedefine the const policy iterator
-    typedef typename std::unordered_map<policy<S,A>,float>::const_iterator const_iterator;
-
+ 
+    /// \brief constant policy iterator
+    typedef typename 
+    std::unordered_map<policy<S,A>, float, hash, equal>::const_iterator policy_iterator;
+   
     /// \brief begin const policy iterator 
-    const_iterator begin() const;
+    policy_iterator begin() const;
 
     /// \brief end const policy iterator
-    const_iterator end() const;
+    policy_iterator end() const;
     
-protected:
-    /// root state - immutable
-    const S & _root_;
+private:
+    /// root state 
+    std::unique_ptr<S> __root__;
+
     /// episode owns policies, mapping policies to a value
-    std::unordered_map<policy<S,A>, float> _policies_;
+    std::unordered_map<policy<S,A>, float, hash, equal> __policies__;
 };
 
 // TODO: updater (iterate policies updating them using Q-Learning or R-Learning)
@@ -131,6 +141,6 @@ void relearn::hash_combine(std::size_t& seed, const T& v)
     seed ^= hasher(v) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
 }
 
-// TODO: impelment all other classes and code
+// TODO: implement all other classes and code here (episode, hash, equal, policy, etc...)
 
 #endif

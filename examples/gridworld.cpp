@@ -22,6 +22,8 @@
 #include <unordered_set>
 #include <random>
 #include "relearn.hpp"
+#include "action_state.hpp"
+
 /**
  * A grid block is simply a coordinate (x,y)
  * A grid *may* have a reward R or it may be blocked (can't move there)
@@ -55,6 +57,7 @@ template<> struct my_hash<grid>
 /**
  * The gridworld struct simply contains the grid blocks.
  * Each block is uniquely identified by its coordinates.
+ * This is a helper structure used to represent the grid world.
  */
 struct world
 {
@@ -111,13 +114,46 @@ void explore(
               relearn::episode<S, A> & e
             )
 {
-    // TODO: start from w.start, and move up/down/left/right until either we run to a state with -1, or state with 1.
-    //
-    // TODO: show how states and actions are populated and inserted
-    // 
-    // if there exists a positive valued policy?
-    // if not explore ...
+    std::default_random_engine eng((std::random_device())());    
+    std::uniform_real_distribution<> dist(0, 3);
 
+    auto start = w.start;
+    grid curr  = start;
+    float R    = 0;
+    bool stop = false;
+
+    // explore while Reward isn't positive or negative
+    do {
+        // randomly decide on next grid
+        unsigned int d = dist(eng);
+        switch (d) {
+            // left
+            case 0 : curr.y--;
+                     break;
+            // up
+            case 1 : curr.x++;
+                     break;
+            // right
+            case 2 : curr.y++;
+                     break;
+            // down
+            case 3 : curr.x--;
+                     break;
+        }
+        
+        // find the reward at the current coordinates
+        auto it = w.blocks.find(curr);
+        if (it != w.blocks.end()) {
+            std::cout << "coord: " << curr.x << "," << curr.y << " = " << it->R << std::endl;
+            R = it->R;
+        }
+        if (R < 0 || R == 1) {
+            stop = true;
+        }
+    }
+    while (!stop);
+
+    // TODO: update episode policies
 }
 
 /**
@@ -129,17 +165,10 @@ void explore(
 int main()
 {
     world w = populate(10, 10);
-    unsigned int i = 1;
-    for (const grid & block : w.blocks) {
-        std::cout << block.x << ", " << block.y << " = " << block.R;
-        if (i % 10 != 0) {
-            std::cout << "\t";
-        }
-        else {
-            std::cout << std::endl;
-        }
-        i++;
-    }
+    using S = relearn::state;
+    using A = relearn::action;
+    auto e = relearn::episode<S, A>();
+    explore(w, e);
 
     // TODO: create a main loop: explore, then update, explore then update
     //       repeat for 100 times, then serialize world as plantUML and visualise it online
