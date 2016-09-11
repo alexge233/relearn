@@ -39,38 +39,37 @@ public:
  * \date 26-8-2016
  * \note typename S is the state trait type, typename A is the action trait type
  */
-template <typename S, typename A> 
+template <typename state_trait, typename action_trait> 
 class action
 {
 public:
+    using state_t = state<state_trait, action_trait>;
+    using action_t = action<state_trait, action_trait>;
 
     /// \brief construct using \param next state
-    action(state<S,A>, trait<A> rhs); 
+    action(state_t state, trait<action_trait> rhs); 
 
     /// \brief get next state - mutable state
-    state<S,A> & next() const;
+    state_t & next() const;
 
     /// \brief equality operator - uses `descriptor::operator==`
-    bool operator==(const action<S,A> & arg) const;
+    bool operator==(const action_t & arg) const;
 
     /// descriptor used for hashing
     std::size_t hash() const;
 
 private:
     /// next state
-    std::unique_ptr<state<S,A>> __next__;
+    std::unique_ptr<state_t> __next__;
     /// action descriptor
-    trait<A> __tag__;
+    trait<action_trait> __tag__;
 };
 
 /// \brief hash functor for action<S,A>
-template <typename S, typename A> 
-struct hasher<action<S,A>>
+template <typename state_trait, typename action_trait> 
+struct hasher<action<state_trait, action_trait>>
 {
-    std::size_t operator()(const action<S,A> & arg) const
-    {
-        return arg.hash();
-    } 
+    std::size_t operator()(const action<state_trait, action_trait> & arg) const;
 };
 
 /**
@@ -83,32 +82,34 @@ struct hasher<action<S,A>>
  * Those actions lead to next states, e.g., a tree structure
  * \note typename S is the state trait type, typename A is the action trait type
  */
-template <typename S, typename A>
+template <typename state_trait, typename action_trait>
 class state
 {
 public:
+    using state_t = state<state_trait, action_trait>;
+    using action_t = action<state_trait, action_trait>;
 
     /// construct with a reward (terminal state)
-    state(float reward, trait<S> arg);
+    state(float reward, trait<state_t> arg);
 
     /// construct with [0...n] actions
-    state(std::initializer_list<action<S,A>> actions, trait<S> arg);
+    state(std::initializer_list<action_t> actions, trait<state_t> arg);
 
     /// construct with [0...n] actions and a reward (oxymoron)
-    state(std::initializer_list<action<S,A>> actions, float reward, trait<S> arg);
+    state(std::initializer_list<action_t> actions, float reward, trait<state_t> arg);
 
     /// \brief add an action - unique, no duplicates
-    void operator<<(action<S,A> arg);
+    void operator<<(action_t arg);
 
     /// \brief state equality - uses T::operator==
-    bool operator==(const state<S,A> & arg) const;
+    bool operator==(const state_t & arg) const;
 
     /// \return unique hash
     std::size_t hash() const;
 
     // type define constant action iterator
     typedef typename
-    std::unordered_set<action<S,A>, hasher<action<S,A>>>::const_iterator action_iterator;
+    std::unordered_set<action_t, hasher<action_t>>::const_iterator action_iterator;
 
     /// \brief begin iterating actions
     action_iterator begin() const;
@@ -121,21 +122,18 @@ public:
     
 private:
     //  unique actions - immutable set
-    std::unordered_set<action<S,A>, hasher<action<S,A>>> __actions__;
+    std::unordered_set<action_t, hasher<action_t>> __actions__;
     // state reward
     float __reward__ = .0f;
     // state descriptor
-    trait<S> __tag__;
+    trait<state_trait> __tag__;
 };
 
 /// \brief hash functor for state<S,A>
-template <typename S, typename A> 
-struct hasher<state<S,A>>
+template <typename state_trait, typename action_trait> 
+struct hasher<state<state_trait, action_trait>>
 {
-    std::size_t operator()(const state<S,A> & arg) const
-    {
-        return arg.hash();
-    } 
+    std::size_t operator()(const state<state_trait, action_trait> & arg) const;
 };
 
 /********************************************************************************
@@ -147,6 +145,18 @@ bool trait<T>::operator==(const trait<T> & rhs) const
 {
     return *this == rhs;
 }
+
+template <typename state_trait, typename action_trait>
+std::size_t hasher<action<state_trait, action_trait>>::operator()(const action<state_trait, action_trait> & arg) const
+{
+    return arg.hash();
+} 
+
+template <typename state_trait, typename action_trait>
+std::size_t hasher<state<state_trait, action_trait>>::operator()(const state<state_trait, action_trait> & arg) const
+{
+    return arg.hash();
+} 
 
 // TODO: implement the classes here
 

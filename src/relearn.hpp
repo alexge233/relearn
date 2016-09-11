@@ -38,7 +38,7 @@ template <class T> void hash_combine(std::size_t& seed, const T& v);
  * The A decision leads to a next S, and so a tree graph is formed.
  * We use policy in order to associate a "value" to each one.
  *
- * \note typename S is the state type, typename A is the action type
+ * \note typename S is the state_type, typename A is the action_type
  */
 template <typename S, typename A>
 class policy
