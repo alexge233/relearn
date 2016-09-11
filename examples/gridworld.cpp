@@ -179,11 +179,11 @@ int main()
     world w = populate(10, 10);
 
     // set shortcuts to state trait S and action trait A
-    using S = relearn::state<grid, move>;
-    using A = relearn::action<grid, move>;
+    using state = relearn::state<grid, move>;
+    using action = relearn::action<grid, move>;
 
     // create an episode using the starting grid
-    auto e = relearn::episode<S, A>();
+    auto e = relearn::episode<state, action>();
 
     // explore once (repeat until?)
     explore(w, e);

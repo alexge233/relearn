@@ -17,21 +17,9 @@
  */
 namespace relearn
 {
-template <typename S, typename A> class state;
+// forward declare state
+template <typename state_trait, typename action_trait> class state;
 template <class T> struct hasher;
-/**
- * \brief the descriptor class which defines an action or state
- * \class descriptor
- * \version 0.1.0
- * \date 11-9-2016
- */
-template <typename T>
-class trait
-{
-public:
-    /// \brief equality
-    bool operator==(const trait<T> & rhs) const;
-};
 /**
  * \brief an action class - servces as an example but may be used as base
  * \class action
@@ -47,7 +35,7 @@ public:
     using action_t = action<state_trait, action_trait>;
 
     /// \brief construct using \param next state
-    action(state_t state, trait<action_trait> rhs); 
+    action(state_t state, action_trait trait); 
 
     /// \brief get next state - mutable state
     state_t & next() const;
@@ -62,7 +50,7 @@ private:
     /// next state
     std::unique_ptr<state_t> __next__;
     /// action descriptor
-    trait<action_trait> __tag__;
+    action_trait __trait__;
 };
 
 /// \brief hash functor for action<S,A>
@@ -90,13 +78,13 @@ public:
     using action_t = action<state_trait, action_trait>;
 
     /// construct with a reward (terminal state)
-    state(float reward, trait<state_t> arg);
+    state(float reward, state_trait trait);
 
     /// construct with [0...n] actions
-    state(std::initializer_list<action_t> actions, trait<state_t> arg);
+    state(std::initializer_list<action_t> actions, state_trait trait);
 
     /// construct with [0...n] actions and a reward (oxymoron)
-    state(std::initializer_list<action_t> actions, float reward, trait<state_t> arg);
+    state(std::initializer_list<action_t> actions, float reward, state_trait trait);
 
     /// \brief add an action - unique, no duplicates
     void operator<<(action_t arg);
@@ -126,7 +114,7 @@ private:
     // state reward
     float __reward__ = .0f;
     // state descriptor
-    trait<state_trait> __tag__;
+    state_trait __trait__;
 };
 
 /// \brief hash functor for state<S,A>
@@ -139,12 +127,6 @@ struct hasher<state<state_trait, action_trait>>
 /********************************************************************************
  *                      Implementation of above definitions
  ********************************************************************************/
-
-template <typename T>
-bool trait<T>::operator==(const trait<T> & rhs) const
-{
-    return *this == rhs;
-}
 
 template <typename state_trait, typename action_trait>
 std::size_t hasher<action<state_trait, action_trait>>::operator()(const action<state_trait, action_trait> & arg) const
