@@ -37,6 +37,8 @@ template <class T> void hash_combine(std::size_t& seed, const T& v);
  * A policy simply denotes the choice of doing A, while in S.
  * The A decision leads to a next S, and so a tree graph is formed.
  * We use policy in order to associate a "value" to each one.
+ *
+ * \note typename S is the state type, typename A is the action type
  */
 template <typename S, typename A>
 class policy
@@ -60,13 +62,15 @@ protected:
 };
 
 /// \brief hash functor for policy
-template <class S, class A> struct hash<policy<S,A>>
+template <class S, class A> 
+struct hash<policy<S,A>>
 {
     size_t operator()(const policy<S,A> & arg) const;
 };
 
 /// \brief equality functor
-template <class S, class A> struct equal<policy<S,A>>
+template <class S, class A> 
+struct equal<policy<S,A>>
 {
     bool operator()(const policy<S,A> & lhs, const policy<S,A> & rhs) const;
 };
@@ -88,12 +92,11 @@ template <typename S, typename A>
 class episode
 {
 public:
+    /// \brief shortcuts
+    using equal = equal<policy<S,A>>;
+    using hash  = hash<policy<S,A>>;
 
-    /// \brief shortcuts for specialisations
-    using equal = relearn::equal<policy<S,A>>;
-    using hash  = relearn::hash<policy<S,A>>;
-
-    /// empty default constructor
+    /// empty constructor = TODO delete it?
     episode() = default;
 
     /// create episode with root state
@@ -129,15 +132,31 @@ private:
     std::unordered_map<policy<S,A>, float, hash, equal> __policies__;
 };
 
-// TODO: updater (iterate policies updating them using Q-Learning or R-Learning)
+// Algorithm: iterate policies updating them using Q-Learning or R-Learning
+// // TODO...
+template <typename T> class algorithm
+{
+public:
+    /// \brief construct using the update function
+    algorithm(T functor);
 
-}
+    /// \brief do not allow empty constructor
+    algorithm() = delete;
+
+    /// \brief update an episode's policies
+    template <typename S, typename A>
+    void update(episode<S,A> & arg);
+
+private:
+    /// functor used to update policy value, (e.g., Q-learning, R-Learning, etc)
+    T __functor__;
+};
 
 /********************************************************************************
  *                      Implementation of above definitions
  ********************************************************************************/
 template <class T>
-void relearn::hash_combine(std::size_t& seed, const T& v)
+void hash_combine(std::size_t& seed, const T& v)
 {
     std::hash<T> hasher;
     seed ^= hasher(v) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
@@ -145,4 +164,5 @@ void relearn::hash_combine(std::size_t& seed, const T& v)
 
 // TODO: implement all other classes and code here (episode, hash, equal, policy, etc...)
 
+} // end of namespace
 #endif

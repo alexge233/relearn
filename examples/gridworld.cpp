@@ -28,6 +28,7 @@
  * A grid block is simply a coordinate (x,y)
  * A grid *may* have a reward R or it may be blocked (can't move there)
  * This functions as the block upon which the gridworld problem is based.
+ * We also use this as the `trait` descriptor S for state<S,A> and action<S,A>
  */
 struct grid
 {
@@ -39,6 +40,21 @@ struct grid
     {
         return (this->x == arg.x) && 
                (this->y == arg.y);
+    }
+};
+
+/**
+ * A move in the grid world is simply a number.
+ * 0 for left, 1 for top, 2 for right, 3 for down.
+ * We also use this as the `trait` descriptor A for state<S,A> and action<S,A>
+ */
+struct move
+{
+    unsigned int dir;
+
+    bool operator==(const move & arg) const
+    {
+        return (this->dir == arg.dir);
     }
 };
 
@@ -127,20 +143,15 @@ void explore(
         // randomly decide on next grid
         unsigned int d = dist(eng);
         switch (d) {
-            // left
             case 0 : curr.y--;
                      break;
-            // up
             case 1 : curr.x++;
                      break;
-            // right
             case 2 : curr.y++;
                      break;
-            // down
             case 3 : curr.x--;
                      break;
         }
-        
         // find the reward at the current coordinates
         auto it = w.blocks.find(curr);
         if (it != w.blocks.end()) {
@@ -164,15 +175,21 @@ void explore(
  */
 int main()
 {
+    // create the world
     world w = populate(10, 10);
-    using S = relearn::state;
-    using A = relearn::action;
+
+    // set shortcuts to state trait S and action trait A
+    using S = relearn::state<grid, move>;
+    using A = relearn::action<grid, move>;
+
+    // create an episode using the starting grid
     auto e = relearn::episode<S, A>();
+
+    // explore once (repeat until?)
     explore(w, e);
 
-    // TODO: create a main loop: explore, then update, explore then update
-    //       repeat for 100 times, then serialize world as plantUML and visualise it online
-    //       so that the actual example may be used as a paradigm.
+    // TODO: update values using Q-learning
+    // TODO: repeat explore - update for 100 times.
 
     return 0;
 }
