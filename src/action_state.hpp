@@ -48,7 +48,7 @@ public:
 
 private:
     /// next state
-    std::unique_ptr<state_t> __next__;
+    state_t __next__;
     /// action descriptor
     action_trait __trait__;
 };
@@ -125,7 +125,7 @@ struct hasher<state<state_trait, action_trait>>
 };
 
 /********************************************************************************
- *                      Implementation of above definitions
+ *                      Implementation of hasher specialisations
  ********************************************************************************/
 
 template <typename state_trait, typename action_trait>
@@ -139,6 +139,42 @@ std::size_t hasher<state<state_trait, action_trait>>::operator()(const state<sta
 {
     return arg.hash();
 } 
+
+/********************************************************************************
+ *                      Implementation of action class
+ ********************************************************************************/
+
+template <typename state_trait, typename action_trait>
+action<state_trait, action_trait>::action(state<state_trait, action_trait> s, action_trait trait)
+: __next__(s), __trait__(trait)
+{}
+
+template <typename state_trait, typename action_trait>
+std::size_t action<state_trait, action_trait>::hash() const
+{
+   return std::hash<action_trait>{}(__trait__); 
+}
+
+template <typename state_trait, typename action_trait>
+bool action<state_trait, action_trait>::operator==(const action_t & arg) const
+{
+    return (arg.__trait__ == this->__trait__);
+}
+
+template <typename state_trait, typename action_trait>
+state<state_trait, action_trait>& action<state_trait, action_trait>::next() const
+{
+    return __next__;
+}
+
+/********************************************************************************
+ *                      Implementation of state class
+ ********************************************************************************/
+
+template <typename state_trait, typename action_trait>
+state<state_trait, action_trait>::state(float reward, state_trait trait)
+: __reward__(reward), __trait__(trait)
+{}
 
 // TODO: implement the classes here
 

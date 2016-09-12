@@ -63,16 +63,16 @@ protected:
 
 /// \brief hash functor for policy
 template <class S, class A> 
-struct hash<policy<S,A>>
+struct hash<policy<S, A>>
 {
     size_t operator()(const policy<S,A> & arg) const;
 };
 
 /// \brief equality functor
 template <class S, class A> 
-struct equal<policy<S,A>>
+struct equal<policy<S, A>>
 {
-    bool operator()(const policy<S,A> & lhs, const policy<S,A> & rhs) const;
+    bool operator()(const policy<S, A> & lhs, const policy<S, A> & rhs) const;
 };
 
 /**
@@ -103,7 +103,7 @@ public:
     episode(S state);
 
     /// \return a reference to root state
-    const S & root() const;
+    S & root() const;
 
     /// \brief update value for a policy
     void update(policy<S,A> & pair, float value);
@@ -126,7 +126,7 @@ public:
     
 private:
     /// root state 
-    std::unique_ptr<S> __root__;
+    S __root__;
 
     /// episode owns policies, mapping policies to a value
     std::unordered_map<policy<S,A>, float, hash, equal> __policies__;
@@ -153,14 +153,24 @@ private:
 };
 
 /********************************************************************************
- *                      Implementation of above definitions
+ *                      Implementation of hashing functors
  ********************************************************************************/
+
 template <class T>
 void hash_combine(std::size_t& seed, const T& v)
 {
     std::hash<T> hasher;
     seed ^= hasher(v) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
 }
+
+/********************************************************************************
+ *                      Implementation of hashing functors
+ ********************************************************************************/
+
+template <typename S, typename A>
+episode<S, A>::episode(S state)
+: __root__(state)
+{}
 
 // TODO: implement all other classes and code here (episode, hash, equal, policy, etc...)
 

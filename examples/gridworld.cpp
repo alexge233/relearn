@@ -48,18 +48,22 @@ struct grid
  * 0 for left, 1 for top, 2 for right, 3 for down.
  * We also use this as the `trait` descriptor A for state<S,A> and action<S,A>
  */
-struct move
+struct direction
 {
     unsigned int dir;
 
-    bool operator==(const move & arg) const
+    bool operator==(const direction & arg) const
     {
         return (this->dir == arg.dir);
     }
 };
 
-template <class T> struct my_hash;
-template<> struct my_hash<grid>
+/**
+ * Hash specialisations in the STD namespace for structs grid and direction.
+ * Those are **required** because the underlying relearn library uses unordered_map and unordered_set
+ */
+namespace std {
+template <> struct hash<grid>
 {
     std::size_t operator()(grid const& arg) const 
     {
@@ -70,16 +74,25 @@ template<> struct my_hash<grid>
     }
 };
 
+template <> struct hash<direction>
+{
+    std::size_t operator()(direction const& arg) const
+    {
+        std::size_t seed = 0;
+        relearn::hash_combine(seed, arg.dir);
+        return seed;
+    }
+};
+}
+
 /**
  * The gridworld struct simply contains the grid blocks.
  * Each block is uniquely identified by its coordinates.
- * This is a helper structure used to represent the grid world.
  */
 struct world
 {
     const grid start;
-
-    std::unordered_set<grid, my_hash<grid>> blocks;
+    std::unordered_set<grid> blocks;
 };
 
 /**
@@ -125,11 +138,11 @@ world populate(unsigned int height, unsigned int width)
  * The agent will internally map its experience using the State/Action pairs, and recording Policies for each pair.
  */
 template <typename S, typename A>
-void explore(
-              const world & w, 
-              relearn::episode<S, A> & e
-            )
+void explore(const world & w, relearn::episode<S, A> & e)
 {
+    using state = relearn::state<grid, direction>;
+    using action = relearn::action<grid, direction>;
+
     std::default_random_engine eng((std::random_device())());    
     std::uniform_real_distribution<> dist(0, 3);
 
@@ -138,9 +151,15 @@ void explore(
     float R    = 0;
     bool stop = false;
 
+    // TODO: get root state from episode then get action
+    //       and add action to state (root or current)
+    //       thereby populating the episode
+
     // explore while Reward isn't positive or negative
+    // and keep populating the episode with states and actions
     do {
-        // randomly decide on next grid
+        // randomly decide on next grid - we map numbers to a direction
+        // and at the same time infer the next state
         unsigned int d = dist(eng);
         switch (d) {
             case 0 : curr.y--;
@@ -152,15 +171,24 @@ void explore(
             case 3 : curr.x--;
                      break;
         }
+
         // find the reward at the current coordinates
         auto it = w.blocks.find(curr);
         if (it != w.blocks.end()) {
             std::cout << "coord: " << curr.x << "," << curr.y << " = " << it->R << std::endl;
             R = it->R;
         }
-        if (R < 0 || R == 1) {
-            stop = true;
-        }
+
+        // stop populating once we've reached a negative or positive reward
+        stop = (R < 0 || R == 1) ? true : false;
+
+        // create next state
+        auto s_next = state(R, curr);
+
+        // create the action that was taken using the direction as trait and the next state
+        auto a_t    = action(s_next, direction({d}));
+
+        // TODO: 
     }
     while (!stop);
 
@@ -175,18 +203,18 @@ void explore(
  */
 int main()
 {
-    // create the world
+    // create the world and populate it randomly
     world w = populate(10, 10);
 
-    // set shortcuts to state trait S and action trait A
-    using state = relearn::state<grid, move>;
-    using action = relearn::action<grid, move>;
+    // set shortcuts to state trait and action trait
+    using state = relearn::state<grid, direction>;
+    using action = relearn::action<grid, direction>;
 
-    // create an episode using the starting grid
-    auto e = relearn::episode<state, action>();
+    // create an episode using the starting grid as the root state
+    auto episode = relearn::episode<state, action>(state({w.start.R, w.start}));
 
     // explore once (repeat until?)
-    explore(w, e);
+    explore(w, episode);
 
     // TODO: update values using Q-learning
     // TODO: repeat explore - update for 100 times.
