@@ -90,7 +90,7 @@ public:
     action_iterator begin() const;
     /// @brief end of actions range 
     action_iterator end() const;
-    /// @return reward
+    /// @return reward: 0 for normal, -1 for negative, +1 for positive
     float reward() const;
 private:
     //  unique actions - immutable set
