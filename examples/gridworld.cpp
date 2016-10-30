@@ -151,13 +151,12 @@ void explore(const world & w, relearn::episode<S, A> & e)
     float R    = 0;
     bool stop = false;
 
-    // TODO: get root state from episode then get action
-    //       and add action to state (root or current)
-    //       thereby populating the episode
+    // S_t (state now) is initially the root state
+    auto state_now = e.root();
 
     // explore while Reward isn't positive or negative
     // and keep populating the episode with states and actions
-    do {
+    while (!stop) {
         // randomly decide on next grid - we map numbers to a direction
         // and at the same time infer the next state
         unsigned int d = dist(eng);
@@ -178,21 +177,20 @@ void explore(const world & w, relearn::episode<S, A> & e)
             std::cout << "coord: " << curr.x << "," << curr.y << " = " << it->R << std::endl;
             R = it->R;
         }
-
         // stop populating once we've reached a negative or positive reward
         stop = (R < 0 || R == 1) ? true : false;
-
         // create next state
-        auto s_next = state(R, curr);
-
+        auto state_next = state(R, curr);
         // create the action that was taken using the direction as trait and the next state
-        auto a_t    = action(s_next, direction({d}));
-
-        // TODO: 
+        auto action_now = action(state_next, direction({d}));
+        // add action to current state
+        state_now << action_now;
+        // update current state
+        state_now = state_next;
     }
-    while (!stop);
 
-    // TODO: update episode policies
+    // use Q-learning algorithm to update the episode's policies
+    relearn::q_learning<S,A>()(e, 0.3, 0.7);
 }
 
 /**
@@ -216,8 +214,8 @@ int main()
     // explore once (repeat until?)
     explore(w, episode);
 
-    // TODO: update values using Q-learning
     // TODO: repeat explore - update for 100 times.
+    //       then finally run on-policy and follow maxQ
 
     return 0;
 }

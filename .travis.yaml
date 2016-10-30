@@ -1,0 +1,14 @@
+# TODO: setup to use C++14
+language: cpp
+compiler:
+     - gcc
+     - clang
+os:
+     - linux
+     - osx
+script:
+install:
+      - sudo apt-get update -qq
+      - sudo apt-get install -y
+script:
+      - mkdir build && cd build && cmake .. && make

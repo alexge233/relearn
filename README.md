@@ -40,10 +40,17 @@ State11 : t = 4;
 State4 --> State8 : action 1;
 State4 --> State7 : action2;
 @enduml)
-        
+
 At the heart of episodic learning we implement [Q-learning](https://webdocs.cs.ualberta.ca/~sutton/book/ebook/node65.html) 
 and [SARSA](https://webdocs.cs.ualberta.ca/~sutton/book/ebook/node64.html)
 and for continous learning we implement [R-Learning](https://webdocs.cs.ualberta.ca/~sutton/book/ebook/node67.html).
 
  
 [1]: Sutton, R.S. and Barto, A.G., 1998. Reinforcement learning: An introduction (Vol. 1, No. 1). Cambridge: MIT press
+
+# TODO
+
+1. implement `struct q_learning`
+2. implement an episode iterator using breath-first
+3. implement all class methods (`policy`, `episode`, `state`, `action`, etc)
+4. complete the gridworld example and make unit tests, logic tests and valgrind test
