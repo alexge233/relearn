@@ -16,10 +16,13 @@
  * limitations under the License.
  */
 #include <unordered_map>
+#include <functional>
+#include <algorithm>
 /**
  * @brief relearn C++ reinforcement learning library
  * @version 0.1.0
  * @date 26-8-2016
+ * @author Alex Giokas <alexge233@hotmail.com>
  */
 namespace relearn 
 {
@@ -85,59 +88,34 @@ template <typename S, typename A>
 class episode
 {
 public:
-    /// @brief shortcuts
-    using equal = equal<policy<S,A>>;
-    using hash  = hash<policy<S,A>>;
+    typedef std::pair<policy<S,A>, float> policy_value;
+
     /// create episode with root state
     episode(S state);
+    
     /// @return a reference to root state
     S & root();
-    /// @brief update value for a policy
-    void update(policy<S,A> & pair, float value);
-    /// @return value of policy
-    float value(policy<S,A> & pair);
+    
+    /// @return value of policy - @warning will return zero if not found
+    float value(const policy<S,A> & arg) const;
+    
     /// @return max/best policy for @param state, action
-    float max_policy(S & state);
+    float max_policy(const S &arg) const;
+    
     /// @brief equality is based on root state and policies
     bool operator==(const episode<S,A> & arg) const;
-    /// @brief constant policy iterator
-    typedef typename 
-    std::unordered_map<policy<S,A>, 
-                       float, 
-                       hash, 
-                       equal>::const_iterator policy_iterator;
-    /// @brief begin const policy iterator 
-    policy_iterator begin() const;
-    /// @brief end const policy iterator
-    policy_iterator end() const;
+
+    /// @brief append a policy and set its value
+    void operator<<(policy_value arg);
+
 private:
+    /// @brief shortcuts
+    using equals = equal<policy<S,A>>;
+    using hashes = hash<policy<S,A>>;
     // root state 
     S __root__;
     // episode owns policies, mapping policies to a value
-    std::unordered_map<policy<S,A>, float, hash, equal> __policies__;
-};
-
-/*******************************************************************************
- * @brief breadth-first search for an episode's states-actions MDP
- * @class breadth_first
- * @note this is an iterator class, where the container is the graph/MDP
- *
- * It should return a state from the breadth of the current layer, and only
- * return a deeper layer if current breadth has been explored.
- *******************************************************************************/
-template <typename S, typename A>
-class breadth_first_search
-{
-public:
-    /// @brief construct using root state
-    breadth_first_search(S & root);
-    /// @return next state when given @param action
-    S & next() const;
-    /// @return the current state
-    S & current() const;
-private:
-    S & __state__;
-    A & __action__;
+    std::unordered_map<policy<S,A>, float, hashes, equals> __policies__;
 };
 
 /*******************************************************************************
@@ -151,7 +129,15 @@ private:
 template <typename S, typename A> 
 struct q_learning
 {
-    void operator()(episode<S,A> & arg, float gamma, float alpha);
+    /// @brief the update rule of Q-learning
+    float update_value(const episode<S,A> & arg,
+                       const S & s_t, 
+                       const A & a_t, 
+                       float alpha,
+                       float gamma);
+
+    /// @brief do the updating for an episode
+    void operator()(episode<S,A> & arg, float alpha, float gamma);
 };
 
 /********************************************************************************
@@ -205,21 +191,60 @@ S & episode<S,A>::root()
     return __root__;
 }
 
+template <typename S, typename A>
+float episode<S,A>::value(const policy<S,A> & arg) const
+{
+    auto it = __policies__.find(arg);
+    return (it != __policies__.end() ? it->second : 0.f);
+}
+
+template <typename S, typename A>
+float episode<S,A>::max_policy(const S & arg) const
+{
+    std::vector<float> filter;
+    std::for_each(__policies__.begin(), __policies__.end(), [&](const auto rhs) {
+        if (rhs.first.state() == arg) {
+            filter.push_back(rhs.second);
+        }
+    });
+    return *(std::max_element(filter.begin(), filter.end()));
+}
+
+template <typename S, typename A>
+void episode<S,A>::operator<<(policy_value arg)
+{
+    // TODO: insert into __policies__ (arg is std::pair)
+}
 /********************************************************************************
  *                      Implementation of R.L. algorithms
  ********************************************************************************/
 template <typename S, typename A> 
-void q_learning<S,A>::operator()(episode<S,A> & arg, float gamma, float alpha)
+float q_learning<S,A>::update_value(
+                                    const episode<S,A> & arg, 
+                                    const S & s_t, 
+                                    const A & a_t, 
+                                    float alpha,
+                                    float gamma
+                                   )
 {
-    // TODO: iterate episode's states, actions and calculate policies
-    // TODO: WARNING this episode has multiple terminal states
-    //          - for each forward iteration we do a breadth-first search
-    //          - until we find the reward:
-    //              * create a policy for each state,action pair
-    //              * update policy value using next state's reward
-    //              * this may have to be repeated multiple times to update the policies
-    std::cout << "TODO: create / update episode's policies" << std::endl;
-    // q(s_t,a_t) = q(s_t,a_t) + α * (r_{t+1} + γ * max(q(s_{t+1}, a)) - q(s_t, a_t))
+    float q_old = arg.value(policy<S,A>(s_t, a_t));
+    float reward = a_t.next().reward();
+    float q_next_max = arg.max_policy(a_t.next());
+    return q_old + alpha * (reward + (gamma * q_next_max) + q_old);
+}
+
+template <typename S, typename A> 
+void q_learning<S,A>::operator()(episode<S,A> & arg, float alpha, float gamma)
+{
+    // loop over a state's actions - each time going depth first by recurssion
+    std::function<void(const S &s_t)> func = [&](const S &s_t) {
+        for (const A & a_t : s_t) {
+            arg << std::make_pair(policy<S,A>(s_t, a_t), 
+                                  update_value(arg, s_t, a_t, alpha, gamma));
+            func(a_t.next());
+        }
+    };
+    func(arg.root());
 }
 
 } // end of namespace

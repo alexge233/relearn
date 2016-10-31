@@ -21,7 +21,7 @@ set(SRC ${SRC} SRC)
 include_directories(${SRC})
 
 # build examples
-set (EXAMPLES ${EXAMPLES} examples)
+set(EXAMPLES ${EXAMPLES} examples)
 add_executable(gridworld ${EXAMPLES}/gridworld.cpp)
 
 # set output

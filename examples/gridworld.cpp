@@ -21,8 +21,8 @@
 #include <iostream>
 #include <unordered_set>
 #include <random>
-#include "relearn.hpp"
-#include "action_state.hpp"
+#include "../src/relearn.hpp"
+#include "../src/action_state.hpp"
 
 /**
  * A grid block is simply a coordinate (x,y)
@@ -62,7 +62,8 @@ struct direction
  * Hash specialisations in the STD namespace for structs grid and direction.
  * Those are **required** because the underlying relearn library uses unordered_map and unordered_set
  */
-namespace std {
+namespace std 
+{
 template <> struct hash<grid>
 {
     std::size_t operator()(grid const& arg) const 
@@ -190,7 +191,7 @@ void explore(const world & w, relearn::episode<S, A> & e)
     }
 
     // use Q-learning algorithm to update the episode's policies
-    relearn::q_learning<S,A>()(e, 0.3, 0.7);
+    relearn::q_learning<S,A>()(e, 0.7, 0.1);
 }
 
 /**

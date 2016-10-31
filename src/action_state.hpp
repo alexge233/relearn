@@ -15,11 +15,15 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+#include <memory>
 namespace relearn
 {
 // forward declare state
-template <typename state_trait, typename action_trait> class state;
-template <class T> struct hasher;
+template <typename state_trait, typename action_trait> 
+class state;
+
+template <class T> 
+struct hasher;
 /**
  * @brief an action class - servces as an example but may be used as base
  * @class action
@@ -31,20 +35,21 @@ template <typename state_trait, typename action_trait>
 class action
 {
 public:
-    using state_t = state<state_trait, action_trait>;
-    using action_t = action<state_trait, action_trait>;
     /// @brief construct using @param next state
-    action(state_t state, action_trait trait); 
+    action(state<state_trait,action_trait> state_next, action_trait trait); 
+    
     /// @brief get next state - mutable state
-    state_t & next() const;
+    state<state_trait, action_trait> & next() const;
+    
     /// @brief equality operator - uses `descriptor::operator==`
-    bool operator==(const action_t & arg) const;
+    bool operator==(const action<state_trait, action_trait> & arg) const;
+    
     /// descriptor used for hashing
     std::size_t hash() const;
 private:
-    /// next state
-    state_t __next__;
-    /// action descriptor
+    /// next state - action owns it (forward declaration)
+    std::shared_ptr<state<state_trait,action_trait>> __next__;
+    /// action descriptor - object/value wrapped
     action_trait __trait__;
 };
 
@@ -71,25 +76,35 @@ class state
 public:
     using state_t = state<state_trait, action_trait>;
     using action_t = action<state_trait, action_trait>;
+    
     /// construct with a reward (terminal state)
     state(float reward, state_trait trait);
+    
     /// construct with [0...n] actions
     state(std::initializer_list<action_t> actions, state_trait trait);
+    
     /// construct with [0...n] actions and a reward (oxymoron)
     state(std::initializer_list<action_t> actions, float reward, state_trait trait);
+
     /// @brief add an action - unique, no duplicates
     void operator<<(action_t arg);
+    
     /// @brief state equality - uses T::operator==
     bool operator==(const state_t & arg) const;
+    
     /// @return unique hash
     std::size_t hash() const;
-    // type define constant action iterator
+    
+    // type define constant action iterator - BUG: incomplete ?
     typedef typename
     std::unordered_set<action_t, hasher<action_t>>::const_iterator action_iterator;
+    
     /// @brief begin iterating actions
     action_iterator begin() const;
+    
     /// @brief end of actions range 
     action_iterator end() const;
+    
     /// @return reward: 0 for normal, -1 for negative, +1 for positive
     float reward() const;
 private:
@@ -112,13 +127,13 @@ struct hasher<state<state_trait, action_trait>>
  *                      Implementation of hasher specialisations
  ********************************************************************************/
 template <typename state_trait, typename action_trait>
-std::size_t hasher<action<state_trait, action_trait>>::operator()(const action<state_trait, action_trait> & arg) const
+std::size_t hasher<action<state_trait,action_trait>>::operator()(const action<state_trait,action_trait> &arg) const
 {
     return arg.hash();
 } 
 
 template <typename state_trait, typename action_trait>
-std::size_t hasher<state<state_trait, action_trait>>::operator()(const state<state_trait, action_trait> & arg) const
+std::size_t hasher<state<state_trait, action_trait>>::operator()(const state<state_trait,action_trait> &arg) const
 {
     return arg.hash();
 } 
@@ -127,9 +142,14 @@ std::size_t hasher<state<state_trait, action_trait>>::operator()(const state<sta
  *                      Implementation of action class
  ********************************************************************************/
 template <typename state_trait, typename action_trait>
-action<state_trait, action_trait>::action(state<state_trait, action_trait> s, action_trait trait)
-: __next__(s), __trait__(trait)
-{}
+action<state_trait, action_trait>::action(
+                                          state<state_trait, action_trait> state_next, 
+                                          action_trait trait
+                                         )
+: __trait__(trait)
+{
+    __next__ = std::make_shared<state<state_trait,action_trait>>(state_next);
+}
 
 template <typename state_trait, typename action_trait>
 std::size_t action<state_trait, action_trait>::hash() const
@@ -138,7 +158,7 @@ std::size_t action<state_trait, action_trait>::hash() const
 }
 
 template <typename state_trait, typename action_trait>
-bool action<state_trait, action_trait>::operator==(const action_t & arg) const
+bool action<state_trait, action_trait>::operator==(const action<state_trait, action_trait> & arg) const
 {
     return (arg.__trait__ == this->__trait__);
 }
@@ -146,7 +166,7 @@ bool action<state_trait, action_trait>::operator==(const action_t & arg) const
 template <typename state_trait, typename action_trait>
 state<state_trait, action_trait>& action<state_trait, action_trait>::next() const
 {
-    return __next__;
+    return *__next__.get();
 }
 
 /********************************************************************************
@@ -177,7 +197,18 @@ void state<state_trait, action_trait>::operator<<(action_t arg)
     __actions__.insert(arg);
 }
 
-// TODO: implement the classes here
+template <typename state_trait, typename action_trait>
+typename state<state_trait,action_trait>::action_iterator state<state_trait,action_trait>::begin() const
+{
+   return __actions__.begin(); 
+}
+
+template <typename state_trait, typename action_trait>
+typename state<state_trait,action_trait>::action_iterator state<state_trait,action_trait>::end() const
+{
+   return __actions__.end(); 
+}
+// TODO: implement the rest here
 
 } // end of namespace
 #endif

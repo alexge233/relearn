@@ -50,7 +50,7 @@ and for continous learning we implement [R-Learning](https://webdocs.cs.ualberta
 
 # TODO
 
-1. implement `struct q_learning`
-2. implement an episode iterator using breath-first
-3. implement all class methods (`policy`, `episode`, `state`, `action`, etc)
-4. complete the gridworld example and make unit tests, logic tests and valgrind test
+
+1. implement all class methods (`policy`, `episode`, `state`, `action`, etc)
+2. implement `struct q_learning`
+3. complete the gridworld example and make unit tests, logic tests and valgrind test
