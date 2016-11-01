@@ -139,7 +139,7 @@ world populate(unsigned int height, unsigned int width)
  * The agent will internally map its experience using the State/Action pairs, and recording Policies for each pair.
  */
 template <typename S, typename A>
-void explore(const world & w, relearn::episode<S, A> & e)
+void explore(const world & w, relearn::episode<S,A> & e)
 {
     using state = relearn::state<grid, direction>;
     using action = relearn::action<grid, direction>;
@@ -189,9 +189,6 @@ void explore(const world & w, relearn::episode<S, A> & e)
         // update current state
         state_now = state_next;
     }
-
-    // use Q-learning algorithm to update the episode's policies
-    relearn::q_learning<S,A>()(e, 0.7, 0.1);
 }
 
 /**
@@ -210,13 +207,16 @@ int main()
     using action = relearn::action<grid, direction>;
 
     // create an episode using the starting grid as the root state
-    auto episode = relearn::episode<state, action>(state({w.start.R, w.start}));
+    auto episode = relearn::episode<state,action>(state({w.start.R, w.start}));
 
-    // explore once (repeat until?)
-    explore(w, episode);
+    for (int i = 0; i < 100; i++) {
+        // explore the grid world randomly
+        explore(w, episode);
+        // use Q-learning algorithm to update the episode's policies
+        relearn::q_learning<state,action>()(episode, 0.7, 0.1);
+    }
 
-    // TODO: repeat explore - update for 100 times.
-    //       then finally run on-policy and follow maxQ
+    // TODO: then finally run on-policy and follow maxQ
 
     return 0;
 }

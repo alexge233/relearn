@@ -16,6 +16,12 @@
  * limitations under the License.
  */
 #include <memory>
+/**
+ * @note typename `state_trait` is the type/pdt/class used for as state
+ * @note typename `action_trait` is the type/pdt/class used for as action
+ * @note `action_trait` and `state_trait` must be **hashable**
+ * TODO in other classes, replace <S,A> with <state_trait, action_trait>
+ */
 namespace relearn
 {
 // forward declare state
@@ -25,11 +31,10 @@ class state;
 template <class T> 
 struct hasher;
 /**
- * @brief an action class - servces as an example but may be used as base
+ * @brief an action class - wrapps around your class or pdt
  * @class action
  * @version 0.1.0
  * @date 26-8-2016
- * @note typename S is the state trait type, typename A is the action trait type
  */
 template <typename state_trait, typename action_trait> 
 class action
@@ -39,10 +44,10 @@ public:
     action(state<state_trait,action_trait> state_next, action_trait trait); 
     
     /// @brief get next state - mutable state
-    state<state_trait, action_trait> & next() const;
+    state<state_trait,action_trait> & next() const;
     
-    /// @brief equality operator - uses `descriptor::operator==`
-    bool operator==(const action<state_trait, action_trait> & arg) const;
+    /// @brief equality operator - uses `action_trait::operator==`
+    bool operator==(const action<state_trait,action_trait> & arg) const;
     
     /// descriptor used for hashing
     std::size_t hash() const;
@@ -53,7 +58,7 @@ private:
     action_trait __trait__;
 };
 
-/// @brief hash functor for action<S,A>
+/// @brief definition of hash functor for action<S,A>
 template <typename state_trait, typename action_trait> 
 struct hasher<action<state_trait, action_trait>>
 {
@@ -89,7 +94,7 @@ public:
     /// @brief add an action - unique, no duplicates
     void operator<<(action_t arg);
     
-    /// @brief state equality - uses T::operator==
+    /// @brief state equality - uses S::operator==
     bool operator==(const state_t & arg) const;
     
     /// @return unique hash
@@ -116,7 +121,7 @@ private:
     state_trait __trait__;
 };
 
-/// @brief hash functor for state<S,A>
+/// @brief definition of hash functor for state<S,A>
 template <typename state_trait, typename action_trait> 
 struct hasher<state<state_trait, action_trait>>
 {
@@ -133,7 +138,7 @@ std::size_t hasher<action<state_trait,action_trait>>::operator()(const action<st
 } 
 
 template <typename state_trait, typename action_trait>
-std::size_t hasher<state<state_trait, action_trait>>::operator()(const state<state_trait,action_trait> &arg) const
+std::size_t hasher<state<state_trait,action_trait>>::operator()(const state<state_trait,action_trait> &arg) const
 {
     return arg.hash();
 } 
@@ -200,15 +205,32 @@ void state<state_trait, action_trait>::operator<<(action_t arg)
 template <typename state_trait, typename action_trait>
 typename state<state_trait,action_trait>::action_iterator state<state_trait,action_trait>::begin() const
 {
-   return __actions__.begin(); 
+    return __actions__.begin(); 
 }
 
 template <typename state_trait, typename action_trait>
 typename state<state_trait,action_trait>::action_iterator state<state_trait,action_trait>::end() const
 {
-   return __actions__.end(); 
+    return __actions__.end(); 
 }
-// TODO: implement the rest here
+
+template <typename state_trait, typename action_trait>
+float state<state_trait, action_trait>::reward() const
+{
+    return __reward__;
+}
+
+template <typename state_trait, typename action_trait>
+bool state<state_trait, action_trait>::operator==(const state_t & arg) const
+{
+    return this->__trait__ == arg.__trait__;
+}
+
+template <typename state_trait, typename action_trait>
+std::size_t state<state_trait, action_trait>::hash() const
+{
+   return std::hash<state_trait>{}(__trait__);
+}
 
 } // end of namespace
 #endif

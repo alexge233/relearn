@@ -41,6 +41,15 @@ State4 --> State8 : action 1;
 State4 --> State7 : action2;
 @enduml)
 
+Each `class state<S,A>` owns a set of unique actions (`class action<S,A>`).
+In turn each `class action<S,A>` leads to a next state.
+The iteration of the MDP is that of traversing a directed graph.
+
+The episode contains a map of `class policy<S,A` which effectively represents a pair of
+state-action (e.g. V<sup>π</sup>(s<sub>t</sub> linked together by actions a<sub>t</sub>)).
+The *mapped* value is the one used to indicate on-line and off-line policy iteration,
+e.g.: Q(s<sub>t</sub>, a<sub>t</sub>).
+
 At the heart of episodic learning we implement [Q-learning](https://webdocs.cs.ualberta.ca/~sutton/book/ebook/node65.html) 
 and [SARSA](https://webdocs.cs.ualberta.ca/~sutton/book/ebook/node64.html)
 and for continous learning we implement [R-Learning](https://webdocs.cs.ualberta.ca/~sutton/book/ebook/node67.html).
@@ -50,7 +59,8 @@ and for continous learning we implement [R-Learning](https://webdocs.cs.ualberta
 
 # TODO
 
-
-1. implement all class methods (`policy`, `episode`, `state`, `action`, etc)
-2. implement `struct q_learning`
-3. complete the gridworld example and make unit tests, logic tests and valgrind test
+1. implement remaining class methods (action)
+2. implement episodes policy iterator
+3. complete the gridworld example (follow policies)
+4. write some unit tests for the classes (episode, policy, state, action)
+5. merge all header code into a single file (relearn.hpp)
