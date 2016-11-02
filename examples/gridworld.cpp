@@ -1,6 +1,7 @@
 /**
  * the Gridworld problem as described by Sutton and Barto.
- * This is a toy environment called Gridworld that is often used as a toy model in the Reinforcement Learning literature. 
+ * This is a toy environment called Gridworld that is often used 
+ * as a toy model in the Reinforcement Learning literature. 
  * In this particular case:
  *
  * 1. State space: GridWorld has 10x10 = 100 distinct states. 
@@ -9,14 +10,18 @@
  *
  * 2. Actions: The agent can choose from up to 4 actions to move around.
  *
- * 3. Environment Dynamics: GridWorld is deterministic, leading to the same new state given each state and action.
+ * 3. Environment Dynamics: GridWorld is deterministic, 
+ *    leading to the same new state given each state and action.
+ *    Non-deterministic environments nead a probabilistic approach.
  *
- * 4. Rewards: The agent receives +1 reward when it is in the center square (the one that shows R 1.0), 
- *    and -1 reward in a few states (R -1.0 is shown for these). 
+ * 4. Rewards: The agent receives +1 reward when it is in 
+ *    the center square (the one that shows R 1.0), 
+ *    and -1 reward in a the boundary states (R -1.0 is shown for these). 
  *    The state with +1.0 reward is the goal state.
  *
- * In other words, this is a deterministic, finite Markov Decision Process (MDP) and as always the goal is to find an agent policy
- * (shown here by arrows) that maximizes the future discounted reward.
+ * This is a deterministic, finite Markov Decision Process (MDP) 
+ * and the goal is to find an agent policy that maximizes 
+ * the future discounted reward.
  */
 #include <iostream>
 #include <unordered_set>
@@ -26,9 +31,9 @@
 
 /**
  * A grid block is simply a coordinate (x,y)
- * A grid *may* have a reward R or it may be blocked (can't move there)
- * This functions as the block upon which the gridworld problem is based.
- * We also use this as the `trait` descriptor S for state<S,A> and action<S,A>
+ * A grid *may* have a reward R.
+ * This struct functions as the block upon which the gridworld problem is based.
+ * We also use this as the `state_trait` descriptor S for state<S,A> and action<S,A>
  */
 struct grid
 {
@@ -46,7 +51,7 @@ struct grid
 /**
  * A move in the grid world is simply a number.
  * 0 for left, 1 for top, 2 for right, 3 for down.
- * We also use this as the `trait` descriptor A for state<S,A> and action<S,A>
+ * We also use this as the `action_trait` descriptor A for state<S,A> and action<S,A>
  */
 struct direction
 {
@@ -60,7 +65,9 @@ struct direction
 
 /**
  * Hash specialisations in the STD namespace for structs grid and direction.
- * Those are **required** because the underlying relearn library uses unordered_map and unordered_set
+ * Those are **required** because the underlying relearn library 
+ * uses unordered_map and unordered_set, which use hashing functions for the classes
+ * which are mapped/stored internally.
  */
 namespace std 
 {
@@ -74,7 +81,6 @@ template <> struct hash<grid>
         return seed;
     }
 };
-
 template <> struct hash<direction>
 {
     std::size_t operator()(direction const& arg) const
@@ -99,7 +105,9 @@ struct world
 /**
  * populate a gridworld:
  * 1. only one block will have a positive reward
- * 2. all edge blocks will have a negative reward
+ * 2. all edge/boundary blocks will have a negative reward
+ * 
+ * You may change this, make it more complex, larger or "interesting" ;-)
  */
 world populate(unsigned int height, unsigned int width)
 {
@@ -115,6 +123,7 @@ world populate(unsigned int height, unsigned int width)
     grid goal = { x, y, 1.f};
     environment.blocks.insert(goal);
 
+    // populate the remaining grids: -1 for edges, zero for all others
     // iterate height first, width second and add grid blocks, 
     for (unsigned int i = 0; i < width; i++) {
         for (unsigned int k = 0; k < height; k++) {
@@ -133,13 +142,12 @@ world populate(unsigned int height, unsigned int width)
 }
 
 /**
- * Exploration technique is based on Monte-Carlo, e.g.: stochastic/random search.
- * The `agent` will normally search the world experiencing different grids.
- * On-Line mode will update as exploring, whilst Off-Line will update after exploring (?)
- * The agent will internally map its experience using the State/Action pairs, and recording Policies for each pair.
+ * Exploration technique is based on Monte-Carlo, e.g.: stochastic search.
+ * The `agent` will randomly search the world experiencing different blocks.
+ * The agent will internally map its experience using the State/Action pairs.
  */
 template <typename S, typename A>
-void explore(const world & w, relearn::episode<S,A> & e)
+void explore(const world &w, relearn::episode<S,A> &e)
 {
     using state = relearn::state<grid, direction>;
     using action = relearn::action<grid, direction>;
@@ -171,18 +179,18 @@ void explore(const world & w, relearn::episode<S,A> & e)
             case 3 : curr.x--;
                      break;
         }
-
         // find the reward at the current coordinates
         auto it = w.blocks.find(curr);
         if (it != w.blocks.end()) {
-            std::cout << "coord: " << curr.x << "," << curr.y << " = " << it->R << std::endl;
+            std::cout << "coord: " << curr.x << "," 
+                      << curr.y << " = " << it->R << std::endl;
             R = it->R;
         }
         // stop populating once we've reached a negative or positive reward
         stop = (R < 0 || R == 1) ? true : false;
-        // create next state
+        // create next state - BUG who owns the state? action keeps a reference!!!
         auto state_next = state(R, curr);
-        // create the action that was taken using the direction as trait and the next state
+        // create the action using the direction as trait, and the next state
         auto action_now = action(state_next, direction({d}));
         // add action to current state
         state_now << action_now;
@@ -191,11 +199,46 @@ void explore(const world & w, relearn::episode<S,A> & e)
     }
 }
 
+template <typename S, typename A>
+void on_policy(const world &w, relearn::episode<S,A> &e)
+{
+    // get root state = current state
+    auto state_t = e.root();
+    grid location = state_t.trait();
+    float R = location.R;
+
+    std::cout << "starting from: " << location.x << "," 
+              << location.y << " = " << location.R << std::endl;
+
+    while (R != -1 && R != 1) {
+        // get the best policy for this state from the episode
+        auto policy = e.best_policy(state_t);
+
+        // get a reference to the action
+        auto action = policy.action();
+
+        // get the next state - print on screen
+        auto state_n = action.next();
+
+        location = state_n.trait();
+        std::cout << "coord: " << location.x << "," 
+                  << location.y << " = " << location.R << std::endl;
+        R = location.R;
+        state_t = state_n;
+    }
+}
+
 /**
  * Gridworld example main function.
- * The agent will begin with stochastic exploration, and at every terminal state will update its experience.
- * It will then reset back to the start of the episode and re-do the entire process for 100 iterations.
- * take as argc/argv the iteration count?
+ * The agent will begin with stochastic exploration, 
+ * and at every terminal state will update its experience.
+ * It will then reset back to the start of the episode and 
+ * re-do the entire process for 100 iterations.
+ * 
+ * After that, it will follow the learnt policies, and
+ * perform actions of high value only.
+ * This in effect will result in the agent learning the
+ * environment and going straight for the target grid.
  */
 int main()
 {
@@ -209,6 +252,7 @@ int main()
     // create an episode using the starting grid as the root state
     auto episode = relearn::episode<state,action>(state({w.start.R, w.start}));
 
+    // explore the grid 100 times
     for (int i = 0; i < 100; i++) {
         // explore the grid world randomly
         explore(w, episode);
@@ -217,6 +261,9 @@ int main()
     }
 
     // TODO: then finally run on-policy and follow maxQ
+    for (int i = 0; i < 10; i++) {
+        on_policy(w, episode);
+    }
 
     return 0;
 }

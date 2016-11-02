@@ -17,15 +17,14 @@
  */
 #include <memory>
 /**
- * @note typename `state_trait` is the type/pdt/class used for as state
- * @note typename `action_trait` is the type/pdt/class used for as action
+ * @note class `state_trait` is the type/pdt/class used for as state
+ * @note class `action_trait` is the type/pdt/class used for as action
  * @note `action_trait` and `state_trait` must be **hashable**
- * TODO in other classes, replace <S,A> with <state_trait, action_trait>
  */
 namespace relearn
 {
 // forward declare state
-template <typename state_trait, typename action_trait> 
+template <class state_trait, class action_trait> 
 class state;
 
 template <class T> 
@@ -36,33 +35,46 @@ struct hasher;
  * @version 0.1.0
  * @date 26-8-2016
  */
-template <typename state_trait, typename action_trait> 
+template <class state_trait, class action_trait> 
 class action
 {
 public:
+    using action_class = action<state_trait,action_trait>;
+    using state_class  = state<state_trait,action_trait>;
+
     /// @brief construct using @param next state
-    action(state<state_trait,action_trait> state_next, action_trait trait); 
+    action(
+            state<state_trait,action_trait> state_next, 
+            action_trait trait
+          ); 
     
+    /// @briec copy constructor
+    action(const action_class &arg);
+
     /// @brief get next state - mutable state
-    state<state_trait,action_trait> & next() const;
+    state_class next() const;
     
     /// @brief equality operator - uses `action_trait::operator==`
-    bool operator==(const action<state_trait,action_trait> & arg) const;
+    bool operator==(const action_class &arg) const;
+
+    /// @brief assignment operator
+    action_class& operator=(const action_class &arg);
     
     /// descriptor used for hashing
     std::size_t hash() const;
+
 private:
     /// next state - action owns it (forward declaration)
-    std::shared_ptr<state<state_trait,action_trait>> __next__;
+    state_class & __next__;
     /// action descriptor - object/value wrapped
     action_trait __trait__;
 };
 
 /// @brief definition of hash functor for action<S,A>
-template <typename state_trait, typename action_trait> 
+template <class state_trait, class action_trait> 
 struct hasher<action<state_trait, action_trait>>
 {
-    std::size_t operator()(const action<state_trait, action_trait> & arg) const;
+    std::size_t operator()(const action<state_trait,action_trait> &arg) const;
 };
 
 /**
@@ -73,24 +85,18 @@ struct hasher<action<state_trait, action_trait>>
  *
  * The state class owns *one to many* actions of type A
  * Those actions lead to next states, e.g., a tree structure
- * @note typename S is the state trait type, typename A is the action trait type
+ * @note class S is the state trait type, class A is the action trait type
  */
-template <typename state_trait, typename action_trait>
+template <class state_trait, class action_trait>
 class state
 {
 public:
     using state_t = state<state_trait, action_trait>;
     using action_t = action<state_trait, action_trait>;
-    
+
     /// construct with a reward (terminal state)
     state(float reward, state_trait trait);
     
-    /// construct with [0...n] actions
-    state(std::initializer_list<action_t> actions, state_trait trait);
-    
-    /// construct with [0...n] actions and a reward (oxymoron)
-    state(std::initializer_list<action_t> actions, float reward, state_trait trait);
-
     /// @brief add an action - unique, no duplicates
     void operator<<(action_t arg);
     
@@ -100,9 +106,10 @@ public:
     /// @return unique hash
     std::size_t hash() const;
     
-    // type define constant action iterator - BUG: incomplete ?
-    typedef typename
-    std::unordered_set<action_t, hasher<action_t>>::const_iterator action_iterator;
+    // type define constant action iterator
+    typedef class
+    std::unordered_set<action_t, hasher<action_t>>::const_iterator 
+                                                    action_iterator;
     
     /// @brief begin iterating actions
     action_iterator begin() const;
@@ -112,6 +119,10 @@ public:
     
     /// @return reward: 0 for normal, -1 for negative, +1 for positive
     float reward() const;
+
+    /// @return a copy of the trait
+    state_trait trait() const;
+
 private:
     //  unique actions - immutable set
     std::unordered_set<action_t, hasher<action_t>> __actions__;
@@ -122,22 +133,22 @@ private:
 };
 
 /// @brief definition of hash functor for state<S,A>
-template <typename state_trait, typename action_trait> 
+template <class state_trait, class action_trait> 
 struct hasher<state<state_trait, action_trait>>
 {
     std::size_t operator()(const state<state_trait, action_trait> & arg) const;
 };
 
 /********************************************************************************
- *                      Implementation of hasher specialisations
+ *                      Implementation of hasher functors
  ********************************************************************************/
-template <typename state_trait, typename action_trait>
+template <class state_trait, class action_trait>
 std::size_t hasher<action<state_trait,action_trait>>::operator()(const action<state_trait,action_trait> &arg) const
 {
     return arg.hash();
 } 
 
-template <typename state_trait, typename action_trait>
+template <class state_trait, class action_trait>
 std::size_t hasher<state<state_trait,action_trait>>::operator()(const state<state_trait,action_trait> &arg) const
 {
     return arg.hash();
@@ -146,91 +157,99 @@ std::size_t hasher<state<state_trait,action_trait>>::operator()(const state<stat
 /********************************************************************************
  *                      Implementation of action class
  ********************************************************************************/
-template <typename state_trait, typename action_trait>
+template <class state_trait, class action_trait>
 action<state_trait, action_trait>::action(
                                           state<state_trait, action_trait> state_next, 
                                           action_trait trait
                                          )
-: __trait__(trait)
-{
-    __next__ = std::make_shared<state<state_trait,action_trait>>(state_next);
-}
+: __next__(state_next), __trait__(trait)
+{}
 
-template <typename state_trait, typename action_trait>
+template <class state_trait, class action_trait>
+action<state_trait, action_trait>::action(const action<state_trait,action_trait> &arg)
+: __next__(arg.__next__), __trait__(arg.__trait__) 
+{}
+
+template <class state_trait, class action_trait>
 std::size_t action<state_trait, action_trait>::hash() const
 {
    return std::hash<action_trait>{}(__trait__); 
 }
 
-template <typename state_trait, typename action_trait>
+template <class state_trait, class action_trait>
 bool action<state_trait, action_trait>::operator==(const action<state_trait, action_trait> & arg) const
 {
     return (arg.__trait__ == this->__trait__);
 }
 
-template <typename state_trait, typename action_trait>
-state<state_trait, action_trait>& action<state_trait, action_trait>::next() const
+template <class state_trait, class action_trait>
+state<state_trait,action_trait> action<state_trait, action_trait>::next() const
 {
-    return *__next__.get();
+    return __next__;
+}
+
+template <class state_trait, class action_trait>
+action<state_trait,action_trait>& action<state_trait,action_trait>::operator=(const action<state_trait,action_trait> &arg)
+{
+    if (&arg == this) {
+        return *this;
+    }
+    this->__trait__ = arg.__trait__;
+    this->__next__  = arg.__next__;
+    return *this;
 }
 
 /********************************************************************************
  *                      Implementation of state class
  ********************************************************************************/
-template <typename state_trait, typename action_trait>
+
+template <class state_trait, class action_trait>
 state<state_trait, action_trait>::state(float reward, state_trait trait)
 : __reward__(reward), __trait__(trait)
 {}
 
-template <typename state_trait, typename action_trait>
-state<state_trait, action_trait>::state(std::initializer_list<action_t> actions, state_trait trait)
-:__reward__(0.0), __trait__(trait)
-{
-    __actions__.insert(__actions__.end(), actions.begin(), actions.end());
-}
-
-template <typename state_trait, typename action_trait>
-state<state_trait, action_trait>::state(std::initializer_list<action_t> actions, float reward, state_trait trait)
-:__reward__(reward), __trait__(trait)
-{
-    __actions__.insert(__actions__.end(), actions.begin(), actions.end());
-}
-
-template <typename state_trait, typename action_trait>
+template <class state_trait, class action_trait>
 void state<state_trait, action_trait>::operator<<(action_t arg)
 {
     __actions__.insert(arg);
 }
 
-template <typename state_trait, typename action_trait>
-typename state<state_trait,action_trait>::action_iterator state<state_trait,action_trait>::begin() const
+template <class state_trait, class action_trait>
+class state<state_trait,action_trait>::action_iterator state<state_trait,action_trait>::begin() const
 {
     return __actions__.begin(); 
 }
 
-template <typename state_trait, typename action_trait>
-typename state<state_trait,action_trait>::action_iterator state<state_trait,action_trait>::end() const
+template <class state_trait, class action_trait>
+class state<state_trait,action_trait>::action_iterator state<state_trait,action_trait>::end() const
 {
     return __actions__.end(); 
 }
 
-template <typename state_trait, typename action_trait>
+template <class state_trait, class action_trait>
 float state<state_trait, action_trait>::reward() const
 {
     return __reward__;
 }
 
-template <typename state_trait, typename action_trait>
+template <class state_trait, class action_trait>
 bool state<state_trait, action_trait>::operator==(const state_t & arg) const
 {
     return this->__trait__ == arg.__trait__;
 }
 
-template <typename state_trait, typename action_trait>
+template <class state_trait, class action_trait>
 std::size_t state<state_trait, action_trait>::hash() const
 {
    return std::hash<state_trait>{}(__trait__);
 }
+
+template <class state_trait, class action_trait>
+state_trait state<state_trait, action_trait>::trait() const
+{
+   return __trait__;
+}
+
 
 } // end of namespace
 #endif
