@@ -59,8 +59,6 @@ and for continous learning we implement [R-Learning](https://webdocs.cs.ualberta
 
 # TODO
 
-1. implement remaining class methods (action)
-2. implement episodes policy iterator
-3. complete the gridworld example (follow policies)
-4. write some unit tests for the classes (episode, policy, state, action)
-5. merge all header code into a single file (relearn.hpp)
+1. complete the gridworld example (follow policies)
+2. write some unit tests for the classes (episode, policy, state, action)
+3. merge all header code into a single file (relearn.hpp)

@@ -27,7 +27,6 @@
 #include <unordered_set>
 #include <random>
 #include "../src/relearn.hpp"
-#include "../src/action_state.hpp"
 
 /**
  * A grid block is simply a coordinate (x,y)
@@ -122,6 +121,7 @@ world populate(unsigned int height, unsigned int width)
     unsigned int y = dist(eng);
     grid goal = { x, y, 1.f};
     environment.blocks.insert(goal);
+    std::cout << "goal is at: " << x << "," << y << std::endl;
 
     // populate the remaining grids: -1 for edges, zero for all others
     // iterate height first, width second and add grid blocks, 
@@ -153,19 +153,18 @@ void explore(const world &w, relearn::episode<S,A> &e)
     using action = relearn::action<grid, direction>;
 
     std::default_random_engine eng((std::random_device())());    
-    std::uniform_real_distribution<> dist(0, 3);
+    std::uniform_real_distribution<> dist(0, 4);
 
-    auto start = w.start;
-    grid curr  = start;
-    float R    = 0;
     bool stop = false;
 
     // S_t (state now) is initially the root state
     auto state_now = e.root();
+    grid curr  = w.start;
 
     // explore while Reward isn't positive or negative
     // and keep populating the episode with states and actions
-    while (!stop) {
+    while (!stop) 
+    {
         // randomly decide on next grid - we map numbers to a direction
         // and at the same time infer the next state
         unsigned int d = dist(eng);
@@ -179,24 +178,40 @@ void explore(const world &w, relearn::episode<S,A> &e)
             case 3 : curr.x--;
                      break;
         }
+
         // find the reward at the current coordinates
         auto it = w.blocks.find(curr);
         if (it != w.blocks.end()) {
-            std::cout << "coord: " << curr.x << "," 
-                      << curr.y << " = " << it->R << std::endl;
-            R = it->R;
+            curr = *it;
+
+            // create next state - BUG who owns the state? action keeps a reference!!!
+            auto state_next = state(it->R, *it);
+            // create the action using the direction as trait, and the next state
+            auto action_now = action(state_next, direction({d}));
+
+            if (state_now == state_next) {
+                throw std::runtime_error("infinite loop");
+            }
+
+            // add the state tp the episode
+            e.set_state(state_now, action_now);
+
+            // update current state
+            state_now = state_next;
+
+            if (it->R == -1 || it->R == 1) {
+                std::cout << "coord: " << it->x << "," 
+                          << it->y 
+                          << " = " 
+                          << it->R << std::endl;
+                stop = true;
+            }
         }
-        // stop populating once we've reached a negative or positive reward
-        stop = (R < 0 || R == 1) ? true : false;
-        // create next state - BUG who owns the state? action keeps a reference!!!
-        auto state_next = state(R, curr);
-        // create the action using the direction as trait, and the next state
-        auto action_now = action(state_next, direction({d}));
-        // add action to current state
-        state_now << action_now;
-        // update current state
-        state_now = state_next;
+        else {
+            throw std::runtime_error("illegal block");
+        }
     }
+    e.set_state(state_now);
 }
 
 template <typename S, typename A>
@@ -212,19 +227,17 @@ void on_policy(const world &w, relearn::episode<S,A> &e)
 
     while (R != -1 && R != 1) {
         // get the best policy for this state from the episode
-        auto policy = e.best_policy(state_t);
+        auto action = e.best_policy(state_t);
+        if (action) {
+            // get the next state - print on screen
+            auto state_n = action->next();
 
-        // get a reference to the action
-        auto action = policy.action();
-
-        // get the next state - print on screen
-        auto state_n = action.next();
-
-        location = state_n.trait();
-        std::cout << "coord: " << location.x << "," 
-                  << location.y << " = " << location.R << std::endl;
-        R = location.R;
-        state_t = state_n;
+            location = state_n.trait();
+            std::cout << "coord: " << location.x << "," 
+                      << location.y << " = " << location.R << std::endl;
+            R = location.R;
+            state_t = state_n;
+        }
     }
 }
 
@@ -243,27 +256,29 @@ void on_policy(const world &w, relearn::episode<S,A> &e)
 int main()
 {
     // create the world and populate it randomly
-    world w = populate(10, 10);
+    world w = populate(5, 5);
 
-    // set shortcuts to state trait and action trait
-    using state = relearn::state<grid, direction>;
-    using action = relearn::action<grid, direction>;
+    for (int i = 0; i < 1; i++) {
+        // set shortcuts to state trait and action trait
+        using state = relearn::state<grid, direction>;
+        using action = relearn::action<grid, direction>;
 
-    // create an episode using the starting grid as the root state
-    auto episode = relearn::episode<state,action>(state({w.start.R, w.start}));
+        // create an episode using the starting grid as the root state
+        auto episode = relearn::episode<state,action>();
 
-    // explore the grid 100 times
-    for (int i = 0; i < 100; i++) {
         // explore the grid world randomly
         explore(w, episode);
+
         // use Q-learning algorithm to update the episode's policies
         relearn::q_learning<state,action>()(episode, 0.7, 0.1);
     }
 
-    // TODO: then finally run on-policy and follow maxQ
+    /*
+    // run on-policy and follow maxQ
     for (int i = 0; i < 10; i++) {
         on_policy(w, episode);
     }
+    */
 
     return 0;
 }
