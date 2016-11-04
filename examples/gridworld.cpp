@@ -38,7 +38,7 @@ struct grid
 {
     unsigned int x;
     unsigned int y;
-    float R;
+    double R;
 
     bool operator==(const grid & arg) const
     {
@@ -111,15 +111,15 @@ struct world
 world populate(unsigned int height, unsigned int width)
 {
     std::default_random_engine eng((std::random_device())());    
-    std::uniform_real_distribution<> dist(0, 10);
+    std::uniform_real_distribution<> dist(0, 5);
 
     // world - start at 1,1
-    world environment = {{ 1, 1, .0f}};
+    world environment = {{ 1, 1, .0}};
 
     // pick one random block which will be the goal
     unsigned int x = dist(eng);
     unsigned int y = dist(eng);
-    grid goal = { x, y, 1.f};
+    grid goal = { x, y, 1.};
     environment.blocks.insert(goal);
     std::cout << "goal is at: " << x << "," << y << std::endl;
 
@@ -128,13 +128,13 @@ world populate(unsigned int height, unsigned int width)
     for (unsigned int i = 0; i < width; i++) {
         for (unsigned int k = 0; k < height; k++) {
             if (i == 0 || k == 0) {
-                environment.blocks.insert({i, k, -1.f});
+                environment.blocks.insert({i, k, -1.});
             }
             else if (i == width - 1 || k == height - 1) {
-                environment.blocks.insert({i, k, -1.f});
+                environment.blocks.insert({i, k, -1.});
             } 
             else {
-                environment.blocks.insert({i, k, 0.f});
+                environment.blocks.insert({i, k, 0.});
             }
         }
     }
@@ -147,19 +147,20 @@ world populate(unsigned int height, unsigned int width)
  * The agent will internally map its experience using the State/Action pairs.
  */
 template <typename S, typename A>
-void explore(const world &w, relearn::episode<S,A> &e)
+relearn::markov_chain<S,A> explore(const world &w)
 {
-    using state = relearn::state<grid, direction>;
-    using action = relearn::action<grid, direction>;
+    using state = relearn::state<grid>;
+    using action = relearn::action<direction>;
 
     std::default_random_engine eng((std::random_device())());    
     std::uniform_real_distribution<> dist(0, 4);
 
     bool stop = false;
+    relearn::markov_chain<S,A> episode;
 
     // S_t (state now) is initially the root state
-    auto state_now = e.root();
     grid curr  = w.start;
+    auto state_now = state(curr.R, curr);
 
     // explore while Reward isn't positive or negative
     // and keep populating the episode with states and actions
@@ -178,32 +179,27 @@ void explore(const world &w, relearn::episode<S,A> &e)
             case 3 : curr.x--;
                      break;
         }
-
         // find the reward at the current coordinates
         auto it = w.blocks.find(curr);
         if (it != w.blocks.end()) {
+
             curr = *it;
 
-            // create next state - BUG who owns the state? action keeps a reference!!!
-            auto state_next = state(it->R, *it);
-            // create the action using the direction as trait, and the next state
-            auto action_now = action(state_next, direction({d}));
+            std::cout << "coord: " << curr.x << "," 
+                      << curr.y << " = " << curr.R << std::endl;
 
-            if (state_now == state_next) {
-                throw std::runtime_error("infinite loop");
-            }
+            // create the action using direction as trait
+            auto action_now = action(direction({d}));
 
-            // add the state tp the episode
-            e.set_state(state_now, action_now);
+            // add the state to the episode
+            episode.emplace_back(relearn::link<state,action>{
+                                  std::make_shared<state>(state_now),
+                                  std::make_shared<action>(action_now)});
 
-            // update current state
-            state_now = state_next;
+            // update current state to next state
+            state_now = state(it->R, *it);
 
             if (it->R == -1 || it->R == 1) {
-                std::cout << "coord: " << it->x << "," 
-                          << it->y 
-                          << " = " 
-                          << it->R << std::endl;
                 stop = true;
             }
         }
@@ -211,32 +207,60 @@ void explore(const world &w, relearn::episode<S,A> &e)
             throw std::runtime_error("illegal block");
         }
     }
-    e.set_state(state_now);
+    // Add the terminal state last
+    episode.emplace_back(relearn::link<state,action>{
+                                  std::make_shared<state>(state_now),
+                                  nullptr});
+    return episode;
 }
 
 template <typename S, typename A>
-void on_policy(const world &w, relearn::episode<S,A> &e)
+void on_policy(const world & w, relearn::policy<S,A> & policy_map)
 {
-    // get root state = current state
-    auto state_t = e.root();
-    grid location = state_t.trait();
-    float R = location.R;
+    grid curr = w.start;
 
-    std::cout << "starting from: " << location.x << "," 
-              << location.y << " = " << location.R << std::endl;
+    std::cout << "starting from: " << curr.x << "," 
+              << curr.y << " = " << curr.R << std::endl;
+    auto state_t = S(curr.R, curr);
 
-    while (R != -1 && R != 1) {
+    for (;;) {
+
         // get the best policy for this state from the episode
-        auto action = e.best_policy(state_t);
-        if (action) {
-            // get the next state - print on screen
-            auto state_n = action->next();
+        if (auto action = policy_map.best_action(state_t)) {
 
-            location = state_n.trait();
-            std::cout << "coord: " << location.x << "," 
-                      << location.y << " = " << location.R << std::endl;
-            R = location.R;
-            state_t = state_n;
+            // how to infer the next state
+            switch (action->trait().dir) {
+                case 0 : curr.y--;
+                         break;
+                case 1 : curr.x++;
+                         break;
+                case 2 : curr.y++;
+                         break;
+                case 3 : curr.x--;
+                         break;
+            }
+            std::cout << "action: " << action->trait().dir << std::endl;
+
+            auto it = w.blocks.find(curr);
+            if (it != w.blocks.end()) {
+                curr = *it;
+                
+                // calculate our next state
+                auto state_n = S(curr.R, curr);
+                std::cout << "coord: " << curr.x << "," 
+                          << curr.y << " = " << curr.R << std::endl;
+                state_t = state_n;
+
+                if (curr.R == -1.0 || curr.R == 1.0) {
+                    break;
+                }
+            }
+            else {
+                throw std::runtime_error("unknown grid");
+            }       
+        }
+        else {
+            throw std::runtime_error("no best action");
         }
     }
 }
@@ -255,30 +279,37 @@ void on_policy(const world &w, relearn::episode<S,A> &e)
  */
 int main()
 {
+    // set shortcuts to state trait and action trait
+    using state = relearn::state<grid>;
+    using action = relearn::action<direction>;
+
     // create the world and populate it randomly
     world w = populate(5, 5);
+    relearn::policy<state,action> policies;
 
-    for (int i = 0; i < 1; i++) {
-        // set shortcuts to state trait and action trait
-        using state = relearn::state<grid, direction>;
-        using action = relearn::action<grid, direction>;
-
-        // create an episode using the starting grid as the root state
-        auto episode = relearn::episode<state,action>();
-
-        // explore the grid world randomly
-        explore(w, episode);
+    bool solution = false;
+    while (!solution) {
+        // explore the grid world randomly - this produces an episode
+        auto episode = explore<state,action>(w);
 
         // use Q-learning algorithm to update the episode's policies
-        relearn::q_learning<state,action>()(episode, 0.7, 0.1);
+        auto learner = relearn::q_learning<state,action>(0.7, 0.1);
+        for (int k = 0; k < 10; k++) {
+            learner(episode, policies);
+        }
+
+        // check solution has been found
+        auto it = std::find_if(episode.begin(), episode.end(),
+                 [&](const auto & link) {
+                    return link.state_t->reward() == 1;
+                 });
+        if (it != episode.end()) {
+            solution = true;
+        }
     }
 
-    /*
     // run on-policy and follow maxQ
-    for (int i = 0; i < 10; i++) {
-        on_policy(w, episode);
-    }
-    */
+    on_policy(w, policies);
 
     return 0;
 }
