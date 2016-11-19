@@ -108,8 +108,10 @@ struct world
  * 
  * You may change this, make it more complex, larger or "interesting" ;-)
  */
-world populate(unsigned int height, unsigned int width)
+world populate()
 {
+    unsigned int height = 5;
+    unsigned int width  = 5;
     std::default_random_engine eng((std::random_device())());    
     std::uniform_real_distribution<> dist(0, 5);
 
@@ -182,23 +184,17 @@ relearn::markov_chain<S,A> explore(const world &w)
         // find the reward at the current coordinates
         auto it = w.blocks.find(curr);
         if (it != w.blocks.end()) {
-
             curr = *it;
-
             std::cout << "coord: " << curr.x << "," 
                       << curr.y << " = " << curr.R << std::endl;
-
             // create the action using direction as trait
             auto action_now = action(direction({d}));
-
             // add the state to the episode
             episode.emplace_back(relearn::link<state,action>{
                                   std::make_shared<state>(state_now),
                                   std::make_shared<action>(action_now)});
-
             // update current state to next state
             state_now = state(it->R, *it);
-
             if (it->R == -1 || it->R == 1) {
                 stop = true;
             }
@@ -218,16 +214,12 @@ template <typename S, typename A>
 void on_policy(const world & w, relearn::policy<S,A> & policy_map)
 {
     grid curr = w.start;
-
     std::cout << "starting from: " << curr.x << "," 
               << curr.y << " = " << curr.R << std::endl;
     auto state_t = S(curr.R, curr);
-
     for (;;) {
-
         // get the best policy for this state from the episode
         if (auto action = policy_map.best_action(state_t)) {
-
             // how to infer the next state
             switch (action->trait().dir) {
                 case 0 : curr.y--;
@@ -240,17 +232,14 @@ void on_policy(const world & w, relearn::policy<S,A> & policy_map)
                          break;
             }
             std::cout << "action: " << action->trait().dir << std::endl;
-
             auto it = w.blocks.find(curr);
             if (it != w.blocks.end()) {
                 curr = *it;
-                
                 // calculate our next state
                 auto state_n = S(curr.R, curr);
                 std::cout << "coord: " << curr.x << "," 
                           << curr.y << " = " << curr.R << std::endl;
                 state_t = state_n;
-
                 if (curr.R == -1.0 || curr.R == 1.0) {
                     break;
                 }
@@ -284,7 +273,7 @@ int main()
     using action = relearn::action<direction>;
 
     // create the world and populate it randomly
-    world w = populate(5, 5);
+    world w = populate();
     relearn::policy<state,action> policies;
 
     bool solution = false;

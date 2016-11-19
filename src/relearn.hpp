@@ -189,6 +189,7 @@ struct hasher<std::unordered_map<action_class,double>>
 };
 
 /*******************************************************************************
+ * @class q_learning This is the **deterministic** Q-Learning algorithm
  * @brief Q-Learning update algorithm updates an episode's policies
  * @note it constructs and populates an episode's policies
  * @param gamma is the discount rate
@@ -223,9 +224,14 @@ struct q_learning
 };
 
 /********************************************************************************
- *                      Implementation of hashing functors
+ ********************************************************************************
+ *********************              IMPLEMENTATIONS             *****************
+ ********************************************************************************
  ********************************************************************************/
 
+/********************************************************************************
+ *                      Implementation of hashing functors
+ ********************************************************************************/
 template <class T>
 void hash_combine(std::size_t& seed, const T& v)
 {
@@ -246,7 +252,9 @@ std::size_t hasher<state<state_trait>>::operator()(const state<state_trait> &arg
 } 
 
 template <class action_class>
-std::size_t hasher<std::unordered_map<action_class,double>>::operator()(const std::unordered_map<action_class,double> &arg) const
+std::size_t hasher<std::unordered_map<action_class,double>>::operator()(
+                            const std::unordered_map<action_class,double> &arg
+                                                                       ) const
 {
     std::size_t seed;
     for (const auto & pair : arg) {
@@ -319,7 +327,7 @@ action_trait action<action_trait>::trait() const
  ********************************************************************************/
 
 template <class state_class,class action_class>
-class policy<state_class,action_class>::action_map policy<state_class,action_class>::actions(state_class s_t)
+typename policy<state_class,action_class>::action_map policy<state_class,action_class>::actions(state_class s_t)
 {
     return __policies__[s_t];
 }
@@ -346,9 +354,7 @@ double policy<state_class,action_class>::best_value(state_class s_t)
     if (it != __policies__[s_t].end()) {
         return it->second;
     }
-    else {
-        return 0.;
-    }
+    return 0.;
 }
 
 template <class state_class,class action_class>
@@ -361,9 +367,7 @@ std::unique_ptr<action_class> policy<state_class,action_class>::best_action(stat
     if (it != __policies__[s_t].end()) {
         return std::move(std::make_unique<action_class>(it->first));
     }
-    else {
-        return nullptr;
-    }
+    return nullptr;
 }
 
 /********************************************************************************
