@@ -382,7 +382,7 @@ typename q_learning<state_class,action_class>::triplet q_learning<state_class,ac
                                                    ) 
 {
     // next state exists
-    if (std::next(step, 1) != episode.end()) {
+    if (std::next(step, 1) != episode.end())  {
         assert(step->action_t && step->state_t);
         auto s_t  = *(step->state_t);
         auto a_t  = *(step->action_t);
