@@ -26,6 +26,9 @@
 #include <iostream>
 #include <unordered_set>
 #include <random>
+#include <ctime>
+#include <chrono>
+
 #include "../src/relearn.hpp"
 
 /**
@@ -112,18 +115,14 @@ world populate()
 {
     unsigned int height = 5;
     unsigned int width  = 5;
-    std::default_random_engine eng((std::random_device())());    
-    std::uniform_real_distribution<> dist(0, 5);
 
     // world - start at 1,1
     world environment = {{ 1, 1, .0}};
 
-    // pick one random block which will be the goal
-    unsigned int x = dist(eng);
-    unsigned int y = dist(eng);
-    grid goal = { x, y, 1.};
+    // pick one goal/end block
+    grid goal = { 2, 3, 1};
     environment.blocks.insert(goal);
-    std::cout << "goal is at: " << x << "," << y << std::endl;
+    std::cout << "goal is at: " << 2 << "," << 3 << std::endl;
 
     // populate the remaining grids: -1 for edges, zero for all others
     // iterate height first, width second and add grid blocks, 
@@ -149,13 +148,15 @@ world populate()
  * The agent will internally map its experience using the State/Action pairs.
  */
 template <typename S, typename A>
-relearn::markov_chain<S,A> explore(const world &w)
+relearn::markov_chain<S,A> explore(
+                                    const world & w,
+                                    std::mt19937 & gen
+                                  )
 {
     using state = relearn::state<grid>;
     using action = relearn::action<direction>;
 
-    std::default_random_engine eng((std::random_device())());    
-    std::uniform_real_distribution<> dist(0, 4);
+    std::uniform_int_distribution<unsigned int> dist(0, 3);
 
     bool stop = false;
     relearn::markov_chain<S,A> episode;
@@ -170,7 +171,7 @@ relearn::markov_chain<S,A> explore(const world &w)
     {
         // randomly decide on next grid - we map numbers to a direction
         // and at the same time infer the next state
-        unsigned int d = dist(eng);
+        unsigned int d = dist(gen);
         switch (d) {
             case 0 : curr.y--;
                      break;
@@ -220,6 +221,7 @@ void on_policy(const world & w, relearn::policy<S,A> & policy_map)
     for (;;) {
         // get the best policy for this state from the episode
         if (auto action = policy_map.best_action(state_t)) {
+            
             // how to infer the next state
             switch (action->trait().dir) {
                 case 0 : curr.y--;
@@ -231,7 +233,7 @@ void on_policy(const world & w, relearn::policy<S,A> & policy_map)
                 case 3 : curr.x--;
                          break;
             }
-            std::cout << "action: " << action->trait().dir << std::endl;
+            std::cout << "best action: " << action->trait().dir << std::endl;
             auto it = w.blocks.find(curr);
             if (it != w.blocks.end()) {
                 curr = *it;
@@ -268,6 +270,9 @@ void on_policy(const world & w, relearn::policy<S,A> & policy_map)
  */
 int main()
 {
+    std::mt19937 gen(static_cast<std::size_t>(
+        std::chrono::high_resolution_clock::now().time_since_epoch().count()));
+
     // set shortcuts to state trait and action trait
     using state = relearn::state<grid>;
     using action = relearn::action<direction>;
@@ -275,17 +280,12 @@ int main()
     // create the world and populate it randomly
     world w = populate();
     relearn::policy<state,action> policies;
+    std::vector<relearn::markov_chain<state,action>> episodes;
 
-    bool solution = false;
-    while (!solution) {
+    for (;;) {
         // explore the grid world randomly - this produces an episode
-        auto episode = explore<state,action>(w);
-
-        // use Q-learning algorithm to update the episode's policies
-        auto learner = relearn::q_learning<state,action>(0.7, 0.1);
-        for (int k = 0; k < 10; k++) {
-            learner(episode, policies);
-        }
+        auto episode = explore<state,action>(w, gen);
+        episodes.push_back(episode);
 
         // check solution has been found
         auto it = std::find_if(episode.begin(), episode.end(),
@@ -293,7 +293,15 @@ int main()
                     return link.state_t->reward() == 1;
                  });
         if (it != episode.end()) {
-            solution = true;
+            break;
+        }
+    }
+
+    // use Q-learning algorithm to update the episode's policies
+    auto learner = relearn::q_learning<state,action>(0.9, 0.1);
+    for (int k = 0; k < 10; k++) {
+        for (auto episode : episodes) {
+            learner(episode, policies);
         }
     }
 

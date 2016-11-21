@@ -55,23 +55,17 @@ class state
 public:
     /// construct with a reward (terminal state)
     state(double reward, state_trait trait);
-    
     /// @brief state equality - uses S::operator==
     bool operator==(const state<state_trait> & arg) const;
-    
     /// @return unique hash
     std::size_t hash() const;
-    
     /// @return reward: 0 for normal, -1 for negative, +1 for positive
     double reward() const;
-
     /// @return a copy of the trait
     state_trait trait() const;
-
 private:
     // state reward
     double __reward__;
-
     // state descriptor (actual object/value)
     state_trait __trait__;
 };
@@ -95,16 +89,12 @@ class action
 public:
     /// @brief construct using @param next state
     action(action_trait trait); 
-    
     /// @brief equality operator - uses `action_trait::operator==`
     bool operator==(const action<action_trait> &arg) const;
-
     /// hashing 
     std::size_t hash() const;
-
     /// return trair copy
     action_trait trait() const;
-
 private:
     /// action descriptor - object/value wrapped
     action_trait __trait__;
@@ -156,23 +146,17 @@ public:
     typedef std::unordered_map<action_class,
                                double,
                                hasher<action_class>> action_map;
-
     /// @return actions experienced for this state
     action_map actions(state_class s_t);
-
     /// @brief update a policy value
     void update(state_class s_t, action_class a_t, double q_value);
-
     /// @return value of policy
     double value(state_class s_t, action_class a_t);
-    
     /// @return max/best policy for @param state
     double best_value(state_class s_t);
-
     /// @return best policy for @param state - 
     /// @warning if none are found, returns nullptr
     std::unique_ptr<action_class> best_action(state_class s_t);
-
 private:
     // internal structure mapping states => (map of actions => values)
     std::unordered_map<state_class, 
@@ -208,14 +192,12 @@ struct q_learning
     q_learning(double alpha, double gamma)
     : alpha(alpha), gamma(gamma)
     {}
-
     /// @brief the update rule of Q-learning
     triplet q_value(
                      markov_chain<state_class,action_class> &episode,
                      typename markov_chain<state_class,action_class>::iterator &step,
                      policy<state_class,action_class> &policy_map
                    );
-
     /// @brief do the updating for an episode
     void operator()(
                     markov_chain<state_class,action_class> episode, 
@@ -381,26 +363,24 @@ typename q_learning<state_class,action_class>::triplet q_learning<state_class,ac
                                                       policy<state_class,action_class> &policy_map
                                                    ) 
 {
-    // next state exists
-    if (std::next(step, 1) != episode.end())  {
+    // q(s_t,a_t) = q(s_t,a_t) + α * (r_{t+1} + γ * max(q(s_{t+1}, a)) - q(s_t, a_t))
+    if (std::distance(step, episode.end()) != 0) {
         assert(step->action_t && step->state_t);
         auto s_t  = *(step->state_t);
         auto a_t  = *(step->action_t);
         auto next = (std::next(step, 1));
         assert(next->state_t);
+
         double reward = next->state_t->reward();
         double q = policy_map.value(s_t, a_t);
         double q_next_max = policy_map.best_value((*next->state_t));
-        double inner = gamma * q_next_max;
-        inner = reward + inner;
-        inner = inner + q;
-        q = q + (alpha * inner);
-        //std::cout << "\tq(t) = " << q << std::endl;
-        return std::make_tuple(s_t, a_t, q);
+        double inner = reward + (gamma * q_next_max) - q;
+
+        return std::make_tuple(s_t, a_t, (q + (alpha * inner)));
     }
-    // last state
+    // out of bounds
     else {
-        throw std::runtime_error("q_value not applicable to terminal state");
+        throw std::runtime_error("illegal step");
     }
 }
 
@@ -410,13 +390,11 @@ void q_learning<state_class,action_class>::operator()(
                                                       policy<state_class,action_class> & policy_map
                                                      )
 {
-    for (auto step = episode.begin(); step != episode.end(); ++step) {
-        if (std::next(step, 1) != episode.end()) {
-            auto triplet = q_value(episode, step, policy_map);
-            policy_map.update(std::get<0>(triplet),
-                              std::get<1>(triplet),
-                              std::get<2>(triplet));
-        }
+    for (auto step = episode.begin(); step != episode.end() - 1; ++step) {
+        auto triplet = q_value(episode, step, policy_map);
+        policy_map.update(std::get<0>(triplet),
+                          std::get<1>(triplet),
+                          std::get<2>(triplet));
     }
 }
 
