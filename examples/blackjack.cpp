@@ -6,18 +6,17 @@
  * @author Alex Giokas
  * @date 19.11.2016
  */
+#include <string>
+#include <deque>
+#include <vector>
 
 struct card
 {
     std::string label;
-    unsigned int[] value;
+    std::vector<unsigned int> value;
 };
 
-struct deck
-{
-    // TODO: setup cards
-    // TODO: shuffle them randomly
-};
+// TODO: implement Q-Learning using NON-DETERMINISTIC formula
 
 // TODO: deal cards from the deck
 //       decide on an action (stay, split, pull)
@@ -28,3 +27,12 @@ struct deck
 //                   both create the same episode
 //                   but each tries to maximise his reward
 //                   
+int main(void)
+{
+    std::vector<card> deck{{"Heart", {1, 11}}, {"Spade", {1, 11}}, {"Diamond", {1, 11}}, {"Club", {1, 11}},
+                           {"Heart", {2}}, {"Spade", {2}}, {"Diamond", {2}}, {"Club", {2}}, 
+                           {"Heart", {3}}, {"Spade", {3}}, {"Diamond", {3}}, {"Club", {3}},
+                            // TODO: ...
+                           };
+    return 0;
+}

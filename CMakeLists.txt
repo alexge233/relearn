@@ -23,6 +23,8 @@ include_directories(${SRC})
 # build examples
 set(EXAMPLES ${EXAMPLES} examples)
 add_executable(gridworld ${EXAMPLES}/gridworld.cpp)
+add_executable(blackjack ${EXAMPLES}/blackjack.cpp)
+
 
 # set output
 set(CMAKE_COLOR_MAKEFILE on)
