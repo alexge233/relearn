@@ -1,19 +1,19 @@
 # relearn 0.1.0
 
-A Reinforcement Learning[1] *header-only* template library for C++11/14.
+A Reinforcement Learning[1] *header-only* template library for C++14.
 Minimal and simple to use, for a variety of scenarios.
 It is based on [Sutton and Barto's book](https://webdocs.cs.ualberta.ca/~sutton/book/ebook/the-book.html) 
 and implements *some* of the functionality described in it.
 
-## Reinforcement Learning and Markov Decision Process (MDP)
+## Reinforcement Learning and Markov Decision Process
 
 An MDP is a sequence of States  s<sub>t</sub> linked together by actions a<sub>t</sub>.
 At the core of `relearn` is the `policy`; it encapsulates around an MDP and **maps** it.
 Whilst multiple episodes may exist, and an episode may be iterated many times, updated, evaluated
-and re-experienced, the actual process is done in class `policy`.
+and re-experienced, the actual process is done in class `policy`. An overview of an MDP is shown below.
+If Github won't render the gravizo markup, then take a look at the `mdp.svg` image.
 
-![MDP](https://g.gravizo.com/svg?
-@startuml;
+![MDP](https://g.gravizo.com/g?
 [*] --> State1;
 State1 : t = 1;
 State1 --> State2 : action 1;
@@ -39,7 +39,7 @@ State10 --> State11 : action 1;
 State11 : t = 4;
 State4 --> State8 : action 1;
 State4 --> State7 : action2;
-@enduml)
+)
 
 Each `class state<S,A>` owns a set of unique actions (`class action<S,A>`).
 In turn each `class action<S,A>` leads to a next state.
