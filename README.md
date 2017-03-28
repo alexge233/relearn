@@ -12,7 +12,8 @@ At the core of `relearn` is the `policy`; it encapsulates around an MDP and **ma
 Whilst multiple episodes may exist, and an episode may be iterated many times, updated, evaluated
 and re-experienced, the actual process is done in class `policy`.
 
-![MDP](http://g.gravizo.com/g?
+![MDP](https://g.gravizo.com/svg?
+@startuml;
 [*] --> State1;
 State1 : t = 1;
 State1 --> State2 : action 1;
