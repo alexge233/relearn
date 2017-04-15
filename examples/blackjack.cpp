@@ -36,15 +36,24 @@ bool card_compare(const card & lhs, const card & rhs)
            lhs.value == rhs.value;
 }
 
-// hand is the currently holding cards
+// hand is the currently held cards
 struct hand
 {
-    // calculate value of hand
-    unsigned int value() const
+    // calculate value of hand - use max value of hand
+    unsigned int max_value() const
     {
         unsigned int result = 0;
         for (const card & k : cards) {
             result += *std::max_element(k.value.begin(), k.value.end()); 
+        }
+        return result; 
+    }
+
+    unsigned int min_value() const
+    {
+        unsigned int result = 0;
+        for (const card & k : cards) {
+            result += *std::min_element(k.value.begin(), k.value.end()); 
         }
         return result; 
     }
@@ -67,12 +76,6 @@ struct hand
     void clear()
     {
         cards.clear();
-    }
-
-    // hand is 21
-    bool is_21() const
-    {
-        return value() == 21 ? true : false;
     }
 
     // hand is blackjack
@@ -121,10 +124,10 @@ struct house : public player
     : cards(cards), gen(prng)
     {}
 
-    // draw a card based on current hand
+    // draw a card based on current hand - house always draws until 17 is reached
     bool draw(hand opponent)
     {
-        return my_hand.value() < 17 ? true : false;
+        return (my_hand.min_value() < 17 || my_hand.max_value() < 17);
     }
 
     // deal a card using current deck - or reset and deal
@@ -181,6 +184,11 @@ struct adaptive : public player
         // TODO: play and learn to adapt
         return false;
     }
+
+    // TODO: declare intrnally what a state and action is
+    //       state is hand's min_value and max_value (not cards)
+    //       adding actual cards will increase state complexity for no apparent benefit(?)
+    //       actions is "draw" or "stay" - could also be "split"
 
     // cards seen in a round
     std::vector<card> seen;
