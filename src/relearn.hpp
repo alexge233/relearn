@@ -112,18 +112,13 @@ struct hasher<action<action_trait>>
  * @note it could also be an std::list or std::forward_list
  * @warning it is important that order of pairs is preserved!!!
 */
-template <class state_class, class action_class>
+template <class state_class, 
+          class action_class>
 struct link
 {
-    std::shared_ptr<state_class> state_t;
-    std::shared_ptr<action_class> action_t;
+    state_class state;
+    action_class action;
 };
-
-/**
- * @brief a markov chain (episode) is a deque of links
- */
-template <class state_class, class action_class>
-using markov_chain = std::deque<link<state_class,action_class>>;
 
 /*******************************************************************************
  * @brief the class which encapsulates an episode.
@@ -181,7 +176,9 @@ struct hasher<std::unordered_map<action_class,double>>
  *
  * q(s_t,a_t) = q(s_t,a_t) + α * (r_{t+1} + γ * max(q(s_{t+1}, a)) - q(s_t, a_t))
  *******************************************************************************/
-template <class state_class, class action_class> 
+template <class state_class, 
+          class action_class,
+          typename markov_chain = std::deque<link<state_class, action_class>>> 
 struct q_learning
 {
     typedef std::tuple<state_class, action_class, double> triplet;
@@ -189,31 +186,24 @@ struct q_learning
     const double alpha;
     const double gamma;
 
-    q_learning(double alpha, double gamma)
-    : alpha(alpha), gamma(gamma)
-    {}
     /// @brief the update rule of Q-learning
     triplet q_value(
-                     markov_chain<state_class,action_class> &episode,
-                     typename markov_chain<state_class,action_class>::iterator &step,
+                     markov_chain &episode,
+                     typename markov_chain::iterator &step,
                      policy<state_class,action_class> &policy_map
                    );
+
     /// @brief do the updating for an episode
     void operator()(
-                    markov_chain<state_class,action_class> episode, 
+                    markov_chain episode, 
                     policy<state_class,action_class> & policy_map
                    );
 };
 
 /********************************************************************************
- ********************************************************************************
- *********************              IMPLEMENTATIONS             *****************
- ********************************************************************************
+ ***********               Template Implementations             *****************
  ********************************************************************************/
 
-/********************************************************************************
- *                      Implementation of hashing functors
- ********************************************************************************/
 template <class T>
 void hash_combine(std::size_t& seed, const T& v)
 {
@@ -245,9 +235,6 @@ std::size_t hasher<std::unordered_map<action_class,double>>::operator()(
     return seed;
 }
 
-/********************************************************************************
- *                      Implementation of state class
- ********************************************************************************/
 template <class state_trait>
 state<state_trait>::state(double reward, state_trait trait)
 : __reward__(reward), __trait__(trait)
@@ -277,10 +264,6 @@ state_trait state<state_trait>::trait() const
     return __trait__;
 }
 
-/********************************************************************************
- *                      Implementation of action class
- ********************************************************************************/
-
 template <class action_trait>
 action<action_trait>::action(action_trait trait)
 : __trait__(trait)
@@ -304,12 +287,9 @@ action_trait action<action_trait>::trait() const
     return __trait__;
 }
 
-/********************************************************************************
- *                      Implementation of policy class
- ********************************************************************************/
-
 template <class state_class,class action_class>
-typename policy<state_class,action_class>::action_map policy<state_class,action_class>::actions(state_class s_t)
+typename policy<state_class,action_class>::action_map 
+                policy<state_class,action_class>::actions(state_class s_t)
 {
     return __policies__[s_t];
 }
@@ -330,13 +310,8 @@ template <class state_class,class action_class>
 double policy<state_class,action_class>::best_value(state_class s_t)
 {
     auto it = std::max_element(__policies__[s_t].begin(), __policies__[s_t].end(),
-              [&](const auto &lhs, const auto &rhs) {
-                    return lhs.second < rhs.second;
-              });
-    if (it != __policies__[s_t].end()) {
-        return it->second;
-    }
-    return 0.;
+              [&](const auto &lhs, const auto &rhs) { return lhs.second < rhs.second; });
+    return it != __policies__[s_t].end() ? it->second : 0.;
 }
 
 template <class state_class,class action_class>
@@ -346,55 +321,47 @@ std::unique_ptr<action_class> policy<state_class,action_class>::best_action(stat
               [&](const auto &lhs, const auto &rhs) {
                   return lhs.second < rhs.second;
               });
-    if (it != __policies__[s_t].end()) {
-        return std::move(std::make_unique<action_class>(it->first));
-    }
-    return nullptr;
+    return it != __policies__[s_t].end() ?
+           std::move(std::make_unique<action_class>(it->first)) : nullptr;
 }
 
-/********************************************************************************
- *                      Implementation of R.L. algorithms
- ********************************************************************************/
-
-template <class state_class, class action_class> 
-typename q_learning<state_class,action_class>::triplet q_learning<state_class,action_class>::q_value(
-                                                      markov_chain<state_class,action_class> &episode, 
-                                                      typename markov_chain<state_class,action_class>::iterator &step,
-                                                      policy<state_class,action_class> &policy_map
-                                                   ) 
+template <class state_class, 
+          class action_class,
+          typename markov_chain>
+typename q_learning<state_class,action_class,markov_chain>::triplet 
+                    q_learning<state_class,action_class,markov_chain>::q_value
+                    (
+                                      markov_chain & episode, 
+                                      typename markov_chain::iterator & step,
+                                      policy<state_class,action_class> & policy_map
+                    ) 
 {
     // q(s_t,a_t) = q(s_t,a_t) + α * (r_{t+1} + γ * max(q(s_{t+1}, a)) - q(s_t, a_t))
     if (std::distance(step, episode.end()) != 0) {
-        assert(step->action_t && step->state_t);
-        auto s_t  = *(step->state_t);
-        auto a_t  = *(step->action_t);
-        auto next = (std::next(step, 1));
-        assert(next->state_t);
-
-        double reward = next->state_t->reward();
-        double q = policy_map.value(s_t, a_t);
-        double q_next_max = policy_map.best_value((*next->state_t));
-        double inner = reward + (gamma * q_next_max) - q;
-
-        return std::make_tuple(s_t, a_t, (q + (alpha * inner)));
+        auto next = std::next(step, 1);
+        auto q = policy_map.value(step->state, step->action);
+        auto q_next_max = policy_map.best_value((next->state));
+        auto inner = next->state.reward() + (gamma * q_next_max) - q;
+        return std::make_tuple(step->state, step->action, (q + (alpha * inner)));
     }
-    // out of bounds
     else {
         throw std::runtime_error("illegal step");
     }
 }
 
-template <class state_class, class action_class> 
-void q_learning<state_class,action_class>::operator()(
-                                                      markov_chain<state_class,action_class> episode, 
-                                                      policy<state_class,action_class> & policy_map
-                                                     )
+template <class state_class, 
+          class action_class,
+          typename markov_chain>
+void q_learning<state_class,action_class,markov_chain>::operator()
+                                            (
+                                               markov_chain episode, 
+                                               policy<state_class,action_class> & policy_map
+                                            )
 {
-    for (auto step = episode.begin(); step != episode.end() - 1; ++step) {
+    for (auto step = episode.begin(); step != episode.end() - 1; ++step)
+    {
         auto triplet = q_value(episode, step, policy_map);
-        policy_map.update(std::get<0>(triplet),
-                          std::get<1>(triplet),
-                          std::get<2>(triplet));
+        policy_map.update(std::get<0>(triplet), std::get<1>(triplet), std::get<2>(triplet));
     }
 }
 

@@ -28,7 +28,6 @@
 #include <random>
 #include <ctime>
 #include <chrono>
-
 #include "../src/relearn.hpp"
 
 /**
@@ -108,7 +107,6 @@ struct world
  * populate a gridworld:
  * 1. only one block will have a positive reward
  * 2. all edge/boundary blocks will have a negative reward
- * 
  * You may change this, make it more complex, larger or "interesting" ;-)
  */
 world populate()
@@ -148,7 +146,7 @@ world populate()
  * The agent will internally map its experience using the State/Action pairs.
  */
 template <typename S, typename A>
-relearn::markov_chain<S,A> explore(
+std::deque<relearn::link<S,A>> explore(
                                     const world & w,
                                     std::mt19937 & gen
                                   )
@@ -158,8 +156,9 @@ relearn::markov_chain<S,A> explore(
 
     std::uniform_int_distribution<unsigned int> dist(0, 3);
 
+    // explore until stop is true, save into episode
     bool stop = false;
-    relearn::markov_chain<S,A> episode;
+    std::deque<relearn::link<S,A>> episode;
 
     // S_t (state now) is initially the root state
     grid curr  = w.start;
@@ -191,23 +190,18 @@ relearn::markov_chain<S,A> explore(
             // create the action using direction as trait
             auto action_now = action(direction({d}));
             // add the state to the episode
-            episode.emplace_back(relearn::link<state,action>{
-                                  std::make_shared<state>(state_now),
-                                  std::make_shared<action>(action_now)});
+            episode.emplace_back(relearn::link<state,action>{state_now, action_now});
             // update current state to next state
             state_now = state(it->R, *it);
             if (it->R == -1 || it->R == 1) {
                 stop = true;
             }
         }
-        else {
-            throw std::runtime_error("illegal block");
-        }
     }
     // Add the terminal state last
-    episode.emplace_back(relearn::link<state,action>{
-                                  std::make_shared<state>(state_now),
-                                  nullptr});
+    // note: we don't have an empty action - we could use pointers instead...
+    auto action_empty = action(direction({100}));
+    episode.emplace_back(relearn::link<state,action>{state_now, action_empty});
     return episode;
 }
 
@@ -246,12 +240,6 @@ void on_policy(const world & w, relearn::policy<S,A> & policy_map)
                     break;
                 }
             }
-            else {
-                throw std::runtime_error("unknown grid");
-            }       
-        }
-        else {
-            throw std::runtime_error("no best action");
         }
     }
 }
@@ -271,7 +259,8 @@ void on_policy(const world & w, relearn::policy<S,A> & policy_map)
 int main()
 {
     std::mt19937 gen(static_cast<std::size_t>(
-        std::chrono::high_resolution_clock::now().time_since_epoch().count()));
+        std::chrono::high_resolution_clock::now()
+                    .time_since_epoch().count()));
 
     // set shortcuts to state trait and action trait
     using state = relearn::state<grid>;
@@ -279,26 +268,31 @@ int main()
 
     // create the world and populate it randomly
     world w = populate();
-    relearn::policy<state,action> policies;
-    std::vector<relearn::markov_chain<state,action>> episodes;
 
+    // store policies and episodes - we'll use policies later 
+    relearn::policy<state,action> policies;
+    std::vector<std::deque<relearn::link<state,action>>> episodes;
+
+    // explore the grid world randomly - this produces an episode
     for (;;) {
-        // explore the grid world randomly - this produces an episode
         auto episode = explore<state,action>(w, gen);
         episodes.push_back(episode);
 
         // check solution has been found
         auto it = std::find_if(episode.begin(), episode.end(),
                  [&](const auto & link) {
-                    return link.state_t->reward() == 1;
+                    return link.state.reward() == 1;
                  });
+
+        // we haz the terminal state - stop exploring
+        // do note however that this may result in non-optimal policies
         if (it != episode.end()) {
             break;
         }
     }
 
     // use Q-learning algorithm to update the episode's policies
-    auto learner = relearn::q_learning<state,action>(0.9, 0.1);
+    auto learner = relearn::q_learning<state,action>{0.9, 0.1};
     for (int k = 0; k < 10; k++) {
         for (auto episode : episodes) {
             learner(episode, policies);
