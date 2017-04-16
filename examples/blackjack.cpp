@@ -25,7 +25,7 @@ struct card
     void print() const
     {
         std::cout << name << " "
-                  << label << std::endl;
+                  << label << " ";
     }             
 };
 
@@ -64,6 +64,7 @@ struct hand
         for (card k : cards) {
             k.print(); 
         }
+        std::cout << std::endl;
     }
 
     // add new card
@@ -91,33 +92,33 @@ private:
     std::vector<card> cards;
 };
 
-//
-// calculate probability of a card feature (name, label, value)
-// by examining the left (unseen) cards
-template <typename T>
-struct probability
+/// compare hands (return true for lhs wins)
+bool hand_compare(const hand & lhs, const hand & rhs)
 {
-    float operator()(const T, const std::vector<card> cards);
-};
+    if (lhs.blackjack()) return true;
+    else if (rhs.blackjack()) return false;
+
+    if (lhs.min_value() > 21) return false;
+    else if (rhs.min_value() > 21 && lhs.min_value() < 21) return true;
+
+    if (lhs.max_value() > rhs.max_value()) return true;
+    else return false;
+}
 
 //
 // Base class for all players
 //
-struct player
+struct player : public hand
 {
-    virtual bool draw(hand)
-    { return false; }
-
-    void start(card dealt)
+    virtual bool draw()
     {
-        my_hand.insert(dealt);
+        return false;
     }
-
-    hand my_hand;
 };
 
 //
 // House/dealer only uses simple rules to draw or stay
+//
 struct house : public player
 {
     house(std::deque<card> cards, std::mt19937 & prng)
@@ -125,9 +126,9 @@ struct house : public player
     {}
 
     // draw a card based on current hand - house always draws until 17 is reached
-    bool draw(hand opponent)
+    bool draw()
     {
-        return (my_hand.min_value() < 17 || my_hand.max_value() < 17);
+        return (min_value() < 17 || max_value() < 17);
     }
 
     // deal a card using current deck - or reset and deal
@@ -163,14 +164,60 @@ private:
 struct classic : public player
 {
     // decide on drawing or staying
-    bool draw(hand opponent)
+    bool draw()
     {
-        // TODO: play the probabilities
+        if (!blackjack() && 
+            min_value() != 21 &&
+            max_value() != 21)
+        {
+            // find diff of 21 (max) to current hand
+            unsigned int min_diff = 21 - min_value();
+            unsigned int max_diff = 21 - max_value();
+            // TODO:
+            // calculate the probability of drawing a 21 or less
+            // if that probability is small (less than 50%) don't draw
+            // calculate the probability of not getting burnt (drawing a small value)
+            // and combine them altogether
+        }
         return false;
     }
 
+    // return a deck of cards without the already seen cards
+    std::deque<card> remaining_cards()
+    {
+        std::deque<card> remaining;
+        for (const card & k : cards) {
+            if (std::find_if(seen.begin(), seen.end(), 
+                             [&](const auto obj){
+                                 return card_compare(k, obj);    
+                             }) == seen.end()) 
+            {
+                remaining.push_back(k);
+            }
+        }
+        return remaining;
+    }
+
+    // calculate Pr of drawing a card with target value, given the cards left
+    float probability(unsigned int target, 
+                      std::deque<card> left)
+    {
+        float total = left.size();
+        float match = 0;
+        for (card k : left) {
+             for (auto v : k.value) {
+                if (v == target) {
+                    match++;
+                }
+             }
+        } 
+        return match / total;
+    }
+
+    // immutable card set
+    const std::deque<card> cards;
     // cards seen in a round
-    std::vector<card> seen;
+    std::deque<card> seen;
 };
 
 //
@@ -179,7 +226,7 @@ struct classic : public player
 struct adaptive : public player
 {
     // decide on drawing on staying
-    bool draw(hand opponent)
+    bool draw()
     {
         // TODO: play and learn to adapt
         return false;
@@ -190,13 +237,10 @@ struct adaptive : public player
     //       adding actual cards will increase state complexity for no apparent benefit(?)
     //       actions is "draw" or "stay" - could also be "split"
 
-    // cards seen in a round
-    std::vector<card> seen;
     // TODO: we also need a memory policy,
     //       episodes observed
     //       and the q_learning_probablistic
 };
-
 
 //
 // TODO: implement Q-Learning using NON-DETERMINISTIC formula
@@ -227,15 +271,50 @@ int main(void)
     std::mt19937 gen(static_cast<std::size_t>(std::chrono::high_resolution_clock::now()
                                                            .time_since_epoch().count()));
     // create the dealer, and two players...
-    auto dealer = house(cards, gen);
-    std::vector<std::shared_ptr<player>> players = {std::make_shared<classic>(), std::make_shared<adaptive>()};
+    auto dealer = std::make_shared<house>(cards, gen);
+    auto agent = std::make_shared<classic>();
     
-    //
-    // play one round:
-    // #1 house deals one card to a player
-    // #2 house plays asks player to draw
-    // #3 when player stops, house plays - unless player hits blackjack
-    //
+    // start playing
+    for (int i = 0; i < 10; i++) {
+        std::cout << "new game" << std::endl;
+
+        // deal one to self
+        dealer->reset_deck();
+        auto kard_1 = dealer->deal();
+        dealer->insert(kard_1);
+
+        // deal two to player
+        auto kard_2 = dealer->deal();
+        auto kard_3 = dealer->deal();
+        agent->insert(kard_2);
+        agent->insert(kard_3);
+        agent->seen = {kard_1, kard_2, kard_3};
+
+        // agent print, and decide to draw
+        while (agent->draw()) {
+            auto kard = dealer->deal();
+            agent->insert(kard);
+            agent->seen.push_back(kard);
+        }
+        while (dealer->draw()) {
+            dealer->insert(dealer->deal());
+        }
+
+        std::cout << "player's hand: ";
+        agent->print();
+        std::cout << "dealer's hand: ";
+        dealer->print();
+
+        if (hand_compare(*agent, *dealer)) {
+            std::cout << "player wins!!!" << std::endl;
+        }
+        else {
+            std::cout << "dealer wins :-(" << std::endl;
+        }
+
+        agent->clear();
+        dealer->clear();
+    }
 
     return 0;
 }
