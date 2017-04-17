@@ -7,7 +7,7 @@ and implements *some* of the functionality described in it.
 
 Currently the library implements Q-Learning for deterministic systems, as shown below:
 
-!["Q(s_t,a_t) \leftarrow Q(s_t,a_t) + \alpha \bigg[R_{t+1} + \gamma * \underset{a}{max}Q(s_{t+1}, a) - Q(s_t, a_t) \bigg]"](http://www.sciweavers.org/tex2img.php?eq=Q%28s_t%2Ca_t%29%20%20%20%20%5Cleftarrow%20Q%28s_t%2Ca_t%29%20%2B%20%20%5Calpha%20%5Cbigg%5BR_%7Bt%2B1%7D%20%2B%20%20%5Cgamma%20%2A%20%5Cunderset%7Ba%7D%7Bmax%7DQ%28s_%7Bt%2B1%7D%2C%20a%29%20-%20Q%28s_t%2C%20a_t%29%20%5Cbigg%5D&bc=White&fc=Black&im=jpg&fs=12&ff=arev&edit=0)
+![Q-Learning formula](https://github.com/alexge233/relearn/blob/master/q_learning.png?raw=true)
 
 The template class `policy` allows the use of your own `state` and `action` classes,
 although a pair of template wrapper classs `state` and `action` is provided in the header.
