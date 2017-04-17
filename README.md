@@ -59,6 +59,8 @@ and then moving on to a *blackjack* program.
 
 ## Gridworld
 
+![gridworld image](https://github.com/alexge233/relearn/blob/master/gridworld.png?raw=true)
+
 The pinacle of simplicity when it comes to block/grid world toy problems, our agent resides in a 10x10 gridworld,
 which is surrounded by blocks into which he can't move (black colour).
 The agent starts at blue (x:1,y:8) and the target is the green (x:1,y:1).
@@ -72,7 +74,8 @@ and the adaptive agent uses non-deterministic Q-learning in order to play as bes
 ## TODO
 
 1. complete the blackjack example
-2. write unit tests 
+2. do the Q-Learning non-deterministic
 3. complete the crazyflie example
+4. do the R-Learning continous algorithm
 
 [1]: Sutton, R.S. and Barto, A.G., 1998. Reinforcement learning: An introduction (Vol. 1, No. 1). Cambridge: MIT press
