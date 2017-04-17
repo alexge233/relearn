@@ -5,6 +5,10 @@ Minimal and simple to use, for a variety of scenarios.
 It is based on [Sutton and Barto's book](https://webdocs.cs.ualberta.ca/~sutton/book/ebook/the-book.html) 
 and implements *some* of the functionality described in it.
 
+Currently the library implements Q-Learning for deterministic systems, as shown below:
+
+!["Q(s_t,a_t) \leftarrow Q(s_t,a_t) + \alpha \bigg[R_{t+1} + \gamma * \underset{a}{max}Q(s_{t+1}, a) - Q(s_t, a_t) \bigg]"](http://www.sciweavers.org/tex2img.php?eq=Q%28s_t%2Ca_t%29%20%20%20%20%5Cleftarrow%20Q%28s_t%2Ca_t%29%20%2B%20%20%5Calpha%20%5Cbigg%5BR_%7Bt%2B1%7D%20%2B%20%20%5Cgamma%20%2A%20%5Cunderset%7Ba%7D%7Bmax%7DQ%28s_%7Bt%2B1%7D%2C%20a%29%20-%20Q%28s_t%2C%20a_t%29%20%5Cbigg%5D&bc=White&fc=Black&im=jpg&fs=12&ff=arev&edit=0)
+
 ## Reinforcement Learning and Markov Decision Process
 
 An MDP is a sequence of States  s<sub>t</sub> linked together by actions a<sub>t</sub>.
@@ -39,6 +43,24 @@ As of 0.1.0 the library is **WORK IN PROGRESS**
 
 There is nothing to build! This is a header-only library, you only need to use the **relearn.hpp** header.
 However, you may compile the examples (currently only `gridworld` will build) in order to see how the library is implemented.
+
+# Examples
+
+There is a folder `examples` which I'm populating with examples, starting from your typical *gridworld* problem, 
+and then moving on to a *blackjack* program.
+
+## Gridworld
+
+The pinacle of simplicity when it comes to block/grid world toy problems, our agent resides in a 10x10 gridworld,
+which is surrounded by blocks into which he can't move (black colour).
+The agent starts at blue (x:1,y:8) and the target is the green (x:1,y:1).
+The red blocks are fire/danger/a negative reward, and there is a rudimentary maze.
+
+## Blackjack
+
+A simplified attempt, where one player uses classic probabilities, the dealer (house) simply draws until 17,
+and the adaptive agent uses non-deterministic Q-learning in order to play as best as possible.
+
 
 ## TODO
 
