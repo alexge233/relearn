@@ -60,6 +60,8 @@ template <class state_trait,
 class state
 {
 public:
+    /// construct without a reward (R set to zero)
+    state(state_trait trait);
     /// construct with a reward (terminal state)
     state(value_type reward, state_trait trait);
     /// @brief state equality - uses S::operator==
@@ -255,6 +257,12 @@ std::size_t
     }
     return seed;
 }
+
+template <class state_trait,
+          typename value_type>
+state<state_trait,value_type>::state(state_trait trait)
+: __reward__(0), __trait__(trait)
+{}
 
 template <class state_trait,
           typename value_type>
