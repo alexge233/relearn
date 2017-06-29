@@ -236,23 +236,20 @@ template <class state_class,
           typename value_type = double> 
 struct q_learning
 {
-    typedef std::tuple<state_class, action_class, value_type> triplet;
-
+    typedef std::tuple<state_class, 
+                       action_class, 
+                       value_type> triplet;
+    /// learning rate
     const double alpha;
+    /// discount rate
     const double gamma;
-
     /// @brief the update rule of Q-learning
-    triplet q_value(
-                     markov_chain &episode,
-                     typename markov_chain::iterator &step,
-                     policy<state_class,action_class> &policy_map
-                   );
-
+    triplet q_value(markov_chain &episode,
+                    typename markov_chain::iterator &step,
+                    policy<state_class,action_class> &policy_map);
     /// @brief do the updating for an episode
-    void operator()(
-                    markov_chain episode, 
-                    policy<state_class,action_class> & policy_map
-                   );
+    void operator()(markov_chain episode, 
+                    policy<state_class,action_class> & policy_map);
 };
 
 /********************************************************************************
