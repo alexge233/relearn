@@ -136,8 +136,10 @@ struct link
 {
     state_class state;
     action_class action;
-    /// sort/comparison operator
+    /// @brief sort/comparison operator
     bool operator<(const link<state_class,action_class> & arg) const;
+    /// @brief equality comparisong operator
+    bool operator==(const link<state_class,action_class> & arg) const;
 };
 
 /*******************************************************************************
@@ -291,14 +293,14 @@ template <class state_trait,
           typename value_type>
 bool state<state_trait,value_type>::operator==(const state<state_trait> & arg) const
 {
-    return this->__trait__ == arg.__trait__;
+    return (this->__trait__ == arg.__trait__);
 }
 
 template <class state_trait,
           typename value_type>
 bool state<state_trait,value_type>::operator<(const state<state_trait> & arg) const
 {
-    return this->__trait__ < arg.__trait__;
+    return (this->__trait__ < arg.__trait__);
 }
 
 template <class state_trait,
@@ -445,6 +447,13 @@ bool link<state_class,action_class>::operator<(const link<state_class,
            (this->state  < arg.state);
 }
 
-
+template <class state_class, 
+          class action_class>
+bool link<state_class,action_class>::operator==(const link<state_class,
+                                                           action_class> & arg) const
+{
+    return (this->action == arg.action) &&
+           (this->state  == arg.state);
+}
 } // end of namespace
 #endif
