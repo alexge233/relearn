@@ -20,11 +20,15 @@ set(CMAKE_MACOSX_RPATH 1)
 set(SRC ${SRC} SRC)
 include_directories(${SRC})
 
+# add -DUSING_BOOST_SERIALIZATION in order to save policies on disk
+# add_definitions(-DUSING_BOOST_SERIALIZATION)
+# find_package(Boost 1.55 COMPONENTS serialization system)
+# include_directories(${Boost_INCLUDE_DIR})
+
 # build examples
 set(EXAMPLES ${EXAMPLES} examples)
 add_executable(gridworld ${EXAMPLES}/gridworld.cpp)
 add_executable(blackjack ${EXAMPLES}/blackjack.cpp)
-
 
 # set output
 set(CMAKE_COLOR_MAKEFILE on)

@@ -21,6 +21,10 @@
 #include <algorithm>
 #include <memory>
 #include <cassert>
+#if USING_BOOST_SERIALIZATION
+#include <boost/serialization/access.hpp>
+#include <boost/serialization/unordered_map.hpp>
+#endif
 /**
  * @brief relearn C++ reinforcement learning library
  * @version 0.1.1
@@ -39,9 +43,9 @@
  */
 namespace relearn 
 {
-// @brief templated equality functor
+// templated equality functor
 template <class T> struct equal;
-//@ @brief templated hashing functor
+// templated hashing functor
 template <class T> struct hasher;
 /// @brief combining hashes
 template <class T> void hash_combine(std::size_t& seed, const T& v);
@@ -72,13 +76,19 @@ public:
     std::size_t hash() const;
     /// @return reward: 0 for normal, -1 for negative, +1 for positive
     value_type reward() const;
-    /// @return a copy of the trait
+    /// @return trait
     state_trait trait() const;
 private:
     // state reward
     value_type __reward__;
     // state descriptor (actual object/value)
     state_trait __trait__;
+#if USING_BOOST_SERIALIZATION
+    friend class boost::serialization::access;
+    // @warning - template parameter `state_trait` must be serializable
+    template <typename archive>
+    void serialize(archive & ar, const unsigned int version);
+#endif
 };
 
 /// @brief custom hashing functor for template class state
@@ -110,11 +120,17 @@ public:
     bool operator<(const action<action_trait> & arg) const;
     /// hashing 
     std::size_t hash() const;
-    /// return trair copy
+    /// return trait 
     action_trait trait() const;
 private:
     /// action descriptor - object/value wrapped
     action_trait __trait__;
+#if USING_BOOST_SERIALIZATION
+    friend class boost::serialization::access;
+    // @warning - template parameter `action_trait` must be serializable
+    template <typename archive>
+    void serialize(archive & ar, const unsigned int version);
+#endif
 };
 
 /// @brief custom hashing functor for template class action
@@ -157,7 +173,7 @@ struct link
  * This class owns all mapped state-action-policy values.
  * It learns which are better than others, by observing terminal rewards.
  * The actual **value** is not calculated in this class (it is agnostic in that
- * respecT) but is instead calculated using another algorith (Q-Learning, etc.)
+ * respect) but is instead calculated using another algorith (Q-Learning, etc.)
  *******************************************************************************/
 template <class state_class, 
           class action_class,
@@ -188,6 +204,13 @@ private:
                                           hasher<action_class>>,
                        hasher<state_class>
                        > __policies__;
+// set from compiler
+#if USING_BOOST_SERIALIZATION
+    // @warning serialize method depends on state_class and action_class being serializable
+    friend class boost::serialization::access;
+    template <typename archive>
+    void serialize(archive & ar, const unsigned int version);
+#endif
 };
 
 /// @brief definition of hash functor for state<S,A>
@@ -317,6 +340,17 @@ state_trait state<state_trait,value_type>::trait() const
     return __trait__;
 }
 
+#if USING_BOOST_SERIALIZATION
+template <class state_trait,
+          typename value_type>
+template <typename archive>
+void state<state_trait,value_type>::serialize(archive & ar, const unsigned int version)
+{
+    ar & __trait__;
+    ar & __reward__;
+}
+#endif
+
 template <class action_trait>
 action<action_trait>::action(action_trait trait)
 : __trait__(trait)
@@ -345,6 +379,15 @@ action_trait action<action_trait>::trait() const
 {
     return __trait__;
 }
+
+#if USING_BOOST_SERIALIZATION
+template <class action_trait>
+template <typename archive>
+void action<action_trait>::serialize(archive & ar, const unsigned int version)
+{
+    ar & __trait__;
+}
+#endif
 
 template <class state_class,
           class action_class,
@@ -395,6 +438,17 @@ std::unique_ptr<action_class> policy<state_class,action_class,value_type>::best_
     return it != __policies__[s_t].end() ?
            std::move(std::make_unique<action_class>(it->first)) : nullptr;
 }
+
+#if USING_BOOST_SERIALIZATION
+template <class state_class,
+          class action_class,
+          typename value_type>
+template <typename archive>
+void policy<state_class,action_class,value_type>::serialize(archive & ar, const unsigned int version)
+{
+    ar & __policies__;
+}
+#endif
 
 template <class state_class, 
           class action_class,
