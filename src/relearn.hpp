@@ -22,6 +22,7 @@
 #include <memory>
 #include <cassert>
 #if USING_BOOST_SERIALIZATION
+#include <boost/serialization/serialization.hpp>
 #include <boost/serialization/access.hpp>
 #include <boost/serialization/unordered_map.hpp>
 #endif
@@ -204,9 +205,8 @@ private:
                                           hasher<action_class>>,
                        hasher<state_class>
                        > __policies__;
-// set from compiler
+// 
 #if USING_BOOST_SERIALIZATION
-    // @warning serialize method depends on state_class and action_class being serializable
     friend class boost::serialization::access;
     template <typename archive>
     void serialize(archive & ar, const unsigned int version);
