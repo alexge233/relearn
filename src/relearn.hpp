@@ -64,8 +64,10 @@ public:
     state(state_trait trait);
     /// construct with a reward (terminal state)
     state(value_type reward, state_trait trait);
-    /// @brief state equality - uses S::operator==
+    /// @brief state equality - uses `state_trait::operator==`
     bool operator==(const state<state_trait> & arg) const;
+    /// @brief comparison / osrting operator - uses `state_trait::operator<`
+    bool operator<(const state<state_trait> & arg) const;
     /// @return unique hash
     std::size_t hash() const;
     /// @return reward: 0 for normal, -1 for negative, +1 for positive
@@ -83,7 +85,7 @@ private:
 template <class state_trait> 
 struct hasher<state<state_trait>>
 {
-    std::size_t operator()(const state<state_trait> &arg) const;
+    std::size_t operator()(const state<state_trait> & arg) const;
 };
 
 /**
@@ -103,7 +105,9 @@ public:
     /// @brief construct using @param next state
     action(action_trait trait); 
     /// @brief equality operator - uses `action_trait::operator==`
-    bool operator==(const action<action_trait> &arg) const;
+    bool operator==(const action<action_trait> & arg) const;
+    /// @brief comparison / sorting operator - uses `action_trait::operator<`
+    bool operator<(const action<action_trait> & arg) const;
     /// hashing 
     std::size_t hash() const;
     /// return trair copy
@@ -292,6 +296,13 @@ bool state<state_trait,value_type>::operator==(const state<state_trait> & arg) c
 
 template <class state_trait,
           typename value_type>
+bool state<state_trait,value_type>::operator<(const state<state_trait> & arg) const
+{
+    return this->__trait__ < arg.__trait__;
+}
+
+template <class state_trait,
+          typename value_type>
 std::size_t state<state_trait,value_type>::hash() const
 {
     return std::hash<state_trait>{}(__trait__);
@@ -319,6 +330,12 @@ template <class action_trait>
 bool action<action_trait>::operator==(const action<action_trait> & arg) const
 {
     return (arg.__trait__ == this->__trait__);
+}
+
+template <class action_trait>
+bool action<action_trait>::operator<(const action<action_trait> & arg) const
+{
+    return (arg.__trait__ < this->__trait__);
 }
 
 template <class action_trait>
