@@ -23,8 +23,8 @@
 #include <cassert>
 /**
  * @brief relearn C++ reinforcement learning library
- * @version 0.1.0
- * @date 26-8-2016
+ * @version 0.1.1
+ * @date 29-06-2017
  * @author Alex Giokas <alexge233@hotmail.com>
  *
  * @NOTE: do not confuse `state_class` with `state_trait`
@@ -49,8 +49,8 @@ template <class T> void hash_combine(std::size_t& seed, const T& v);
 /**
  * @brief a state class
  * @class state
- * @version 0.1.0
- * @date 26-8-2016
+ * @version 0.1.1
+ * @date 28-06-2017
  *
  * The state class is **desribed** by the template parameter `state_trait`
  * which can be virtually anything, provided you can use it to calculate a hash
@@ -121,13 +121,19 @@ struct hasher<action<action_trait>>
 };
 
 /**
-*/
+ * @struct link
+ * @brief a simple `link` or pair for joining state-actions in the MDP
+ * @date 29-06-2017
+ * @version 0.1.0
+ */
 template <class state_class, 
           class action_class>
 struct link
 {
     state_class state;
     action_class action;
+    /// sort/comparison operator
+    bool operator<(const link<state_class,action_class> & arg) const;
 };
 
 /*******************************************************************************
@@ -412,6 +418,16 @@ void q_learning<state_class,action_class,markov_chain,value_type>::operator()
         policy_map.update(std::get<0>(triplet), std::get<1>(triplet), std::get<2>(triplet));
     }
 }
+
+template <class state_class, 
+          class action_class>
+bool link<state_class,action_class>::operator<(const link<state_class,
+                                                          action_class> & arg) const
+{
+    return (this->action < arg.action) &&
+           (this->state  < arg.state);
+}
+
 
 } // end of namespace
 #endif
