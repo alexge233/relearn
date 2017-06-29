@@ -7,7 +7,7 @@ and implements *some* of the functionality described in it.
 
 Currently the library implements Q-Learning for deterministic systems, as shown below:
 
-![Q-Learning formula](https://github.com/alexge233/relearn/blob/master/q_learning.png?raw=true)
+![Q-Learning formula](https://github.com/alexge233/relearn/blob/master/images/q_learning.png?raw=true)
 
 The template class `policy` allows the use of your own `state` and `action` classes,
 although a pair of template wrapper classs `state` and `action` is provided in the header.
@@ -23,7 +23,7 @@ At the core of `relearn` is the `policy` which uses MDPs and **maps** them using
 Whilst multiple episodes may exist, and an episode may be iterated many times, updated, evaluated
 and re-experienced, the actual process is done in class `policy`. An overview of an MDP is shown below.
 
-![Markov Decision Process](https://github.com/alexge233/relearn/blob/master/mdp.png?raw=true)
+![Markov Decision Process](https://github.com/alexge233/relearn/blob/master/images/mdp.png?raw=true)
 
 At the heart of episodic learning I've implemented [Q-learning](https://webdocs.cs.ualberta.ca/~sutton/book/ebook/node65.html) 
 (for continous learning I plan to implement [R-Learning](https://webdocs.cs.ualberta.ca/~sutton/book/ebook/node67.html). in the near future).
@@ -79,7 +79,7 @@ and then moving on to a *blackjack* program.
 
 ## Gridworld
 
-![gridworld image](https://github.com/alexge233/relearn/blob/master/gridworld.png?raw=true)
+![gridworld image](https://github.com/alexge233/relearn/blob/master/images/gridworld.png?raw=true)
 
 The pinacle of simplicity when it comes to block/grid world toy problems, our agent resides in a 10x10 gridworld,
 which is surrounded by blocks into which he can't move (black colour).
