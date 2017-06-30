@@ -139,7 +139,7 @@ private:
     /// action descriptor - object/value wrapped
     action_trait __trait__;
 #if USING_BOOST_SERIALIZATION
-    friend boost::serialization::access;
+    friend class boost::serialization::access;
     // @warning - template parameter `action_trait` must be serializable
     template <typename archive>
     void serialize(archive & ar, const unsigned int version);
