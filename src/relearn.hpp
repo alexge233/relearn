@@ -65,8 +65,6 @@ template <class state_trait,
 class state
 {
 public:
-    /// default empty state
-    state() = default;
     /// construct without a reward (R set to zero)
     state(state_trait trait);
     /// construct with a reward (terminal state)
@@ -88,6 +86,8 @@ private:
     state_trait __trait__;
 #if USING_BOOST_SERIALIZATION
     friend class boost::serialization::access;
+    /// default empty state
+    state() = default;
     // @warning - template parameter `state_trait` must be serializable
     template <typename archive>
     void serialize(archive & ar, const unsigned int version);
@@ -115,8 +115,6 @@ template <class action_trait>
 class action
 {
 public:
-    /// default empty action
-    action() = default;
     /// @brief construct using @param next state
     action(action_trait trait); 
     /// @brief equality operator - uses `action_trait::operator==`
@@ -132,6 +130,8 @@ private:
     action_trait __trait__;
 #if USING_BOOST_SERIALIZATION
     friend class boost::serialization::access;
+    /// default empty action
+    action() = default;
     // @warning - template parameter `action_trait` must be serializable
     template <typename archive>
     void serialize(archive & ar, const unsigned int version);
