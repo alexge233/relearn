@@ -89,8 +89,6 @@ private:
     // @warning - template parameter `state_trait` must be serializable
     template <typename archive>
     void serialize(archive & ar, const unsigned int version);
-    // private empty CTOR used by boost serialization
-    state() = default;
 #endif
 };
 
@@ -133,8 +131,6 @@ private:
     // @warning - template parameter `action_trait` must be serializable
     template <typename archive>
     void serialize(archive & ar, const unsigned int version);
-    // private empty CTOR used by boost serialization
-    action() = default;
 #endif
 };
 
