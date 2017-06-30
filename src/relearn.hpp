@@ -471,7 +471,7 @@ typename q_learning<state_class,action_class,markov_chain,value_type>::triplet
                     ) 
 {
     // q(s_t,a_t) = q(s_t,a_t) + α * (r_{t+1} + γ * max(q(s_{t+1}, a)) - q(s_t, a_t))
-    if (std::distance(step, episode.end()) > 0) {
+    if (std::distance(step, episode.end()) != 0) {
         auto next = std::next(step, 1);
         value_type q = policy_map.value(step->state, step->action);
         value_type q_next_max = policy_map.best_value((next->state));
