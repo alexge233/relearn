@@ -79,15 +79,19 @@ public:
     value_type reward() const;
     /// @return trait
     state_trait trait() const;
+#if USING_BOOST_SERIALIZATION
+    /// default empty state - used by boost serialization only
+    /// @warning creating an empty state on purpose will break the
+    ///          learning algorithm
+    state() = default;
+#endif
 private:
     // state reward
     value_type __reward__;
     // state descriptor (actual object/value)
     state_trait __trait__;
 #if USING_BOOST_SERIALIZATION
-    friend class boost::serialization::access;
-    /// default empty state
-    state() = default;
+    friend boost::serialization::access;
     // @warning - template parameter `state_trait` must be serializable
     template <typename archive>
     void serialize(archive & ar, const unsigned int version);
@@ -125,13 +129,17 @@ public:
     std::size_t hash() const;
     /// return trait 
     action_trait trait() const;
+#if USING_BOOST_SERIALIZATION
+    /// default empty action - used by boost serialization only
+    /// @warning creating an empty action class on purpose
+    ///          will break the algorithm
+    action() = default;
+#endif
 private:
     /// action descriptor - object/value wrapped
     action_trait __trait__;
 #if USING_BOOST_SERIALIZATION
-    friend class boost::serialization::access;
-    /// default empty action
-    action() = default;
+    friend boost::serialization::access;
     // @warning - template parameter `action_trait` must be serializable
     template <typename archive>
     void serialize(archive & ar, const unsigned int version);
@@ -209,7 +217,6 @@ private:
                                           hasher<action_class>>,
                        hasher<state_class>
                        > __policies__;
-// 
 #if USING_BOOST_SERIALIZATION
     friend class boost::serialization::access;
     template <typename archive>
@@ -463,6 +470,7 @@ typename q_learning<state_class,action_class,markov_chain,value_type>::triplet
                           policy<state_class,action_class> & policy_map
                     ) 
 {
+    assert(step);
     // q(s_t,a_t) = q(s_t,a_t) + α * (r_{t+1} + γ * max(q(s_{t+1}, a)) - q(s_t, a_t))
     if (std::distance(step, episode.end()) != 0) {
         auto next = std::next(step, 1);
@@ -489,7 +497,9 @@ void q_learning<state_class,action_class,markov_chain,value_type>::operator()
     for (auto step = episode.begin(); step != episode.end() - 1; ++step)
     {
         auto triplet = q_value(episode, step, policy_map);
-        policy_map.update(std::get<0>(triplet), std::get<1>(triplet), std::get<2>(triplet));
+        policy_map.update(std::get<0>(triplet), 
+                          std::get<1>(triplet), 
+                          std::get<2>(triplet));
     }
 }
 
