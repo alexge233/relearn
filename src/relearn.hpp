@@ -471,12 +471,15 @@ typename q_learning<state_class,action_class,markov_chain,value_type>::triplet
                     ) 
 {
     // q(s_t,a_t) = q(s_t,a_t) + α * (r_{t+1} + γ * max(q(s_{t+1}, a)) - q(s_t, a_t))
-    if (std::distance(step, episode.end()) != 0) {
+    if (std::distance(step, episode.end()) > 0) {
         auto next = std::next(step, 1);
         value_type q = policy_map.value(step->state, step->action);
         value_type q_next_max = policy_map.best_value((next->state));
         value_type inner = next->state.reward() + (gamma * q_next_max) - q;
         return std::make_tuple(step->state, step->action, (q + (alpha * inner)));
+    }
+    else if (std::distance(step, episode.end()) == 0) {
+        return std::make_tuple(step->state, step->action, step->state.reward());
     }
     else {
         throw std::runtime_error("illegal step");
@@ -493,13 +496,18 @@ void q_learning<state_class,action_class,markov_chain,value_type>::operator()
                    policy<state_class,action_class> & policy_map
                 )
 {
-    for (auto step = episode.begin(); step != episode.end() - 1; ++step)
+    for (auto step = episode.begin(); step != episode.end(); ++step)
     {
         auto triplet = q_value(episode, step, policy_map);
         policy_map.update(std::get<0>(triplet), 
                           std::get<1>(triplet), 
                           std::get<2>(triplet));
     }
+    /*
+    policy_map.update(episode.back().state,
+                      episode.back().action,
+                      episode.back().state.reward());
+     */
 }
 
 template <class state_class, 
