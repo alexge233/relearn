@@ -259,8 +259,7 @@ void on_policy(const world & w,
                 // calculate our next state
                 auto state_n = S(curr.R, curr);
                 std::cout << "coord: " << curr.x << "," 
-                          << curr.y << " = " << curr.R << ", "
-                          << policy_map.best_value(state_t) << std::endl;
+                          << curr.y << " = " << curr.R << std::endl;
                 state_t = state_n;
                 if (curr.R == -1.0 || curr.R == 1.0) {
                     break;
