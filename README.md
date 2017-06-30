@@ -1,4 +1,4 @@
-# relearn 0.1.0
+![RELEARN](https://github.com/alexge233/relearn/blob/master/images/relearn.png?raw=true)
 
 A Reinforcement Learning *header-only* template library for C++14.
 Minimal and simple to use, for a variety of scenarios.
