@@ -65,6 +65,8 @@ template <class state_trait,
 class state
 {
 public:
+    /// default empty state
+    state() = default;
     /// construct without a reward (R set to zero)
     state(state_trait trait);
     /// construct with a reward (terminal state)
@@ -113,6 +115,8 @@ template <class action_trait>
 class action
 {
 public:
+    /// default empty action
+    action() = default;
     /// @brief construct using @param next state
     action(action_trait trait); 
     /// @brief equality operator - uses `action_trait::operator==`
