@@ -214,8 +214,6 @@ private:
     friend class boost::serialization::access;
     template <typename archive>
     void serialize(archive & ar, const unsigned int version);
-    // private empty CTOR used by boost serialization
-    policy() = default;
 #endif
 };
 
