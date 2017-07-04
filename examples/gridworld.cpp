@@ -327,4 +327,3 @@ int main()
     on_policy(w, policies, start);
     return 0;
 }
-
