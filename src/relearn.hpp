@@ -22,9 +22,7 @@
 #include <memory>
 #include <cassert>
 #if USING_BOOST_SERIALIZATION
-#include <boost/serialization/serialization.hpp>
-#include <boost/serialization/access.hpp>
-#include <boost/serialization/unordered_map.hpp>
+#include "serialize.tpl"
 #endif
 /** 
  
@@ -95,12 +93,6 @@ public:
     value_type reward() const;
     /// @return trait
     state_trait trait() const;
-#if USING_BOOST_SERIALIZATION
-    /// default empty state - used by boost serialization only
-    /// @warning creating an empty state on purpose will break the
-    ///          learning algorithm
-    state() = default;
-#endif
 private:
     // state reward
     value_type __reward__;
@@ -111,6 +103,8 @@ private:
     // @warning - template parameter `state_trait` must be serializable
     template <typename archive>
     void serialize(archive & ar, const unsigned int version);
+protected:
+    state() = default;
 #endif
 };
 // hashing functor for template class state
@@ -148,12 +142,6 @@ public:
     std::size_t hash() const;
     /// return trait 
     action_trait trait() const;
-#if USING_BOOST_SERIALIZATION
-    /// default empty action - used by boost serialization only
-    /// @warning creating an empty action class on purpose
-    ///          will break the algorithm
-    action() = default;
-#endif
 private:
     /// action descriptor - object/value wrapped
     action_trait __trait__;
@@ -162,6 +150,8 @@ private:
     // @warning - template parameter `action_trait` must be serializable
     template <typename archive>
     void serialize(archive & ar, const unsigned int version);
+protected:
+    action() = default;
 #endif
 };
 //hashing functor for template class action
@@ -235,17 +225,26 @@ public:
      */
     std::unique_ptr<action_class> best_action(state_class s_t);
 private:
-    // internal structure mapping states => (map of actions => values)
+// if using boost serialization the policies used
+// are wrappers defined in internal header `serialize.tpl`
+#if USING_BOOST_SERIALIZATION
+    friend class boost::serialization::access;
+    template <typename archive>
+    void serialize(archive & ar, const unsigned int version);
+    std::unordered_map<state_wrapper
+                       std::unordered_map<action_wrapper,
+                                          value_type,
+                                          hasher<action_wrapper>>,
+                       hasher<state_class>
+                       > __policies__;
+// else we're using the actual `state_class` and `action_class` types
+#else
     std::unordered_map<state_class, 
                        std::unordered_map<action_class,
                                           value_type,
                                           hasher<action_class>>,
                        hasher<state_class>
                        > __policies__;
-#if USING_BOOST_SERIALIZATION
-    friend class boost::serialization::access;
-    template <typename archive>
-    void serialize(archive & ar, const unsigned int version);
 #endif
 };
 // hash functor for `unordered_map<action_class,value_type`
