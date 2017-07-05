@@ -51,6 +51,7 @@ but you can play around with it if needed.
 The class that mostly interests us is `policy` which uses your states and action,
 and stores them in a map of states, where each state (key) has a value of maps (action to value):
 
+```
 .
 ├── s_t
 |   ├── a_t: 0.03
@@ -58,6 +59,7 @@ and stores them in a map of states, where each state (key) has a value of maps (
 ├── s_t
 |   ├── a_t: -0.001
 |   └── a_t: 0.9
+```
 
 You own and control the policy objects, and you can even use multiple ones, however bear in mind
 that they are not locked for MT access (you have to do this manually).
