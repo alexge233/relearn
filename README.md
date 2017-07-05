@@ -26,27 +26,49 @@ and re-experienced, the actual process is done in class `policy`. An overview of
 ![Markov Decision Process](https://github.com/alexge233/relearn/blob/master/images/mdp.png?raw=true)
 
 At the heart of episodic learning I've implemented [Q-learning](https://webdocs.cs.ualberta.ca/~sutton/book/ebook/node65.html) 
-(for continous learning I plan to implement [R-Learning](https://webdocs.cs.ualberta.ca/~sutton/book/ebook/node67.html). in the near future).
+(for continous learning I plan to implement [R-Learning](https://webdocs.cs.ualberta.ca/~sutton/book/ebook/node67.html) in the near future).
+
+The skeleton of `relearn` are the classes `state` and `action` which serve as wrappers around your own classes.
+The template parameters `state_trait` and `action_trait` are used to describe what a state and action are,
+the wrappers are used only for indexing, hashing and policy calculation.
+
+The basic use is to create episodes, denoted as `markov_chain` which you populate as you see fit,
+and then reward with either a negative (-1), neutral (0) or positive (+1) value.
 
 The use of a `markov_chain` defaults to an `std::deque<relearn::link<state_class,action_class>>`
 where `relearn::link` is the struct encapsulating a state/action observation.
+
 You may replace the container or link class if you want, but the `q_learning` structure
 requires that:
 
 - an episode (a `markov_chain`) can be iterated
-- the iterator can be used with `std::next`
-- there exists an `::end()` method to denote the last item in the episode
+- there exists an `::size()` method to denote the size of the episode
 
 Basically most *STL* containers should work right out of the box.
-Finally, the library uses by default `double` for storing and updating Q values,
+The library uses by default `double` for storing and updating Q values,
 but you can play around with it if needed.
+
+The class that mostly interests us is `policy` which uses your states and action,
+and stores them in a map of states, where each state (key) has a value of maps (action to value):
+
+.
+├── s_t
+|   ├── a_t: 0.03
+|   └── a_t: -0.05
+├── s_t
+|   ├── a_t: -0.001
+|   └── a_t: 0.9
+
+You own and control the policy objects, and you can even use multiple ones, however bear in mind
+that they are not locked for MT access (you have to do this manually).
+Using `q_learning` you can then set/update the policy values by iterating your episodes.
 
 # Status
 
 Currently the supported Algorithm is a *Deterministic Q-Learning*. 
 I'm working on a *Non-Deterministic* (Probabilistic) Q-Learning, and after that I'll Implement *Continuous* R-Learning. 
 
-As of 0.1.0 the library is **WORK IN PROGRESS**
+As of 0.1.1 the library is **WORK IN PROGRESS**
 
 # Dependencies
 
@@ -58,10 +80,14 @@ However, your compiler **must support C++14**, so you will need:
 
 __note__ I haven't tested with a Windows platform!
 
+__note__ If you need serialization, current `master` branch has a flag `USING_BOOST_SERIALIZATION`,
+which when set to `ON` will enable boost serialization, provided that your states and actions (template parameters `state_trait` and `action_trait` are indeed serializable). In this case, you need to use CMake's `find_package`
+to properly find, include and link against `boost_serialization`.
+
 # Building
 
 There is nothing to build! This is a header-only library, you only need to use the **relearn.hpp** header.
-However, you may compile the examples (currently only `gridworld` will build) in order to see how the library is implemented.
+However, you may compile the examples in order to see how the library is implemented.
 
 To do that, simply:
 
@@ -151,12 +177,12 @@ and to __which__ state that action will lead to.
 
 A simplified attempt, where one player uses classic probabilities, the dealer (house) simply draws until 17,
 and the adaptive agent uses non-deterministic Q-learning in order to play as best as possible.
+This is WORK IN PROGRESS.
 
 ## TODO
 
 1. complete the blackjack example
 2. do the Q-Learning non-deterministic
-3. complete the crazyflie example
-4. do the R-Learning continous algorithm
+3. do the R-Learning continous algorithm
 
 [1]: Sutton, R.S. and Barto, A.G., 1998. Reinforcement learning: An introduction (Vol. 1, No. 1). Cambridge: MIT press
