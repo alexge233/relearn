@@ -26,7 +26,15 @@
 #include <boost/serialization/access.hpp>
 #include <boost/serialization/unordered_map.hpp>
 #endif
-/**
+/** 
+   ________  _______   ___       _______   ________  ________  ________      
+  |\   __  \|\  ___ \ |\  \     |\  ___ \ |\   __  \|\   __  \|\   ___  \
+  \ \  \|\  \ \   __/|\ \  \    \ \   __/|\ \  \|\  \ \  \|\  \ \  \\ \  \
+   \ \   _  _\ \  \_|/_\ \  \    \ \  \_|/_\ \   __  \ \   _  _\ \  \\ \  \
+    \ \  \\  \\ \  \_|\ \ \  \____\ \  \_|\ \ \  \ \  \ \  \\  \\ \  \\ \  \
+     \ \__\\ _\\ \_______\ \_______\ \_______\ \__\ \__\ \__\\ _\\ \__\\ \__\
+      \|__|\|__|\|_______|\|_______|\|_______|\|__|\|__|\|__|\|__|\|__| \|__|
+                                                                             
  * @brief relearn C++ reinforcement learning library
  * @version 0.1.1
  * @date 29-06-2017
@@ -34,12 +42,14 @@
  *
  * @NOTE: do not confuse `state_class` with `state_trait`
  * and similarly, `action_class` with `action_trait`.
- * Whereas state_class refers to the template parameter being used
- * in class `policy` the `state_trait` is what characterises a state,
+ * Whereas `state_class` refers to the template parameter being used
+ * in class `policy` the `state_trait` is what characterises a `state_cass`,
  * or similarly an action. Essentially, the template parameter `state_class` 
- * used later in policy, refers to template class `state` but because this
- * is a template-based library, you can roll your own `state` class(es) provided
- * that it has: (a) a reward, (b) is hashable and (c) is comparable.
+ * used later in policy, refers to template class `state` wrapper but because this
+ * is a template-based library, you must roll out your own `state` class(es) provided
+ * that it:
+ *	- is hashable
+ *  - is comparable
  * Similary `action` takes the same approach.
  */
 namespace relearn 
@@ -48,23 +58,27 @@ namespace relearn
 template <class T> struct equal;
 // templated hashing functor
 template <class T> struct hasher;
-/// @brief combining hashes
+// @brief combining hashes
 template <class T> void hash_combine(std::size_t& seed, const T& v);
 
 /**
  * @brief a state class
  * @class state
  * @version 0.1.1
- * @date 28-06-2017
+ * @date 28-June-2017
  *
  * The state class is **desribed** by the template parameter `state_trait`
- * which can be virtually anything, provided you can use it to calculate a hash
+ * which can be virtually anything, provided you can use it to calculate a hash.
+ * You are the one who decides what `state_trait` is depending on your application.
+ * The ReLearn library takes a **copy** of the state_trait, so if using pointers,
+ * please make sure you understand what those implications are.
  */
 template <class state_trait,
           typename value_type = double>
 class state
 {
 public:
+    using trait_type = state_trait;
     /// construct without a reward (R set to zero)
     state(state_trait trait);
     /// construct with a reward (terminal state)
@@ -97,8 +111,7 @@ private:
     void serialize(archive & ar, const unsigned int version);
 #endif
 };
-
-/// @brief custom hashing functor for template class state
+// hashing functor for template class state
 template <class state_trait> 
 struct hasher<state<state_trait>>
 {
@@ -106,19 +119,23 @@ struct hasher<state<state_trait>>
 };
 
 /**
- * @brief an action class - wrapps around your class or pdt
+ * @brief an action class - wraps around your class or pdt
  * @class action
- * @version 0.1.0
- * @date 26-8-2016
+ * @version 0.1.1
+ * @date 6-July-2017
  * 
  * In Reinforcement Learning literature, most often an action
  * is an affector which changes the previous state to a new/next state.
  * It must wrap around template parameter `action_trait`.
+ * You have to decide what an `action` is in the context of your application,
+ * how memory is managed and so on so forth.
+ * Do bear in mind that class `policy` keeps a copy of the action(s).
  */
 template <class action_trait> 
 class action
 {
 public:
+    using trait_type = action_trait;
     /// @brief construct using @param next state
     action(action_trait trait); 
     /// @brief equality operator - uses `action_trait::operator==`
@@ -145,8 +162,7 @@ private:
     void serialize(archive & ar, const unsigned int version);
 #endif
 };
-
-/// @brief custom hashing functor for template class action
+//hashing functor for template class action
 template <class action_trait> 
 struct hasher<action<action_trait>>
 {
@@ -171,23 +187,25 @@ struct link
     bool operator==(const link<state_class,action_class> & arg) const;
 };
 
-/*******************************************************************************
+/**
  * @brief the class which encapsulates learnt policies, actions and values
  * @class policy
  *
- * Template parameter `state_class` defines the state s_t.
- * Please note that it must be hashable (@see above class `state`).
+ * Template parameter `state_class` defines the state `s_t`
+ * Please note that it must be hashable (@see above class `state`)
  *
- * Template parameter `action_class` defines the action a_t.
- * Please not that it must be hashabe (@see above class `action`).
+ * Template parameter `action_class` defines the action `a_t`
+ * Please not that it must be hashabe (@see above class `action`)
  *
- * Template parameter `value_type` defaults to a double, but feel free to change.
+ * Template parameter `value_type` defaults to a double, but feel free to change it
  *
- * This class owns all mapped state-action-policy values.
- * It learns which are better than others, by observing terminal rewards.
+ * This class owns all mapped state-action-policy values (it keeps copies)
+ * It learns which are better than others, by observing terminal state rewards.
  * The actual **value** is not calculated in this class (it is agnostic in that
  * respect) but is instead calculated using another algorith (Q-Learning, etc.)
- *******************************************************************************/
+ *
+ * Use this class in combination with an algorithm to train it (e.g., `q_learning`)
+ */
 template <class state_class, 
           class action_class,
           typename value_type = double>
@@ -195,19 +213,24 @@ class policy
 {
 public:
     /// @brief action_map correlates a state to its experienced actions/values
-    typedef std::unordered_map<action_class,
-                               value_type,
-                               hasher<action_class>> action_map;
+    using action_map = std::unordered_map<action_class,
+                                          value_type,
+                                          hasher<action_class>>;
     /// @return actions experienced for this state
     action_map actions(state_class s_t);
     /// @brief update a policy value
-    void update(state_class s_t, action_class a_t, value_type q_value);
+    void update(state_class s_t, 
+				action_class a_t, 
+				value_type q_value);
     /// @return value of policy
-    value_type value(state_class s_t, action_class a_t);
+    value_type value(state_class s_t, 
+					 action_class a_t);
     /// @return max/best policy for @param state
     value_type best_value(state_class s_t);
-    /// @return best policy for @param state - 
-    /// @warning if none are found, returns nullptr
+    /** 
+	 * @return best policy for @param state - 
+     * @warning if none are found, returns nullptr
+     */
     std::unique_ptr<action_class> best_action(state_class s_t);
 private:
     // internal structure mapping states => (map of actions => values)
@@ -223,39 +246,41 @@ private:
     void serialize(archive & ar, const unsigned int version);
 #endif
 };
-
-/// @brief definition of hash functor for state<S,A>
+// hash functor for `unordered_map<action_class,value_type`
 template <class action_class,
-         typename value_type>
+          typename value_type>
 struct hasher<std::unordered_map<action_class,value_type>>
 {
     std::size_t operator()(const std::unordered_map<action_class,value_type> &arg) const;
 };
 
-/*******************************************************************************
+/**
  * @class q_learning This is the **deterministic** Q-Learning algorithm
- * @brief Q-Learning update algorithm updates an episode's policies
- * @note it constructs and populates an episode's policies
+ * @brief Q-Learning update algorithm sets policies using episodes (`markov_chain`)
  * @param gamma is the discount rate
  * @param alpha is the learning rate
  *
  * Q(s_t,a_t) = Q(s_t,a_t) + α * (r_{t+1} + γ * max(Q(s_{t+1}, a)) - Q(s_t, a_t))
+ *
  * or:
+ *
  * Q[s,a] = (1 - α) Q[s_t,a_t] + α(r+ γ * max( Q[s_t,a_t]))
- *******************************************************************************/
+ *
+ */
 template <class state_class, 
           class action_class,
-          typename markov_chain = std::deque<link<state_class,action_class>>,
+          typename markov_chain = std::deque<link<state_class,
+												  action_class>>,
           typename value_type = double> 
 struct q_learning
 {
-    typedef std::tuple<state_class, 
-                       action_class, 
-                       value_type> triplet;
+    using triplet = std::tuple<state_class, 
+                               action_class, 
+                               value_type>;
     /// learning rate
-    const double alpha;
+    const value_type alpha;
     /// discount rate
-    const double gamma;
+    const value_type gamma;
     /// @brief the update rule of Q-learning
     triplet q_value(markov_chain &episode,
                     unsigned int index,
@@ -265,8 +290,104 @@ struct q_learning
                     policy<state_class,action_class> & policy_map);
 };
 
+/**
+ * @struct q_probabilistic This is the **non-deterministic** Q-Learning algorithm
+ * @brief Q-Learning updates policy values using various episodes (`markov_chain`)
+ * @param gamma is the discount rate
+ *
+ * Algorithm uses transition probabilities (e.g., from s_t → s_t+1) mapped by `r`
+ * The probability of a transition `r` is `P(s_t,a_t) = Σ P(s_t,a_t)(s_t,s_t+1)`
+ * relies on classical probability on the frequency of the transition with respect
+ * to the total observations of `P(s_t,a_t)` regardless of transition (the sum).
+ * Thus our **expected reward** is `E(r)` is the value of the reward of that
+ * transition probability. We do not reward the transition, but the ending state s_t+1
+ * thus R = R(s_t+1) and we assume the Reward to be **Stationary** (e.g., non-changing).
+ * The Policy Value V(s_t) = Max Q(s_t,a_t), therefore our update rule in combination
+ * with the expected reward, is:
+ *
+ * Q(s_t,a_t) ← E(R(s_t+1)) + γ  Σ maxQ(s_t+1,a_t) P(s_t,a_t)(s_t+1)`
+ *
+ * or verbalised: the Expected reward of the transitional state (the state we expect to end to)
+ * plus the discoun multiplied by the cumulative probability of the transition (s_t → s_t+1) 
+ * times the max Q value of the next state Q(s_t+1,a_t).
+ */
+template <class state_class, 
+          class action_class,
+          typename markov_chain = std::deque<link<state_class,
+												  action_class>>,
+          typename value_type = double> 
+struct q_probabilistic
+{
+    // map of state, frequency (s_t_+1)
+    using frequency   = std::unordered_map<state_class,
+                                           std::size_t,
+                                           hasher<state_class>>;
+    // frequency of transition map from a_t to (s_t+1)
+    using transition  = std::unordered_map<action_class,
+                                           frequency,
+                                           hasher<frequency>>;
+    // frequency of observation of transition (s_t,a_t) → (s_t+1)
+    using observation = std::unordered_map<state_class,
+                                           transition,
+                                           hasher<transition>>;
+    // Q-triplet: state,action => value
+    using triplet = std::tuple<state_class, 
+                       		   action_class, 
+                       		   value_type>;
+    /// discount rate
+    const value_type gamma;
+
+    /// @brief the update rule of Q-learning
+    triplet q_value(markov_chain &episode,
+                    unsigned int index,
+                    policy<state_class,action_class> &policy_map);
+
+    /// @brief do the updating for an episode
+    void operator()(markov_chain episode, 
+                    policy<state_class,action_class> & policy_map);
+private:
+    observation __memory__;
+};
+// hashing for `frequency` map
+template <class state_class>
+struct hasher<std::unordered_map<state_class,std::size_t>>
+{
+    std::size_t operator()(const std::unordered_map<state_class,
+                                                    std::size_t> & arg) const;
+};
+// hashing for `transition` map
+template <class state_class,
+          class action_class>
+struct hasher<std::unordered_map<action_class,
+                std::unordered_map<state_class,
+                                   std::size_t>>>
+{
+    std::size_t operator()(const std::unordered_map<action_class,
+                                    std::unordered_map<state_class,
+                                                       std::size_t>> & arg) const;
+};
+// hashing for `observation` map
+template <class state_class,
+          class action_class>
+struct hasher<std::unordered_map<state_class,
+                                 std::unordered_map<action_class,
+                                    std::unordered_map<state_class,
+                                                       std::size_t>>>>
+{
+    std::size_t operator()(const std::unordered_map<state_class,
+                                    std::unordered_map<action_class,
+                                        std::unordered_map<state_class,
+                                                           std::size_t>>> & arg) const;
+};
+
 /********************************************************************************
- ***********               Template Implementations             *****************
+ ***********               Template Implementations
+ ***********                            />                      
+ ***********                      _,,  / >
+ ***********                     "-=\~ \ > _
+ ***********                        \\~___( ~
+ ***********                       _|/---\\_
+ ***********                       \        \
  ********************************************************************************/
 
 template <class T>
@@ -277,24 +398,75 @@ void hash_combine(std::size_t& seed, const T& v)
 }
 
 template <class action_trait>
-std::size_t hasher<action<action_trait>>::operator()(const action<action_trait> &arg) const
+std::size_t hasher<action<action_trait
+				  >>::operator()(const action<action_trait> &arg) const
 {
     return arg.hash();
 } 
 
 template <class state_trait>
-std::size_t hasher<state<state_trait>>::operator()(const state<state_trait> &arg) const
+std::size_t hasher<state<state_trait>
+				  >::operator()(const state<state_trait> &arg) const
 {
     return arg.hash();
 } 
 
 template <class action_class,
           typename value_type>
+std::size_t hasher<std::unordered_map<action_class,
+									  value_type>
+				  >::operator()(const std::unordered_map<action_class,
+													     value_type> &arg) const
+{
+    std::size_t seed;
+    for (const auto & pair : arg) {
+        hash_combine(seed, pair.first.hash());
+    }
+    return seed;
+}
+
+template <class state_class>
 std::size_t 
-    hasher<std::unordered_map<action_class,value_type>>::operator()
-                            (
-                                const std::unordered_map<action_class,value_type> &arg
-                            ) const
+    hasher<std::unordered_map<state_class,
+                              std::size_t>
+          >::operator()(const std::unordered_map<state_class,
+                                                 std::size_t> & arg) const
+{
+    std::size_t seed;
+    for (const auto & pair : arg) {
+        hash_combine(seed, pair.first.hash());
+    }
+    return seed;
+}
+
+template <class state_class,
+          class action_class>
+std::size_t 
+    hasher<std::unordered_map<action_class,
+                std::unordered_map<state_class,
+                                   std::size_t>>
+          >::operator()(const std::unordered_map<action_class,
+                                    std::unordered_map<state_class,
+                                                       std::size_t>> & arg) const
+{
+    std::size_t seed;
+    for (const auto & pair : arg) {
+        hash_combine(seed, pair.first.hash());
+    }
+    return seed;
+}
+
+template <class state_class,
+          class action_class>
+std::size_t 
+    hasher<std::unordered_map<state_class,
+                std::unordered_map<action_class,
+                     std::unordered_map<state_class,
+                                        std::size_t>>>
+         >::operator()(const std::unordered_map<state_class,
+                                  std::unordered_map<action_class,
+                                       std::unordered_map<state_class,
+                                                          std::size_t>>> & arg) const
 {
     std::size_t seed;
     for (const auto & pair : arg) {
@@ -305,47 +477,64 @@ std::size_t
 
 template <class state_trait,
           typename value_type>
-state<state_trait,value_type>::state(state_trait trait)
-: __reward__(0), __trait__(trait)
+state<state_trait,
+	  value_type
+	  >::state(state_trait trait)
+: __reward__(0), 
+  __trait__(trait)
 {}
 
 template <class state_trait,
           typename value_type>
-state<state_trait,value_type>::state(value_type reward, state_trait trait)
-: __reward__(reward), __trait__(trait)
+state<state_trait,
+	  value_type
+	  >::state(value_type reward, 
+			   state_trait trait)
+: __reward__(reward), 
+  __trait__(trait)
 {}
 
 template <class state_trait,
           typename value_type>
-value_type state<state_trait,value_type>::reward() const
+value_type state<state_trait,
+				 value_type
+				 >::reward() const
 {
     return __reward__;
 }
 
 template <class state_trait,
           typename value_type>
-bool state<state_trait,value_type>::operator==(const state<state_trait> & arg) const
+bool state<state_trait,
+		   value_type
+		   >::operator==(const state<state_trait> & arg) const
 {
     return (this->__trait__ == arg.__trait__);
 }
 
 template <class state_trait,
           typename value_type>
-bool state<state_trait,value_type>::operator<(const state<state_trait> & arg) const
+bool state<state_trait,
+		   value_type
+		   >::operator<(const state<state_trait> & arg) const
 {
     return (this->__trait__ < arg.__trait__);
 }
 
 template <class state_trait,
           typename value_type>
-std::size_t state<state_trait,value_type>::hash() const
+std::size_t state<state_trait,
+				  value_type
+				  >::hash() const
 {
     return std::hash<state_trait>{}(__trait__);
 }
 
 template <class state_trait,
           typename value_type>
-state_trait state<state_trait,value_type>::trait() const
+state_trait state<state_trait,
+				  value_type
+				  >::trait() const
 {
     return __trait__;
 }
@@ -354,7 +543,10 @@ state_trait state<state_trait,value_type>::trait() const
 template <class state_trait,
           typename value_type>
 template <typename archive>
-void state<state_trait,value_type>::serialize(archive & ar, const unsigned int version)
+void state<state_trait,
+		   value_type
+		  >::serialize(archive & ar, 
+					   const unsigned int version)
 {
     ar & __trait__;
     ar & __reward__;
@@ -393,17 +585,45 @@ action_trait action<action_trait>::trait() const
 #if USING_BOOST_SERIALIZATION
 template <class action_trait>
 template <typename archive>
-void action<action_trait>::serialize(archive & ar, const unsigned int version)
+void action<action_trait>::serialize(archive & ar, 
+									 const unsigned int version)
 {
     ar & __trait__;
 }
 #endif
 
+template <class state_class, 
+          class action_class>
+bool link<state_class,
+		  action_class
+		  >::operator<(const link<state_class,
+                                  action_class> & arg) const
+{
+    return (this->action < arg.action) &&
+           (this->state  < arg.state);
+}
+
+template <class state_class, 
+          class action_class>
+bool link<state_class,
+		  action_class
+		  >::operator==(const link<state_class,
+                                   action_class> & arg) const
+{
+    return (this->action == arg.action) &&
+           (this->state  == arg.state);
+}
+
 template <class state_class,
           class action_class,
           typename value_type>
-typename policy<state_class,action_class,value_type>::action_map 
-                policy<state_class,action_class,value_type>::actions(state_class s_t)
+typename policy<state_class,
+				action_class,
+				value_type>::action_map 
+                policy<state_class,
+					   action_class,
+					   value_type
+					  >::actions(state_class s_t)
 {
     return __policies__[s_t];
 }
@@ -411,9 +631,12 @@ typename policy<state_class,action_class,value_type>::action_map
 template <class state_class,
           class action_class,
           typename value_type>
-void policy<state_class,action_class,value_type>::update(state_class s_t, 
-                                                         action_class a_t, 
-                                                         value_type q)
+void policy<state_class,
+			action_class,
+			value_type
+		   >::update(state_class s_t, 
+					 action_class a_t, 
+					 value_type q)
 {
     __policies__[s_t][a_t] = q;
 }
@@ -421,7 +644,11 @@ void policy<state_class,action_class,value_type>::update(state_class s_t,
 template <class state_class,
           class action_class,
           typename value_type>
-value_type policy<state_class,action_class,value_type>::value(state_class s_t, action_class a_t)
+value_type policy<state_class,
+				  action_class,
+				  value_type
+   				 >::value(state_class s_t, 
+						  action_class a_t)
 {
     return __policies__[s_t][a_t];
 }
@@ -429,7 +656,10 @@ value_type policy<state_class,action_class,value_type>::value(state_class s_t, a
 template <class state_class,
           class action_class,
           typename value_type>
-value_type policy<state_class,action_class,value_type>::best_value(state_class s_t)
+value_type policy<state_class,
+				  action_class,
+				  value_type
+				 >::best_value(state_class s_t)
 {
     auto it = std::max_element(__policies__[s_t].begin(), 
                                __policies__[s_t].end(),
@@ -440,7 +670,11 @@ value_type policy<state_class,action_class,value_type>::best_value(state_class s
 template <class state_class,
           class action_class,
           typename value_type>
-std::unique_ptr<action_class> policy<state_class,action_class,value_type>::best_action(state_class s_t)
+std::unique_ptr<action_class> 
+		policy<state_class,
+			   action_class,
+			   value_type
+			  >::best_action(state_class s_t)
 {
     auto it = std::max_element(__policies__[s_t].begin(), __policies__[s_t].end(),
               [&](const auto &lhs, const auto &rhs) {
@@ -455,7 +689,11 @@ template <class state_class,
           class action_class,
           typename value_type>
 template <typename archive>
-void policy<state_class,action_class,value_type>::serialize(archive & ar, const unsigned int version)
+void policy<state_class,
+			action_class,
+			value_type
+		   >::serialize(archive & ar, 
+						const unsigned int version)
 {
     ar & __policies__;
 }
@@ -469,15 +707,16 @@ typename q_learning<state_class,
                     action_class,
                     markov_chain,
                     value_type>::triplet
-                        q_learning<state_class,action_class,markov_chain,value_type>::q_value
-                        (
-                              markov_chain & episode, 
-                              //typename markov_chain::iterator & step,
-                              unsigned int index,
-                              policy<state_class,action_class> & policy_map
-                        ) 
+                    q_learning<state_class,
+							   action_class,
+							   markov_chain,
+							   value_type
+							  >::q_value(markov_chain & episode, 
+										 unsigned int index,
+										 policy<state_class,
+											    action_class> & policy_map) 
 {
-    auto step   = episode[index];
+    auto step = episode[index];
     if (index < episode.size() - 1)  {
         auto q      = policy_map.value(step.state, step.action);
         auto next   = episode[index + 1];
@@ -495,11 +734,13 @@ template <class state_class,
           class action_class,
           typename markov_chain,
           typename value_type>
-void q_learning<state_class,action_class,markov_chain,value_type>::operator()
-                (
-                   markov_chain episode, 
-                   policy<state_class,action_class> & policy_map
-                )
+void q_learning<state_class,
+				action_class,
+				markov_chain,
+				value_type
+			   >::operator()(markov_chain episode, 
+                 			 policy<state_class,
+									action_class> & policy_map)
 {
     for (unsigned int i = 0; i < episode.size(); i++) {
         auto triplet = q_value(episode, i, policy_map);
@@ -509,22 +750,8 @@ void q_learning<state_class,action_class,markov_chain,value_type>::operator()
     }
 }
 
-template <class state_class, 
-          class action_class>
-bool link<state_class,action_class>::operator<(const link<state_class,
-                                                          action_class> & arg) const
-{
-    return (this->action < arg.action) &&
-           (this->state  < arg.state);
-}
+// @TODO add the q_probablistic methods:
+//		 - 
 
-template <class state_class, 
-          class action_class>
-bool link<state_class,action_class>::operator==(const link<state_class,
-                                                           action_class> & arg) const
-{
-    return (this->action == arg.action) &&
-           (this->state  == arg.state);
-}
 } // end of namespace
 #endif
