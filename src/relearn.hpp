@@ -27,6 +27,7 @@
 #include <boost/serialization/unordered_map.hpp>
 #endif
 /** 
+ 
    ________  _______   ___       _______   ________  ________  ________      
   |\   __  \|\  ___ \ |\  \     |\  ___ \ |\   __  \|\   __  \|\   ___  \
   \ \  \|\  \ \   __/|\ \  \    \ \   __/|\ \  \|\  \ \  \|\  \ \  \\ \  \
@@ -34,13 +35,14 @@
     \ \  \\  \\ \  \_|\ \ \  \____\ \  \_|\ \ \  \ \  \ \  \\  \\ \  \\ \  \
      \ \__\\ _\\ \_______\ \_______\ \_______\ \__\ \__\ \__\\ _\\ \__\\ \__\
       \|__|\|__|\|_______|\|_______|\|_______|\|__|\|__|\|__|\|__|\|__| \|__|
-                                                                             
+ 
+
  * @brief relearn C++ reinforcement learning library
  * @version 0.1.1
- * @date 29-06-2017
+ * @date 07-July-2017
  * @author Alex Giokas <alexge233@hotmail.com>
  *
- * @NOTE: do not confuse `state_class` with `state_trait`
+ * @note: do not confuse `state_class` with `state_trait`
  * and similarly, `action_class` with `action_trait`.
  * Whereas `state_class` refers to the template parameter being used
  * in class `policy` the `state_trait` is what characterises a `state_cass`,
@@ -269,8 +271,7 @@ struct hasher<std::unordered_map<action_class,value_type>>
  */
 template <class state_class, 
           class action_class,
-          typename markov_chain = std::deque<link<state_class,
-												  action_class>>,
+          typename markov_chain = std::deque<link<state_class,action_class>>,
           typename value_type = double> 
 struct q_learning
 {
@@ -285,7 +286,8 @@ struct q_learning
     triplet q_value(markov_chain &episode,
                     unsigned int index,
                     policy<state_class,action_class> &policy_map);
-    /// @brief do the updating for an episode
+
+    /// @brief do the updating for an episode - @param policy_map will be modified
     void operator()(markov_chain episode, 
                     policy<state_class,action_class> & policy_map);
 };
@@ -313,8 +315,7 @@ struct q_learning
  */
 template <class state_class, 
           class action_class,
-          typename markov_chain = std::deque<link<state_class,
-												  action_class>>,
+          typename markov_chain = std::deque<link<state_class,action_class>>,
           typename value_type = double> 
 struct q_probabilistic
 {
@@ -340,9 +341,9 @@ struct q_probabilistic
     /// @brief the update rule of Q-learning
     triplet q_value(markov_chain &episode,
                     unsigned int index,
-                    policy<state_class,action_class> &policy_map);
+                    policy<state_class,action_class> & policy_map);
 
-    /// @brief do the updating for an episode
+    /// @brief do the updating for an episode - @param policy_map will be modified
     void operator()(markov_chain episode, 
                     policy<state_class,action_class> & policy_map);
 private:
@@ -413,8 +414,7 @@ std::size_t hasher<state<state_trait>
 
 template <class action_class,
           typename value_type>
-std::size_t hasher<std::unordered_map<action_class,
-									  value_type>
+std::size_t hasher<std::unordered_map<action_class,value_type>
 				  >::operator()(const std::unordered_map<action_class,
 													     value_type> &arg) const
 {
@@ -427,8 +427,7 @@ std::size_t hasher<std::unordered_map<action_class,
 
 template <class state_class>
 std::size_t 
-    hasher<std::unordered_map<state_class,
-                              std::size_t>
+    hasher<std::unordered_map<state_class,std::size_t>
           >::operator()(const std::unordered_map<state_class,
                                                  std::size_t> & arg) const
 {
@@ -443,8 +442,7 @@ template <class state_class,
           class action_class>
 std::size_t 
     hasher<std::unordered_map<action_class,
-                std::unordered_map<state_class,
-                                   std::size_t>>
+                std::unordered_map<state_class,std::size_t>>
           >::operator()(const std::unordered_map<action_class,
                                     std::unordered_map<state_class,
                                                        std::size_t>> & arg) const
@@ -461,8 +459,7 @@ template <class state_class,
 std::size_t 
     hasher<std::unordered_map<state_class,
                 std::unordered_map<action_class,
-                     std::unordered_map<state_class,
-                                        std::size_t>>>
+                     std::unordered_map<state_class,std::size_t>>>
          >::operator()(const std::unordered_map<state_class,
                                   std::unordered_map<action_class,
                                        std::unordered_map<state_class,
@@ -477,18 +474,14 @@ std::size_t
 
 template <class state_trait,
           typename value_type>
-state<state_trait,
-	  value_type
-	  >::state(state_trait trait)
+state<state_trait,value_type>::state(state_trait trait)
 : __reward__(0), 
   __trait__(trait)
 {}
 
 template <class state_trait,
           typename value_type>
-state<state_trait,
-	  value_type
-	  >::state(value_type reward, 
+state<state_trait,value_type>::state(value_type reward, 
 			   state_trait trait)
 : __reward__(reward), 
   __trait__(trait)
@@ -496,45 +489,35 @@ state<state_trait,
 
 template <class state_trait,
           typename value_type>
-value_type state<state_trait,
-				 value_type
-				 >::reward() const
+value_type state<state_trait,value_type>::reward() const
 {
     return __reward__;
 }
 
 template <class state_trait,
           typename value_type>
-bool state<state_trait,
-		   value_type
-		   >::operator==(const state<state_trait> & arg) const
+bool state<state_trait,value_type>::operator==(const state<state_trait> & arg) const
 {
     return (this->__trait__ == arg.__trait__);
 }
 
 template <class state_trait,
           typename value_type>
-bool state<state_trait,
-		   value_type
-		   >::operator<(const state<state_trait> & arg) const
+bool state<state_trait,value_type>::operator<(const state<state_trait> & arg) const
 {
     return (this->__trait__ < arg.__trait__);
 }
 
 template <class state_trait,
           typename value_type>
-std::size_t state<state_trait,
-				  value_type
-				  >::hash() const
+std::size_t state<state_trait,value_type>::hash() const
 {
     return std::hash<state_trait>{}(__trait__);
 }
 
 template <class state_trait,
           typename value_type>
-state_trait state<state_trait,
-				  value_type
-				  >::trait() const
+state_trait state<state_trait,value_type>::trait() const
 {
     return __trait__;
 }
@@ -543,10 +526,8 @@ state_trait state<state_trait,
 template <class state_trait,
           typename value_type>
 template <typename archive>
-void state<state_trait,
-		   value_type
-		  >::serialize(archive & ar, 
-					   const unsigned int version)
+void state<state_trait,value_type>::serialize(archive & ar, 
+					                          const unsigned int version)
 {
     ar & __trait__;
     ar & __reward__;
@@ -594,10 +575,8 @@ void action<action_trait>::serialize(archive & ar,
 
 template <class state_class, 
           class action_class>
-bool link<state_class,
-		  action_class
-		  >::operator<(const link<state_class,
-                                  action_class> & arg) const
+bool link<state_class,action_class>::operator<(const link<state_class,
+                                               action_class> & arg) const
 {
     return (this->action < arg.action) &&
            (this->state  < arg.state);
@@ -605,10 +584,8 @@ bool link<state_class,
 
 template <class state_class, 
           class action_class>
-bool link<state_class,
-		  action_class
-		  >::operator==(const link<state_class,
-                                   action_class> & arg) const
+bool link<state_class,action_class>::operator==(const link<state_class,
+                                                action_class> & arg) const
 {
     return (this->action == arg.action) &&
            (this->state  == arg.state);
@@ -617,13 +594,8 @@ bool link<state_class,
 template <class state_class,
           class action_class,
           typename value_type>
-typename policy<state_class,
-				action_class,
-				value_type>::action_map 
-                policy<state_class,
-					   action_class,
-					   value_type
-					  >::actions(state_class s_t)
+typename policy<state_class,action_class,value_type>::action_map 
+            policy<state_class,action_class,value_type>::actions(state_class s_t)
 {
     return __policies__[s_t];
 }
@@ -631,12 +603,9 @@ typename policy<state_class,
 template <class state_class,
           class action_class,
           typename value_type>
-void policy<state_class,
-			action_class,
-			value_type
-		   >::update(state_class s_t, 
-					 action_class a_t, 
-					 value_type q)
+void policy<state_class,action_class,value_type>::update(state_class s_t, 
+                                                         action_class a_t, 
+                                                         value_type q)
 {
     __policies__[s_t][a_t] = q;
 }
@@ -644,11 +613,8 @@ void policy<state_class,
 template <class state_class,
           class action_class,
           typename value_type>
-value_type policy<state_class,
-				  action_class,
-				  value_type
-   				 >::value(state_class s_t, 
-						  action_class a_t)
+value_type policy<state_class,action_class,value_type>::value(state_class s_t, 
+                                                              action_class a_t)
 {
     return __policies__[s_t][a_t];
 }
@@ -656,10 +622,7 @@ value_type policy<state_class,
 template <class state_class,
           class action_class,
           typename value_type>
-value_type policy<state_class,
-				  action_class,
-				  value_type
-				 >::best_value(state_class s_t)
+value_type policy<state_class,action_class,value_type>::best_value(state_class s_t)
 {
     auto it = std::max_element(__policies__[s_t].begin(), 
                                __policies__[s_t].end(),
@@ -671,10 +634,7 @@ template <class state_class,
           class action_class,
           typename value_type>
 std::unique_ptr<action_class> 
-		policy<state_class,
-			   action_class,
-			   value_type
-			  >::best_action(state_class s_t)
+		policy<state_class,action_class,value_type>::best_action(state_class s_t)
 {
     auto it = std::max_element(__policies__[s_t].begin(), __policies__[s_t].end(),
               [&](const auto &lhs, const auto &rhs) {
@@ -689,11 +649,8 @@ template <class state_class,
           class action_class,
           typename value_type>
 template <typename archive>
-void policy<state_class,
-			action_class,
-			value_type
-		   >::serialize(archive & ar, 
-						const unsigned int version)
+void policy<state_class,action_class,value_type>::serialize(archive & ar, 
+                                                            const unsigned int version)
 {
     ar & __policies__;
 }
@@ -703,18 +660,11 @@ template <class state_class,
           class action_class,
           typename markov_chain,
           typename value_type>
-typename q_learning<state_class,
-                    action_class,
-                    markov_chain,
-                    value_type>::triplet
-                    q_learning<state_class,
-							   action_class,
-							   markov_chain,
-							   value_type
-							  >::q_value(markov_chain & episode, 
-										 unsigned int index,
-										 policy<state_class,
-											    action_class> & policy_map) 
+typename q_learning<state_class,action_class,markov_chain,value_type>::triplet
+            q_learning<state_class,action_class,markov_chain,value_type
+					  >::q_value(markov_chain & episode, 
+					   			 unsigned int index,
+								 policy<state_class,action_class> & policy_map) 
 {
     auto step = episode[index];
     if (index < episode.size() - 1)  {
@@ -734,14 +684,11 @@ template <class state_class,
           class action_class,
           typename markov_chain,
           typename value_type>
-void q_learning<state_class,
-				action_class,
-				markov_chain,
-				value_type
-			   >::operator()(markov_chain episode, 
-                 			 policy<state_class,
-									action_class> & policy_map)
+void q_learning<state_class,action_class,markov_chain,value_type
+                >::operator()(markov_chain episode, 
+                 			  policy<state_class,action_class> & policy_map)
 {
+    // @NOTE - maybe replace index with an STL iterator?
     for (unsigned int i = 0; i < episode.size(); i++) {
         auto triplet = q_value(episode, i, policy_map);
         policy_map.update(std::get<0>(triplet), 
@@ -750,8 +697,60 @@ void q_learning<state_class,
     }
 }
 
-// @TODO add the q_probablistic methods:
-//		 - 
+template <class state_class, 
+          class action_class,
+          typename markov_chain,
+          typename value_type>
+typename q_probabilistic<state_class,action_class,markov_chain,value_type>::triplet
+            q_probabilistic<state_class,action_class,markov_chain,value_type
+					       >::q_value(markov_chain & episode, 
+                                      unsigned int index,
+                                      policy<state_class,action_class> & policy_map) 
+{
+    auto step = episode[index];
+    if (index < episode.size() - 1)  {
+        auto q      = policy_map.value(step.state, step.action);
+        auto next   = episode[index + 1];
+        auto q_next = policy_map.best_value(next.state);
+        auto r      = step.state.reward();
+        // transition probability (frequency of transition / total observations)
+        value_type prob = (__memory__[step.state][step.action][next.state]) /
+                          (__memory__[step.state][step.action].size());
+        // expected reward
+        value_type r_expected = prob * r;
+        return std::make_tuple(step.state, step.action, 
+                               r_expected + (gamma * (q_next * prob)));
+    }
+    else {
+        return std::make_tuple(step.state, step.action, step.state.reward());
+    }
+
+}
+
+template <class state_class, 
+          class action_class,
+          typename markov_chain,
+          typename value_type>
+void q_probabilistic<state_class,action_class,markov_chain,value_type
+                    >::operator()(markov_chain episode, 
+                 			      policy<state_class,action_class> & policy_map)
+{
+    for (unsigned int i = 0; i < episode.size(); i++) {
+        if (i == episode.size() - 1) {
+            continue;
+        }
+        auto s_t = episode[i].state;
+        auto a_t = episode[i].action;
+        auto s_n = episode[i +1].state;
+        __memory__[s_t][a_t][s_n]++;
+    }
+    for (unsigned int i = 0; i < episode.size(); i++) {
+        auto triplet = q_value(episode, i, policy_map);
+        policy_map.update(std::get<0>(triplet), 
+                          std::get<1>(triplet), 
+                          std::get<2>(triplet));
+    }
+}
 
 } // end of namespace
 #endif
