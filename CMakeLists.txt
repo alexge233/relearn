@@ -17,7 +17,7 @@ include_directories(SYSTEM ${INCLUDE_HEADERS})
 set(CMAKE_MACOSX_RPATH 1)
 
 # include "src"
-set(SRC ${SRC} SRC)
+set(SRC ${SRC} src)
 include_directories(${SRC})
 
 # add -DUSING_BOOST_SERIALIZATION in order to save policies on disk
@@ -43,3 +43,20 @@ set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG}")
 set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -O3 -mtune=native -march=native")
 message(STATUS "CXX Flags: " ${CMAKE_CXX_FLAGS})
 message(STATUS "CXX Linker: " ${CMAKE_EXE_LINKER_FLAGS})
+
+# if building tests
+if (BUILD_TESTS)
+    message(STATUS "Checking ${PROJECT_SOURCE_DIR}/tests/catch.hpp")
+    if (EXISTS "${PROJECT_SOURCE_DIR}/tests/catch.hpp")
+        message(STATUS "catch.hpp exists, not downloading again - make sure it is up to date!")
+    else()
+        set(wget_command "wget")
+        set(wget_arg "https://raw.githubusercontent.com/philsquared/Catch/master/single_include/catch.hpp")
+        message(STATUS "Fetching catch.hpp single header")
+        execute_process(COMMAND ${wget_command} ${wget_arg} WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}/tests/)
+    endif()
+
+    enable_testing()
+    add_executable(test_classes tests/class_test.cpp)
+    add_test(unit_test test_classes)
+endif()

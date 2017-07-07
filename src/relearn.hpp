@@ -231,11 +231,11 @@ private:
     friend class boost::serialization::access;
     template <typename archive>
     void serialize(archive & ar, const unsigned int version);
-    std::unordered_map<state_wrapper
-                       std::unordered_map<action_wrapper,
+    std::unordered_map<state_serial
+                       std::unordered_map<action_serial,
                                           value_type,
-                                          hasher<action_wrapper>>,
-                       hasher<state_class>
+                                          hasher<action_serial>>,
+                       hasher<state_serial>
                        > __policies__;
 // else we're using the actual `state_class` and `action_class` types
 #else
@@ -546,13 +546,13 @@ std::size_t action<action_trait>::hash() const
 template <class action_trait>
 bool action<action_trait>::operator==(const action<action_trait> & arg) const
 {
-    return (arg.__trait__ == this->__trait__);
+    return (this->__trait__ == arg.__trait__);
 }
 
 template <class action_trait>
 bool action<action_trait>::operator<(const action<action_trait> & arg) const
 {
-    return (arg.__trait__ < this->__trait__);
+    return (this->__trait__ < arg.__trait__);
 }
 
 template <class action_trait>
