@@ -5,18 +5,55 @@ Minimal and simple to use, for a variety of scenarios.
 It is based on [Sutton and Barto's book](https://webdocs.cs.ualberta.ca/~sutton/book/ebook/the-book.html) 
 and implements *some* of the functionality described in it.
 
-Currently the library implements Q-Learning for deterministic systems, as shown below:
+Currently the library implements Q-Learning for deterministic systems, as well as non-deterministic systems.
 
-![Q-Learning formula](https://github.com/alexge233/relearn/blob/master/images/q_learning.png?raw=true)
+The Q-Learning (for both offline and online policy update rule) is:
+
+![Q(s_t,a_) = Q(s_t,a_t) + alpha * (R_t + gamma * max(Q_{s+t},a_t) - Q(s_t,a_t))](https://github.com/alexge233/relearn/blob/master/images/q_learning.png?raw=true)
+
+The policy decision is entirely up to you to decide; in the case of a deterministic system,
+usually the options are to either stay on policy:
+
+![a_t = Π(s_t)](https://github.com/alexge233/relearn/blob/master/images/deterministic_policy.png?raw=true)
+
+or if using online explorative-greedy (ε-Greedy) assign some *decaying probability* on using the policy
+or taking a random action:
+
+![P_{s_t}^{Π}(a_t)](https://github.com/alexge233/relearn/blob/master/images/stochastic_policy.png?raw=true)
+
+For Q-Learning in a non-deterministic system (e.g., when the certainty of transitioning from one state to another
+is not constant) we use a transition function:
+
+![f = f(s_t,s_{t+1})](https://github.com/alexge233/relearn/blob/master/images/transition_func.png?raw=true)
+
+That transition function, suggests that from state `s_t` if taking action `a_t` the agent ends up in state `s_{t+1}`.
+The assigned probability of that transition must be **observed** after being taken:
+
+![P(s_t,a_t)(f) = Σ P(s_t,a_t)(s_{t+1})](https://github.com/alexge233/relearn/blob/master/images/transition_prob.png?raw=true)
+
+This probability quantifies the *likelihood* of the transition `s_t → s_{t+1}` for action `a_t`.
+Similarly, the *Expected reward* is:
+
+![E(s_t,s_{t+1}) = Σ f(s_t,s_{t+1}) P(s_t,a_t)(f)](https://github.com/alexge233/relearn/blob/master/images/expected_reward.png?raw=true)
+
+This simply states that the reward is equivalent to the reward of the ending-up state `s_{t+1}` affected by the transition probability.
+Therefore, the update rule for probabilistic systems is:
+
+![Q(s_t,a_t) = E(r_{s_{t+1}}) + gamma * Σ maxQ(s_{t+1},a_t)P(s_t,a_t)(s_{t+1})](https://github.com/alexge233/relearn/blob/master/images/q_probabilistic.png?raw=true)
+
+## Implementation in C++
 
 The template class `policy` allows the use of your own `state` and `action` classes,
 although a pair of template wrapper classs `state` and `action` is provided in the header.
-The requirements are:
-- terminal states must have a reward
+You can create your own `state` and `action` classes and use them, but they must satisfy the below criteria:
+- terminal states must have a reward exposed by a method `::reward()`
 - states and actions must be hashable
 
+The classes `state` and `action` provided in the header wrap around your own state and action structures,
+which can be anything, provided they are hashable.
+Take care to make them unique, otherwise the result may be undefined behaviour.
 
-## Markov Decision Process
+### Markov Decision Process
 
 An MDP is a sequence of States  s<sub>t</sub> linked together by actions a<sub>t</sub>.
 At the core of `relearn` is the `policy` which uses MDPs and **maps** them using the final state reward `R`.
@@ -25,10 +62,6 @@ and re-experienced, the actual process is done in class `policy`. An overview of
 
 ![Markov Decision Process](https://github.com/alexge233/relearn/blob/master/images/mdp.png?raw=true)
 
-At the heart of episodic learning I've implemented [Q-learning](https://webdocs.cs.ualberta.ca/~sutton/book/ebook/node65.html) 
-(for continous learning I plan to implement [R-Learning](https://webdocs.cs.ualberta.ca/~sutton/book/ebook/node67.html) in the near future).
-
-The skeleton of `relearn` are the classes `state` and `action` which serve as wrappers around your own classes.
 The template parameters `state_trait` and `action_trait` are used to describe what a state and action are,
 the wrappers are used only for indexing, hashing and policy calculation.
 
@@ -65,13 +98,6 @@ You own and control the policy objects, and you can even use multiple ones, howe
 that they are not locked for MT access (you have to do this manually).
 Using `q_learning` you can then set/update the policy values by iterating your episodes.
 
-# Status
-
-Currently the supported Algorithm is a *Deterministic Q-Learning*. 
-I'm working on a *Non-Deterministic* (Probabilistic) Q-Learning, and after that I'll Implement *Continuous* R-Learning. 
-
-As of 0.1.1 the library is **WORK IN PROGRESS**
-
 # Dependencies
 
 There are **no external dependencies**!
@@ -80,16 +106,16 @@ However, your compiler **must support C++14**, so you will need:
 - gcc 4.8.4 or higher
 - clang 3.3 or higher
 
-__note__ I haven't tested with a Windows platform!
+__note__: I haven't tested with a Windows platform!
 
-__note__ If you need serialization, current `master` branch has a flag `USING_BOOST_SERIALIZATION`,
-which when set to `ON` will enable boost serialization, provided that your states and actions (template parameters `state_trait` and `action_trait` are indeed serializable). In this case, you need to use CMake's `find_package`
-to properly find, include and link against `boost_serialization`.
+__note__: If you need serialization, current `master` branch has a flag `USING_BOOST_SERIALIZATION`,
+which when set to `ON` will enable boost serialization, provided that your states and actions (template parameters `state_trait` and `action_trait` are indeed serializable). 
+In this case, you need to use CMake's `find_package` to properly find, include and link against `boost_serialization`.
 
 # Building
 
 There is nothing to build! This is a header-only library, you only need to use the **relearn.hpp** header.
-However, you may compile the examples in order to see how the library is implemented.
+**However**, you may compile the examples in order to see how the library is implemented.
 
 To do that, simply:
 
@@ -114,7 +140,7 @@ which is surrounded by blocks into which he can't move (black colour).
 The agent starts at blue (x:1,y:8) and the target is the green (x:1,y:1).
 The red blocks are fire/danger/a negative reward, and there is a rudimentary maze.
 
-This example uses a staged approach:
+This example uses a staged (stochastic - offline) approach:
 
 - first the agent randomly explores until it can find the positive reward (+1.0) grid block
 - then it updates its policies
@@ -179,12 +205,11 @@ and to __which__ state that action will lead to.
 
 A simplified attempt, where one player uses classic probabilities, the dealer (house) simply draws until 17,
 and the adaptive agent uses non-deterministic Q-learning in order to play as best as possible.
-This is WORK IN PROGRESS.
+This is **WORK IN PROGRESS**
 
 ## TODO
 
 1. complete the blackjack example
-2. do the Q-Learning non-deterministic
-3. do the R-Learning continous algorithm
+2. do the R-Learning continous algorithm
 
 [1]: Sutton, R.S. and Barto, A.G., 1998. Reinforcement learning: An introduction (Vol. 1, No. 1). Cambridge: MIT press
