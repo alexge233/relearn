@@ -239,7 +239,7 @@ struct hasher<std::unordered_map<action_class,value_type>>
  * @param gamma is the discount rate
  * @param alpha is the learning rate
  *
- * Q(s_t,a_t) = Q(s_t,a_t) + α * (r_{t+1} + γ * max(Q(s_{t+1}, a)) - Q(s_t, a_t))
+ * Q(s_t,a_t) = Q(s_t,a_t) + α * (r_t + γ * max(Q(s_{t+1}, a)) - Q(s_t, a_t))
  * or:
  * Q[s,a] = (1 - α) Q[s_t,a_t] + α(r+ γ * max( Q[s_t,a_t]))
  *******************************************************************************/
