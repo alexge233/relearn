@@ -27,6 +27,32 @@ struct card
         std::cout << name << " "
                   << label << " ";
     }             
+
+    bool operator==(const card & rhs) const
+    {
+        return this->name == rhs.name &&
+               this->label == rhs.label &&
+               this->value == rhs.value;
+
+    }
+};
+
+//
+// a 52 playing card constant vector with unicode symbols :-D
+const std::deque<card> cards {
+    {"Ace",  "♠", {1, 11}}, {"Ace",  "♥", {1, 11}}, {"Ace",  "♦", {1, 11}}, {"Ace",  "♣", {1, 11}},
+    {"Two",  "♠", {2}},     {"Two",  "♥", {2}},     {"Two",  "♦", {2}},     {"Two",  "♣", {2}}, 
+    {"Three","♠", {3}},     {"Three","♥", {3}},     {"Three","♦", {3}},     {"Three","♣", {3}},
+    {"Four", "♠", {4}},     {"Four", "♥", {4}},     {"Four", "♦", {4}},     {"Four", "♣", {4}},
+    {"Five", "♠", {5}},     {"Five", "♥", {5}},     {"Five", "♦", {5}},     {"Five", "♣", {5}},
+    {"Six",  "♠", {6}},     {"Six",  "♥", {6}},     {"Six",  "♦", {6}},     {"Six",  "♣", {6}},
+    {"Seven","♠", {7}},     {"Seven","♥", {7}},     {"Seven","♦", {7}},     {"Seven","♣", {7}},
+    {"Eight","♠", {8}},     {"Eight","♥", {8}},     {"Eight","♦", {8}},     {"Eight","♣", {8}},
+    {"Nine", "♠", {9}},     {"Nine", "♥", {9}},     {"Nine", "♦", {9}},     {"Nine", "♣", {9}},
+    {"Ten",  "♠", {10}},    {"Ten",  "♥", {10}},    {"Ten",  "♦", {10}},    {"Ten",  "♣", {10}},
+    {"Jack", "♠", {10}},    {"Jack", "♥", {10}},    {"Jack", "♦", {10}},    {"Jack", "♣", {10}},
+    {"Queen","♠", {10}},    {"Queen","♥", {10}},    {"Queen","♦", {10}},    {"Queen","♣", {10}},
+    {"King", "♠", {10}},    {"King", "♥", {10}},    {"King", "♦", {10}},    {"King", "♣", {10}}
 };
 
 bool card_compare(const card & lhs, const card & rhs)
@@ -39,6 +65,9 @@ bool card_compare(const card & lhs, const card & rhs)
 // hand is the currently held cards
 struct hand
 {
+    hand() = default;
+    hand(const hand &) = default;
+
     // calculate value of hand - use max value of hand
     unsigned int max_value() const
     {
@@ -88,9 +117,36 @@ struct hand
                                    cards.begin(),  card_compare);
     }
 
+    std::size_t hash() const
+    {
+        std::size_t seed = 0;
+        for (auto & k : cards) {
+            for (auto & v : k.value) {
+                relearn::hash_combine(seed, v);
+            }
+        }
+        return seed;
+    }
+
+    bool operator==(const hand & rhs) const
+    {
+        return this->cards == rhs.cards;
+    }
+
 private:
     std::vector<card> cards;
 };
+
+namespace std 
+{
+template <> struct hash<hand>
+{
+    std::size_t operator()(hand const& arg) const 
+    {
+        return arg.hash();
+    }
+};
+}
 
 /// compare hands (return true for lhs wins)
 bool hand_compare(const hand & lhs, const hand & rhs)
@@ -105,9 +161,7 @@ bool hand_compare(const hand & lhs, const hand & rhs)
     else return false;
 }
 
-//
 // Base class for all players
-//
 struct player : public hand
 {
     virtual bool draw()
@@ -116,9 +170,7 @@ struct player : public hand
     }
 };
 
-//
 // House/dealer only uses simple rules to draw or stay
-//
 struct house : public player
 {
     house(std::deque<card> cards, std::mt19937 & prng)
@@ -159,161 +211,107 @@ private:
 };
 
 //
-// a probability based player (classical probs)
-//
-struct classic : public player
+// our learning adaptive player
+struct client : public player
 {
     // decide on drawing or staying
     bool draw()
     {
-        if (!blackjack() && 
-            min_value() != 21 &&
-            max_value() != 21)
-        {
-            // find diff of 21 (max) to current hand
-            unsigned int min_diff = 21 - min_value();
-            unsigned int max_diff = 21 - max_value();
-            // TODO:
-            // calculate the probability of drawing a 21 or less
-            // if that probability is small (less than 50%) don't draw
-            // calculate the probability of not getting burnt (drawing a small value)
-            // and combine them altogether
-        }
+        // `hand` is publicly inherited
+        //  so we can use it to create a new state
+        //  and then randomly decide an action (draw/stay)
+        //  until we have a best action for a given state
         return false;
     }
 
-    // return a deck of cards without the already seen cards
-    std::deque<card> remaining_cards()
+    // return a state by casting self to base class
+    relearn::state<hand> state() const
     {
-        std::deque<card> remaining;
-        for (const card & k : cards) {
-            if (std::find_if(seen.begin(), seen.end(), 
-                             [&](const auto obj){
-                                 return card_compare(k, obj);    
-                             }) == seen.end()) 
-            {
-                remaining.push_back(k);
-            }
-        }
-        return remaining;
+        return relearn::state<hand>(*this);
     }
-
-    // calculate Pr of drawing a card with target value, given the cards left
-    float probability(unsigned int target, 
-                      std::deque<card> left)
-    {
-        float total = left.size();
-        float match = 0;
-        for (card k : left) {
-             for (auto v : k.value) {
-                if (v == target) {
-                    match++;
-                }
-             }
-        } 
-        return match / total;
-    }
-
-    // immutable card set
-    const std::deque<card> cards;
-    // cards seen in a round
-    std::deque<card> seen;
 };
 
 //
-// a learnign player (Q-learning) adapting and trying to maximize
-// its rewards based on the episodes observed
-struct adaptive : public player
-{
-    // decide on drawing on staying
-    bool draw()
-    {
-        // TODO: play and learn to adapt
-        return false;
-    }
-
-    // TODO: declare intrnally what a state and action is
-    //       state is hand's min_value and max_value (not cards)
-    //       adding actual cards will increase state complexity for no apparent benefit(?)
-    //       actions is "draw" or "stay" - could also be "split"
-
-    // TODO: we also need a memory policy,
-    //       episodes observed
-    //       and the q_learning_probablistic
-};
-
-//
-// TODO: implement Q-Learning using NON-DETERMINISTIC formula
-//       infer winner (21, higher card, blackjack, etc)
 //
 int main(void)
 {
-    //
-    // a 52 playing card constant vector with unicode symbols :-D
-    //
-    const std::deque<card> cards {
-    {"Ace",  "♠", {1, 11}}, {"Ace",  "♥", {1, 11}}, {"Ace",  "♦", {1, 11}}, {"Ace",  "♣", {1, 11}},
-    {"Two",  "♠", {2}},     {"Two",  "♥", {2}},     {"Two",  "♦", {2}},     {"Two",  "♣", {2}}, 
-    {"Three","♠", {3}},     {"Three","♥", {3}},     {"Three","♦", {3}},     {"Three","♣", {3}},
-    {"Four", "♠", {4}},     {"Four", "♥", {4}},     {"Four", "♦", {4}},     {"Four", "♣", {4}},
-    {"Five", "♠", {5}},     {"Five", "♥", {5}},     {"Five", "♦", {5}},     {"Five", "♣", {5}},
-    {"Six",  "♠", {6}},     {"Six",  "♥", {6}},     {"Six",  "♦", {6}},     {"Six",  "♣", {6}},
-    {"Seven","♠", {7}},     {"Seven","♥", {7}},     {"Seven","♦", {7}},     {"Seven","♣", {7}},
-    {"Eight","♠", {8}},     {"Eight","♥", {8}},     {"Eight","♦", {8}},     {"Eight","♣", {8}},
-    {"Nine", "♠", {9}},     {"Nine", "♥", {9}},     {"Nine", "♦", {9}},     {"Nine", "♣", {9}},
-    {"Ten",  "♠", {10}},    {"Ten",  "♥", {10}},    {"Ten",  "♦", {10}},    {"Ten",  "♣", {10}},
-    {"Jack", "♠", {10}},    {"Jack", "♥", {10}},    {"Jack", "♦", {10}},    {"Jack", "♣", {10}},
-    {"Queen","♠", {10}},    {"Queen","♥", {10}},    {"Queen","♦", {10}},    {"Queen","♣", {10}},
-    {"King", "♠", {10}},    {"King", "♥", {10}},    {"King", "♦", {10}},    {"King", "♣", {10}}
-    };
-    
-    // Mersenne twister PRNG
+    // PRNG needed for, magic random voodoo
     std::mt19937 gen(static_cast<std::size_t>(std::chrono::high_resolution_clock::now()
                                                            .time_since_epoch().count()));
     // create the dealer, and two players...
     auto dealer = std::make_shared<house>(cards, gen);
-    auto agent = std::make_shared<classic>();
+    auto agent = std::make_shared<client>();
+
+    // alias state, action: 
+    // - a state is the current hand
+    // - an action is draw(true) or stay(false)
+    using state  = relearn::state<hand>;
+    using action = relearn::action<bool>;
+    using link   = relearn::link<state,action>;
+    // policy memory
+    relearn::policy<state,action> policies;
+    std::deque<std::deque<link>>  experience;
     
-    // start playing
+    start:
+    // play 10 rounds
     for (int i = 0; i < 10; i++) {
-        std::cout << "new game" << std::endl;
+        std::deque<link> episode;
 
-        // deal one to self
+        // one card to dealer/house
         dealer->reset_deck();
-        auto kard_1 = dealer->deal();
-        dealer->insert(kard_1);
+        dealer->insert(dealer->deal());
 
-        // deal two to player
-        auto kard_2 = dealer->deal();
-        auto kard_3 = dealer->deal();
-        agent->insert(kard_2);
-        agent->insert(kard_3);
-        agent->seen = {kard_1, kard_2, kard_3};
+        // two cards to player
+        agent->insert(dealer->deal());
+        agent->insert(dealer->deal());
 
-        // agent print, and decide to draw
-        while (agent->draw()) {
-            auto kard = dealer->deal();
-            agent->insert(kard);
-            agent->seen.push_back(kard);
+        // root state is starting hand
+        auto s_t = agent->state();
+
+        play:
+        // agent decides to draw
+        if (agent->draw()) {
+            episode.push_back(link{s_t, action(true)});
+            agent->insert(dealer->deal());
+            s_t = agent->state();
+            goto play;
         }
+        else {
+            episode.push_back(link{s_t, action(false)});
+        }
+
+        // dealer's turn
         while (dealer->draw()) {
             dealer->insert(dealer->deal());
         }
 
-        std::cout << "player's hand: ";
+        std::cout << "\t\033[1;34m player's hand: ";
         agent->print();
-        std::cout << "dealer's hand: ";
+        std::cout << "\033[0m";
+        std::cout << "\t\033[1;35m dealer's hand: ";
         dealer->print();
+        std::cout << "\033[0m\n";
 
         if (hand_compare(*agent, *dealer)) {
-            std::cout << "player wins!!!" << std::endl;
+            std::cout << "\033[1;32m player wins (•̀ᴗ•́)\033\[0m\r\n";
         }
         else {
-            std::cout << "dealer wins :-(" << std::endl;
+            std::cout << "\033[1;31m dealer wins (◕︵◕)\033\[0m\r\n";
         }
 
+        // clear current hand for both players
         agent->clear();
         dealer->clear();
+        experience.push_back(episode);
+    }
+
+    // at this point, we have some playing experience, which we're going to use
+    // in order to train the agent.
+    relearn::q_probabilistic<state,action> learner;
+    for (auto & episode : experience) {
+        for (int i = 0; i < 10; i++) {
+            learner(episode, policies);
+        }
     }
 
     return 0;

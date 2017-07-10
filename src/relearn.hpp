@@ -58,7 +58,7 @@ namespace relearn
 template <class T> struct equal;
 // templated hashing functor
 template <class T> struct hasher;
-// @brief combining hashes
+// combining hashes
 template <class T> void hash_combine(std::size_t& seed, const T& v);
 
 /**
@@ -107,7 +107,6 @@ protected:
     state() = default;
 #endif
 };
-// hashing functor for template class state
 template <class state_trait> 
 struct hasher<state<state_trait>>
 {
@@ -154,7 +153,6 @@ protected:
     action() = default;
 #endif
 };
-//hashing functor for template class action
 template <class action_trait> 
 struct hasher<action<action_trait>>
 {
@@ -247,13 +245,6 @@ private:
                        > __policies__;
 #endif
 };
-// hash functor for `unordered_map<action_class,value_type`
-template <class action_class,
-          typename value_type>
-struct hasher<std::unordered_map<action_class,value_type>>
-{
-    std::size_t operator()(const std::unordered_map<action_class,value_type> &arg) const;
-};
 
 /**
  * @class q_learning This is the **deterministic** Q-Learning algorithm
@@ -317,24 +308,12 @@ template <class state_class,
           typename value_type = double> 
 struct q_probabilistic
 {
-    // map of state, frequency (s_t_+1)
-    using frequency   = std::unordered_map<state_class,
-                                           std::size_t,
-                                           hasher<state_class>>;
-    // frequency of transition map from a_t to (s_t+1)
-    using transition  = std::unordered_map<action_class,
-                                           frequency,
-                                           hasher<frequency>>;
-    // frequency of observation of transition (s_t,a_t) → (s_t+1)
-    using observation = std::unordered_map<state_class,
-                                           transition,
-                                           hasher<transition>>;
     // Q-triplet: state,action => value
     using triplet = std::tuple<state_class, 
                        		   action_class, 
                        		   value_type>;
     /// discount rate
-    const value_type gamma;
+    value_type gamma;
 
     /// @brief the update rule of Q-learning
     triplet q_value(markov_chain &episode,
@@ -345,38 +324,22 @@ struct q_probabilistic
     void operator()(markov_chain episode, 
                     policy<state_class,action_class> & policy_map);
 private:
+    // map of state, frequency (s_t_+1)
+    using frequency   = std::unordered_map<state_class,
+                                           std::size_t,
+                                           hasher<state_class>
+                                          >;
+    // frequency of transition map from a_t to (s_t+1)
+    using transition  = std::unordered_map<action_class,
+                                           frequency,
+                                           hasher<action_class>
+                                          >;
+    // frequency of observation of transition (s_t,a_t) → (s_t+1)
+    using observation = std::unordered_map<state_class,
+                                           transition,
+                                           hasher<state_class>
+                                          >;
     observation __memory__;
-};
-// hashing for `frequency` map
-template <class state_class>
-struct hasher<std::unordered_map<state_class,std::size_t>>
-{
-    std::size_t operator()(const std::unordered_map<state_class,
-                                                    std::size_t> & arg) const;
-};
-// hashing for `transition` map
-template <class state_class,
-          class action_class>
-struct hasher<std::unordered_map<action_class,
-                std::unordered_map<state_class,
-                                   std::size_t>>>
-{
-    std::size_t operator()(const std::unordered_map<action_class,
-                                    std::unordered_map<state_class,
-                                                       std::size_t>> & arg) const;
-};
-// hashing for `observation` map
-template <class state_class,
-          class action_class>
-struct hasher<std::unordered_map<state_class,
-                                 std::unordered_map<action_class,
-                                    std::unordered_map<state_class,
-                                                       std::size_t>>>>
-{
-    std::size_t operator()(const std::unordered_map<state_class,
-                                    std::unordered_map<action_class,
-                                        std::unordered_map<state_class,
-                                                           std::size_t>>> & arg) const;
 };
 
 /********************************************************************************
@@ -409,66 +372,6 @@ std::size_t hasher<state<state_trait>
 {
     return arg.hash();
 } 
-
-template <class action_class,
-          typename value_type>
-std::size_t hasher<std::unordered_map<action_class,value_type>
-				  >::operator()(const std::unordered_map<action_class,
-													     value_type> &arg) const
-{
-    std::size_t seed;
-    for (const auto & pair : arg) {
-        hash_combine(seed, pair.first.hash());
-    }
-    return seed;
-}
-
-template <class state_class>
-std::size_t 
-    hasher<std::unordered_map<state_class,std::size_t>
-          >::operator()(const std::unordered_map<state_class,
-                                                 std::size_t> & arg) const
-{
-    std::size_t seed;
-    for (const auto & pair : arg) {
-        hash_combine(seed, pair.first.hash());
-    }
-    return seed;
-}
-
-template <class state_class,
-          class action_class>
-std::size_t 
-    hasher<std::unordered_map<action_class,
-                std::unordered_map<state_class,std::size_t>>
-          >::operator()(const std::unordered_map<action_class,
-                                    std::unordered_map<state_class,
-                                                       std::size_t>> & arg) const
-{
-    std::size_t seed;
-    for (const auto & pair : arg) {
-        hash_combine(seed, pair.first.hash());
-    }
-    return seed;
-}
-
-template <class state_class,
-          class action_class>
-std::size_t 
-    hasher<std::unordered_map<state_class,
-                std::unordered_map<action_class,
-                     std::unordered_map<state_class,std::size_t>>>
-         >::operator()(const std::unordered_map<state_class,
-                                  std::unordered_map<action_class,
-                                       std::unordered_map<state_class,
-                                                          std::size_t>>> & arg) const
-{
-    std::size_t seed;
-    for (const auto & pair : arg) {
-        hash_combine(seed, pair.first.hash());
-    }
-    return seed;
-}
 
 template <class state_trait,
           typename value_type>
@@ -707,7 +610,6 @@ typename q_probabilistic<state_class,action_class,markov_chain,value_type>::trip
 {
     auto step = episode[index];
     if (index < episode.size() - 1)  {
-        auto q      = policy_map.value(step.state, step.action);
         auto next   = episode[index + 1];
         auto q_next = policy_map.best_value(next.state);
         auto r      = step.state.reward();
@@ -734,13 +636,8 @@ void q_probabilistic<state_class,action_class,markov_chain,value_type
                  			      policy<state_class,action_class> & policy_map)
 {
     for (unsigned int i = 0; i < episode.size(); i++) {
-        if (i == episode.size() - 1) {
-            continue;
-        }
-        auto s_t = episode[i].state;
-        auto a_t = episode[i].action;
-        auto s_n = episode[i +1].state;
-        __memory__[s_t][a_t][s_n]++;
+        if (i == episode.size() - 1) continue;
+        __memory__[episode[i].state][episode[i].action][episode[i + 1].state] =+ 1;
     }
     for (unsigned int i = 0; i < episode.size(); i++) {
         auto triplet = q_value(episode, i, policy_map);
