@@ -83,6 +83,8 @@ public:
     state(state_trait trait);
     /// construct with a reward (terminal state)
     state(value_type reward, state_trait trait);
+    /// late reward setting
+    void set_reward(value_type reward);
     /// @brief state equality - uses `state_trait::operator==`
     bool operator==(const state<state_trait> & arg) const;
     /// @brief comparison / osrting operator - uses `state_trait::operator<`
@@ -393,6 +395,13 @@ template <class state_trait,
 value_type state<state_trait,value_type>::reward() const
 {
     return __reward__;
+}
+
+template <class state_trait,
+          typename value_type>
+void state<state_trait,value_type>::set_reward(value_type reward)
+{
+    __reward__ = reward;
 }
 
 template <class state_trait,

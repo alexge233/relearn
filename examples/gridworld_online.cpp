@@ -22,6 +22,11 @@
  * This is a deterministic, finite Markov Decision Process (MDP) 
  * and the goal is to find an agent policy that maximizes 
  * the future discounted reward.
+ *
+ * This version of the Gridworld example uses on-line on-policy decision-making
+ * What that means is that as the agent moves, it tries to use the already known
+ * policy, unless it has a bad value, or if it is unknown, in which case
+ * it takes a random action.
  */
 #include <iostream>
 #include <sstream>
@@ -31,7 +36,6 @@
 #include <chrono>
 #include <fstream>
 #include <string>
-
 #include "../src/relearn.hpp"
 
 /**
@@ -165,11 +169,9 @@ struct rand_direction
                                    return b.x == x && b.y == y;
                                });
         if (it == gridworld.blocks.end()) {
-            //std::cerr << "tried to move off the grid at: " << x << "," << y << std::endl;
             return rand_direction()(prng, gridworld, current);
         }
         if (it->occupied) {
-            //std::cerr << "occupied block: " << x << "," << y << std::endl;
             return rand_direction()(prng, gridworld, current);
         }
         return std::make_pair(direction{d}, *it);
@@ -185,6 +187,7 @@ template <typename S,
           typename A>
 std::deque<relearn::link<S,A>> explore(const world & w,
                                        std::mt19937 & gen,
+                                       relearn::policy<S,A> & policy_map,
                                        grid start)
 {
     // explore until we discover a negative or positive reward!
@@ -198,51 +201,15 @@ std::deque<relearn::link<S,A>> explore(const world & w,
     grid curr = start;
     auto state_now = state(curr.R, curr);
 
-    // explore while Reward isn't positive or negative
+    // explore while if no policy is found
     // and keep populating the episode with states and actions
+    // if there exists a policy, then stay on it!
     while (!stop) 
     {
-        // randomly decide on next grid - we map numbers to a direction
-        auto result = rand_direction()(gen, w, curr);
-        // find the reward at the current coordinates
-        curr = result.second;
-        // create the action using direction as trait
-        auto action_now = action(result.first);
-        // add the state to the episode
-        episode.emplace_back(relearn::link<state,action>{state_now, action_now});
-        // update current state to next state
-        state_now = state(curr.R, curr);
-        if (curr.R == -1 || curr.R == 1) {
-            stop = true;
-        }
-        // print on screen
-        std::cout << "coord: " << curr.x << "," 
-                  << curr.y << " = " << curr.R << std::endl;
-    }
-    // Add the terminal state last
-    // note: we don't have an empty action - we could use pointers instead...
-    auto action_empty = action(direction({100}));
-    episode.emplace_back(relearn::link<state,action>{state_now, action_empty});
-    return episode;
-}
-
-///
-/// Stay On-Policy and execute the action dictated
-///
-template <typename S, typename A>
-void on_policy(const world & w, 
-               relearn::policy<S,A> & policy_map,
-               grid start)
-{
-    grid curr = start;
-    std::cout << "starting from: " << curr.x << "," 
-              << curr.y << " = " << curr.R << std::endl;
-    auto state_t = S(curr.R, curr);
-    for (;;) {
-        // get the best policy for this state from the episode
-        if (auto action = policy_map.best_action(state_t))
-        {    
-            // how to infer the next state
+        auto action = policy_map.best_action(state_now);
+        auto q_val  = policy_map.best_value(state_now);
+        if (action && q_val > 0)
+        {
             switch (action->trait().dir) {
                 case 0 : curr.y--;
                          break;
@@ -256,30 +223,52 @@ void on_policy(const world & w,
             auto it = w.blocks.find(curr);
             if (it != w.blocks.end()) {
                 curr = *it;
-                // calculate our next state
-                auto state_n = S(curr.R, curr);
+                auto state_next = S(curr.R, curr);
+                state_now = state_next;
                 std::cout << "coord: " << curr.x << "," 
                           << curr.y << " = " << curr.R << std::endl;
-                state_t = state_n;
+
                 if (curr.R == -1.0 || curr.R == 1.0) {
                     break;
                 }
             }
         }
+        else {
+            // randomly decide on next grid - we map numbers to a direction
+            auto result = rand_direction()(gen, w, curr);
+            // find the reward at the current coordinates
+            curr = result.second;
+            // create the action using direction as trait
+            auto action_now = A(result.first);
+            // add the state to the episode
+            episode.emplace_back(relearn::link<S,A>{state_now, action_now});
+            // update current state to next state
+            state_now = state(curr.R, curr);
+            std::cout << "coord: " << curr.x << "," 
+                      << curr.y << " = " << curr.R << std::endl;
+
+            if (curr.R == -1 || curr.R == 1) {
+                break;
+            }
+        }
     }
+    // Add the terminal state last
+    // note: we don't have an empty action - we could use pointers instead...
+    auto action_empty = action(direction({100}));
+    episode.emplace_back(relearn::link<state,action>{state_now, action_empty});
+    return episode;
 }
 
 /**
  * Gridworld example main function.
  * The agent will begin with stochastic exploration, 
  * and at every terminal state will update its experience.
- * It will then reset back to the start of the episode and 
- * re-do the entire process for 100 iterations.
- * 
- * After that, it will follow the learnt policies, and
- * perform actions of high value only.
- * This in effect will result in the agent learning the
- * environment and going straight for the target grid.
+ *
+ * Then, it learns from that episode, and next time it explores
+ * it will take "good" actions and avoid bad ones, 
+ * and if no good actions exist, it will move randomly.
+ *
+ * This form of approach is online on-policy.
  */
 int main()
 {
@@ -295,35 +284,20 @@ int main()
     world w = populate();
     // hardcoded start grid
     grid start = {1, 8, 0};
-
     // store policies and episodes - we'll use policies later 
     relearn::policy<state,action> policies;
-    std::vector<std::deque<relearn::link<state,action>>> episodes;
 
-    // explore the grid world randomly - this produces an episode
-    for (;;) {
-        auto episode = explore<state,action>(w, gen, start);
-        episodes.push_back(episode);
-        // check solution has been found (e.g., positive reward!)
-        auto it = std::find_if(episode.begin(), episode.end(),
-                 [&](const auto & link) {
-                    return link.state.reward() == 1.0;
-                 });
-        // we haz the terminal state - stop exploring
-        // do note however that this may result in non-optimal policies
-        if (it != episode.end()) break;
-    }
-
-    // use Q-learning algorithm to update the episode's policies
-    auto learner = relearn::q_learning<state,action>{0.9, 0.9};
-    for (int k = 0; k < 10; k++) {
-        for (auto episode : episodes) {
+    bool stop = false;
+    // explore the grid and update at the end of the episode
+    // next time we explore we can avoid bad actions !
+    while (!stop) {
+        auto episode = explore<state,action>(w, gen, policies, start);
+        // use Q-learning algorithm to update the episode's policies
+        auto learner = relearn::q_learning<state,action>{0.9, 0.9};
+        for (int k = 0; k < 10; k++) {
             learner(episode, policies);
         }
+        stop = (episode.back().state.reward() == 1 ? true : false);
     }
-
-    // run on-policy and follow max Q policy action
-    std::cout << "on-policy algorithm" << std::endl;
-    on_policy(w, policies, start);
     return 0;
 }

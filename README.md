@@ -130,6 +130,9 @@ make
 
 There is a folder `examples` which I'm populating with examples, starting from your typical *gridworld* problem, 
 and then moving on to a *blackjack* program.
+Currently there is a classical "Gridworld" example, with two versions:
+- an offline on-policy algorithm: `examples/gridworld_offline.cpp` built as `ex_gridworld_offline`
+- an online on-policy algorithm: `examples/gridworld_online.cpp` built as `ex_gridworld_online`
 
 ## Gridworld
 
@@ -140,11 +143,19 @@ which is surrounded by blocks into which he can't move (black colour).
 The agent starts at blue (x:1,y:8) and the target is the green (x:1,y:1).
 The red blocks are fire/danger/a negative reward, and there is a rudimentary maze.
 
-This example uses a staged (stochastic - offline) approach:
+There are two versions of the Gridworld, the offline approach:
 
 - first the agent randomly explores until it can find the positive reward (+1.0) grid block
 - then it updates its policies
 - finally it follows the best policy learnt
+
+And the online approach:
+
+- the agent randomly explores one episode
+- then it updates its policies
+- then it tries again, this time going after known policies
+- it only falls back to random when there does not exist a *positive* best action
+- the entire process is repeated until the goal is discovered.
 
 The actual gridworld is saved in a textfile `gridworld.txt` (feel free to change it).
 The example `src/gridworld.cpp` provides the minimal code to demonstrate this staged approach.
@@ -152,7 +163,7 @@ The example `src/gridworld.cpp` provides the minimal code to demonstrate this st
 Once we have loaded the world (using function `populate`) we set the start at x:1, y:8 and then
 begin the exploration.
 
-The exploration runs in an inifinite loop in `main` until one criterion is satisfied: the grid block with a **positive** reward is found.
+The exploration runs in an inifinite until the grid block with a **positive** reward is found.
 Until that happens, the agent takes a *stochastic* (e.g., random) approach and searches the gridworld.
 The function:
 
@@ -205,11 +216,17 @@ and to __which__ state that action will lead to.
 
 A simplified attempt, where one player uses classic probabilities, the dealer (house) simply draws until 17,
 and the adaptive agent uses non-deterministic Q-learning in order to play as best as possible.
-This is **WORK IN PROGRESS**
+
+The `state` is very simple: a `hand` which is described by the value (min value and max value, depending on the cards held).
+The agent ignores the dealer's hand since that would increase the state space,
+as well as the label or symbol of the cards held (feel free to change this, simply adapt the "hash" function of `hand`).
+
+This example takes a lot of time to run, as the agent maps the transitional probabilities,
+using the observations from playing multiple games.
 
 ## TODO
 
-1. complete the blackjack example
+1. implement the `boost_serialization` with internal header
 2. do the R-Learning continous algorithm
 
 [1]: Sutton, R.S. and Barto, A.G., 1998. Reinforcement learning: An introduction (Vol. 1, No. 1). Cambridge: MIT press

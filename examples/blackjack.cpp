@@ -37,7 +37,6 @@ struct card
     }
 };
 
-//
 // a 52 playing card constant vector with unicode symbols :-D
 const std::deque<card> cards {
     {"Ace",  "♠", {1, 11}}, {"Ace",  "♥", {1, 11}}, {"Ace",  "♦", {1, 11}}, {"Ace",  "♣", {1, 11}},
@@ -78,6 +77,7 @@ struct hand
         return result; 
     }
 
+    // calculate value of hand - use min value (e.g., when hold an Ace)
     unsigned int min_value() const
     {
         unsigned int result = 0;
@@ -117,6 +117,7 @@ struct hand
                                    cards.begin(),  card_compare);
     }
 
+    // hash this hand for relearn
     std::size_t hash() const
     {
         std::size_t seed = 0;
@@ -215,13 +216,25 @@ private:
 struct client : public player
 {
     // decide on drawing or staying
-    bool draw()
+    bool draw(std::mt19937 & prng,
+              relearn::state<hand> s_t,
+              relearn::policy<relearn::state<hand>,
+                              relearn::action<bool>> & map)
     {
-        // `hand` is publicly inherited
-        //  so we can use it to create a new state
-        //  and then randomly decide an action (draw/stay)
-        //  until we have a best action for a given state
-        return false;
+        auto a_t = map.best_action(s_t);
+        auto q_v = map.best_value(s_t);
+        std::uniform_real_distribution<float> dist(0, 1);
+        // there exists a "best action" and it is positive
+        if (a_t && q_v > 0) {
+            sum_q += q_v;
+            policy_actions++;
+            return a_t->trait(); 
+        }
+        // there does not exist a "best action"
+        else {
+            random_actions++;
+            return (dist(prng) > 0.5 ? true : false);
+        }
     }
 
     // return a state by casting self to base class
@@ -229,6 +242,10 @@ struct client : public player
     {
         return relearn::state<hand>(*this);
     }
+
+    float random_actions = 0;
+    float policy_actions = 0;
+    float sum_q = 0;
 };
 
 //
@@ -248,61 +265,75 @@ int main(void)
     using state  = relearn::state<hand>;
     using action = relearn::action<bool>;
     using link   = relearn::link<state,action>;
+
     // policy memory
     relearn::policy<state,action> policies;
     std::deque<std::deque<link>>  experience;
     
+    float sum  = 0;
+    float wins = 0;
+    std::cout << "starting! Press CTRL-C to stop at any time!" 
+              << std::endl;
     start:
-    // play 10 rounds
+    // play 10 rounds - then stop
     for (int i = 0; i < 10; i++) {
+        sum++;
         std::deque<link> episode;
-
         // one card to dealer/house
         dealer->reset_deck();
         dealer->insert(dealer->deal());
-
         // two cards to player
         agent->insert(dealer->deal());
         agent->insert(dealer->deal());
-
         // root state is starting hand
         auto s_t = agent->state();
 
         play:
-        // agent decides to draw
-        if (agent->draw()) {
+        // if agent's hand is burnt skip all else
+        if (agent->min_value() && agent->max_value() > 21) {
+            goto cmp;
+        }
+        // agent decides to draw        
+        if (agent->draw(gen, s_t, policies)) {
             episode.push_back(link{s_t, action(true)});
             agent->insert(dealer->deal());
             s_t = agent->state();
             goto play;
         }
+        // agent decides to stay
         else {
             episode.push_back(link{s_t, action(false)});
         }
-
         // dealer's turn
         while (dealer->draw()) {
             dealer->insert(dealer->deal());
         }
 
-        std::cout << "\t\033[1;34m player's hand: ";
-        agent->print();
-        std::cout << "\033[0m";
-        std::cout << "\t\033[1;35m dealer's hand: ";
-        dealer->print();
-        std::cout << "\033[0m\n";
-
+        cmp:
+        // compare hands, assign rewards!
         if (hand_compare(*agent, *dealer)) {
-            std::cout << "\033[1;32m player wins (•̀ᴗ•́)\033\[0m\r\n";
+            if (!episode.empty()) {
+                episode.back().state.set_reward(1); 
+            }
+            wins++;
         }
         else {
-            std::cout << "\033[1;31m dealer wins (◕︵◕)\033\[0m\r\n";
+            if (!episode.empty()) {
+                episode.back().state.set_reward(-1); 
+            }
         }
 
         // clear current hand for both players
         agent->clear();
         dealer->clear();
         experience.push_back(episode);
+        std::cout << "\twin ratio: " << wins / sum << std::endl;
+        std::cout << "\ton-policy ratio: " 
+                  << agent->policy_actions / (agent->policy_actions + agent->random_actions) 
+                  << std::endl;
+        std::cout << "\tavg Q-value: "
+                  << (agent->sum_q / agent->policy_actions)
+                  << std::endl;
     }
 
     // at this point, we have some playing experience, which we're going to use
@@ -313,6 +344,9 @@ int main(void)
             learner(episode, policies);
         }
     }
+    // clear experience - we'll add new ones!
+    experience.clear();
+    goto start;
 
     return 0;
 }

@@ -27,8 +27,9 @@ include_directories(${SRC})
 
 # build examples
 set(EXAMPLES ${EXAMPLES} examples)
-add_executable(gridworld ${EXAMPLES}/gridworld.cpp)
-add_executable(blackjack ${EXAMPLES}/blackjack.cpp)
+add_executable(ex_gridworld_offline ${EXAMPLES}/gridworld_offline.cpp)
+add_executable(ex_gridworld_online  ${EXAMPLES}/gridworld_online.cpp)
+add_executable(ex_blackjack         ${EXAMPLES}/blackjack.cpp)
 
 # set output
 set(CMAKE_COLOR_MAKEFILE on)
