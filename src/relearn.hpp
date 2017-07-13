@@ -264,7 +264,8 @@ private:
                        > __policies__;
 #endif
 };
-/**
+
+/*******************************************************************************
  * @class q_learning This is the **deterministic** Q-Learning algorithm
  * @brief Q-Learning update algorithm sets policies using episodes (`markov_chain`)
  * @param gamma is the discount rate

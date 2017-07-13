@@ -20,14 +20,6 @@ struct action_serial : public action_class
 
 /*
  * Template serialization implementation
- *
- *              |^|     | |
- *              | |_____| |
- *              |  _____  |
- *              | |     | |
- *              | |_____| |
- *              |_|_____|_|
- *
  */
 template <class state_class>
 state_serial<state_class>::state_serial()
@@ -60,4 +52,3 @@ action_serial<action_class>::operator action_class()
 {
     return static_cast<action_class>(*this);
 }
-
