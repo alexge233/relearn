@@ -114,7 +114,13 @@ struct hasher<state<state_trait>>
 {
     std::size_t operator()(const state<state_trait> & arg) const;
 };
-
+#if USING_BOOST_SERIALIZATION
+template <class state_class> 
+struct hasher<state_serial<state_class>>
+{
+    std::size_t operator()(const state_serial<state_class> & arg) const;
+};
+#endif
 /**
  * @brief an action class - wraps around your class or pdt
  * @class action
@@ -144,7 +150,7 @@ public:
     /// return trait 
     action_trait trait() const;
 private:
-    /// action descriptor - object/value wrapped
+    // action descriptor - object/value wrapped
     action_trait __trait__;
 #if USING_BOOST_SERIALIZATION
     friend class boost::serialization::access;
@@ -158,9 +164,15 @@ protected:
 template <class action_trait> 
 struct hasher<action<action_trait>>
 {
-    std::size_t operator()(const action<action_trait> &arg) const;
+    std::size_t operator()(const action<action_trait> & arg) const;
 };
-
+template <class action_class> 
+#if USING_BOOST_SERIALIZATION
+struct hasher<action_serial<action_class>>
+{
+    std::size_t operator()(const action_serial<action_class> & arg) const;
+};
+#endif
 /**
  * @struct link
  * @brief a simple `link` or pair for joining state-actions in the MDP
@@ -230,20 +242,20 @@ public:
      */
     std::pair<std::unique_ptr<action_class>,value_type> best(state_class s_t);
 private:
-// if using boost serialization the policies used
-// are wrappers defined in internal header `serialize.tpl`
 #if USING_BOOST_SERIALIZATION
     friend class boost::serialization::access;
+    // serialize method
     template <typename archive>
     void serialize(archive & ar, const unsigned int version);
-    std::unordered_map<state_serial
-                       std::unordered_map<action_serial,
+    // actual policies use the `_serial` wrapper from `serialize.tpl`
+    std::unordered_map<state_serial<state_class>,
+                       std::unordered_map<action_serial<action_class>,
                                           value_type,
-                                          hasher<action_serial>>,
-                       hasher<state_serial>
+                                          hasher<action_serial<action_class>>>,
+                       hasher<state_serial<state_class>>
                        > __policies__;
-// else we're using the actual `state_class` and `action_class` types
 #else
+    // policies maps is: [state][action][state_next] => Q-value
     std::unordered_map<state_class, 
                        std::unordered_map<action_class,
                                           value_type,
@@ -252,7 +264,6 @@ private:
                        > __policies__;
 #endif
 };
-
 /**
  * @class q_learning This is the **deterministic** Q-Learning algorithm
  * @brief Q-Learning update algorithm sets policies using episodes (`markov_chain`)
@@ -512,7 +523,15 @@ template <class state_class,
 typename policy<state_class,action_class,value_type>::action_map 
             policy<state_class,action_class,value_type>::actions(state_class s_t)
 {
+#if USING_BOOST_SERIALIZATION
+    std::unordered_map<action_class, value_type, hasher<action_class>> retval;
+    for (const auto & item : __policies__[s_t]) {
+        retval[static_cast<action_class>(item.first)] = item.second;
+    }
+    return retval;
+#else
     return __policies__[s_t];
+#endif
 }
 
 template <class state_class,
@@ -581,6 +600,20 @@ void policy<state_class,action_class,value_type>::serialize(archive & ar,
                                                             const unsigned int version)
 {
     ar & __policies__;
+}
+
+template <class state_class>
+std::size_t hasher<state_serial<state_class>
+                  >::operator()(const state_serial<state_class> & arg) const
+{
+    return arg.hash();
+}
+
+template <class action_class> 
+std::size_t hasher<action_serial<action_class>
+                  >::operator()(const action_serial<action_class> & arg) const
+{
+    return arg.hash();
 }
 #endif
 
@@ -673,6 +706,8 @@ void q_probabilistic<state_class,action_class,markov_chain,value_type
                           std::get<2>(triplet));
     }
 }
-
+#if USING_BOOST_SERIALIZATION
+#include "serialize.tpl"
+#endif
 } // end of namespace
 #endif

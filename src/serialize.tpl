@@ -1,62 +1,63 @@
-#if USING_BOOST_SERIALIZATION
 #include <boost/serialization/serialization.hpp>
 #include <boost/serialization/access.hpp>
 #include <boost/serialization/unordered_map.hpp>
 
 template <class state_class>
-struct state_serial : private state_class
+struct state_serial : public state_class
 {
     state_serial();
-    operator state_class() const;
+    state_serial(state_class);
+    operator state_class();
 };
 
 template <class action_class>
-struct action_serial : private action_class
+struct action_serial : public action_class
 {
     action_serial();
-    operator action_class() const;
+    action_serial(action_class);
+    operator action_class();
 };
+
+/*
+ * Template serialization implementation
+ *
+ *              |^|     | |
+ *              | |_____| |
+ *              |  _____  |
+ *              | |     | |
+ *              | |_____| |
+ *              |_|_____|_|
+ *
+ */
+template <class state_class>
+state_serial<state_class>::state_serial()
+: state_class()
+{}
 
 template <class state_class>
-struct cast_state
+state_serial<state_class>::state_serial(state_class arg)
+: state_class(arg)
+{}
+
+template <class state_class>
+state_serial<state_class>::operator state_class() 
 {
-    state_serial<state_class> operator()(const state_class arg) const;
-};
+    return static_cast<state_class>(*this);
+}
 
 template <class action_class>
-struct cast_action
+action_serial<action_class>::action_serial()
+: action_class()
+{}
+
+template <class action_class>
+action_serial<action_class>::action_serial(action_class arg)
+: action_class(arg)
+{}
+
+template <class action_class>
+action_serial<action_class>::operator action_class() 
 {
-    action_serial<action_class> operator()(const action_class arg) const;
-};
+    return static_cast<action_class>(*this);
+}
 
-template <class state_class> 
-struct hasher<state_serial<state_class>>
-{
-    std::size_t operator()(const state_serial<state_class> & arg) const;
-};
-
-template <class action_class> 
-struct hasher<action_serial<action_class>>
-{
-    std::size_t operator()(const action_serial<action_class> & arg) const;
-};
-
-template <class action_class,
-         typename value_type>
-struct hasher<std::unordered_map<action_class,value_type>>
-{
-    std::size_t operator()(const std::unordered_map<action_class,value_type> &arg) const;
-};
-
-template <class action_class,
-          typename value_type>
-struct hasher<std::unordered_map<action_serial<action_class>,value_type>>
-{
-    std::size_t operator()(const std::unordered_map<action_serial<action_class>,
-                                                    value_type> &arg) const;
-};
-
-
-/// TODO: implement those methods above
-
-#endif

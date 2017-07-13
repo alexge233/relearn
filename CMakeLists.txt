@@ -20,16 +20,14 @@ set(CMAKE_MACOSX_RPATH 1)
 set(SRC ${SRC} src)
 include_directories(${SRC})
 
-# add -DUSING_BOOST_SERIALIZATION in order to save policies on disk
-# add_definitions(-DUSING_BOOST_SERIALIZATION)
-# find_package(Boost 1.55 COMPONENTS serialization system)
-# include_directories(${Boost_INCLUDE_DIR})
-
 # build examples
 set(EXAMPLES ${EXAMPLES} examples)
 add_executable(ex_gridworld_offline ${EXAMPLES}/gridworld_offline.cpp)
 add_executable(ex_gridworld_online  ${EXAMPLES}/gridworld_online.cpp)
 add_executable(ex_blackjack         ${EXAMPLES}/blackjack.cpp)
+
+# TODO: add an example for serialization of policy, state, action
+#       which uses the definition: 
 
 # set output
 set(CMAKE_COLOR_MAKEFILE on)
@@ -47,6 +45,7 @@ message(STATUS "CXX Linker: " ${CMAKE_EXE_LINKER_FLAGS})
 
 # if building tests
 if (BUILD_TESTS)
+
     message(STATUS "Checking ${PROJECT_SOURCE_DIR}/tests/catch.hpp")
     if (EXISTS "${PROJECT_SOURCE_DIR}/tests/catch.hpp")
         message(STATUS "catch.hpp exists, not downloading again - make sure it is up to date!")
@@ -62,4 +61,14 @@ if (BUILD_TESTS)
     add_test(unit_test test_classes)
     add_executable(test_logic tests/logic_test.cpp)
     add_test(logic_test test_logic)
+
+    # if building tests & testing serialization
+    if (USING_BOOST_SERIALIZATION)
+        add_definitions(-DUSING_BOOST_SERIALIZATION)
+        find_package(Boost 1.55 COMPONENTS serialization system)
+        include_directories(${Boost_INCLUDE_DIR})
+        add_executable(test_serialize tests/serialize_test.cpp)
+        target_link_libraries(test_serialize ${Boost_LIBRARIES})
+        add_test(serialize_test test_serialize)
+    endif()
 endif()
