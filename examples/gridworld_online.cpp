@@ -28,160 +28,15 @@
  * policy, unless it has a bad value, or if it is unknown, in which case
  * it takes a random action.
  */
-#include <iostream>
-#include <sstream>
-#include <unordered_set>
-#include <random>
-#include <ctime>
-#include <chrono>
-#include <fstream>
-#include <string>
-#include "../src/relearn.hpp"
-
+#include "gridworld_header.hpp"
 /**
- * A grid block is simply a coordinate (x,y)
- * A grid *may* have a reward R.
- * This struct functions as the block upon which the gridworld problem is based.
- * We also use this as the `state_trait` descriptor S for state<S,A> and action<S,A>
- */
-struct grid
-{
-    unsigned int x = 0;
-    unsigned int y = 0;
-    double R = 0;
-    bool occupied = false;
-
-    bool operator==(const grid & arg) const
-    {
-        return (this->x == arg.x) && 
-               (this->y == arg.y);
-    }
-};
-
-/**
- * A move in the grid world is simply a number.
- * 0 for left, 1 for top, 2 for right, 3 for down.
- * We also use this as the `action_trait` descriptor A for state<S,A> and action<S,A>
- */
-struct direction
-{
-    unsigned int dir;
-
-    bool operator==(const direction & arg) const
-    {
-        return (this->dir == arg.dir);
-    }
-};
-
-/**
- * Hash specialisations in the STD namespace for structs grid and direction.
- * Those are **required** because the underlying relearn library 
- * uses unordered_map and unordered_set, which use hashing functions for the classes
- * which are mapped/stored internally.
- */
-namespace std 
-{
-template <> struct hash<grid>
-{
-    std::size_t operator()(grid const& arg) const 
-    {
-        std::size_t seed = 0;
-        relearn::hash_combine(seed, arg.x);
-        relearn::hash_combine(seed, arg.y);
-        return seed;
-    }
-};
-template <> struct hash<direction>
-{
-    std::size_t operator()(direction const& arg) const
-    {
-        std::size_t seed = 0;
-        relearn::hash_combine(seed, arg.dir);
-        return seed;
-    }
-};
-}
-
-/**
- * The gridworld struct simply contains the grid blocks.
- * Each block is uniquely identified by its coordinates.
- */
-struct world
-{
-    std::unordered_set<grid> blocks;
-};
-
-using state = relearn::state<grid>;
-using action = relearn::action<direction>;
-
-///
-/// load the gridworld from the text file
-/// boundaries are `occupied` e.g., can't move into them
-/// fire/danger blocks are marked with a reward -1
-///
-world populate()
-{
-    std::ifstream infile("../examples/gridworld.txt");
-    world environment = {};
-    std::string line;
-    while (std::getline(infile, line))
-    {
-        std::istringstream iss(line);
-        unsigned int x;
-        unsigned int y;
-        double r;
-        bool occupied;
-        if (iss >> x >> y >> occupied >> r) {
-            environment.blocks.insert({x, y, r, occupied});
-        }
-        else break;
-    }
-    return environment;
-}
-
-///
-/// Decide on a stochastic (random) direction and return the next grid block
-///
-struct rand_direction
-{
-    std::pair<direction,grid> operator()(std::mt19937 & prng, 
-                                         world gridworld, 
-                                         grid current)
-    {
-        std::uniform_int_distribution<unsigned int> dist(0, 3);
-        unsigned int x = current.x;
-        unsigned int y = current.y;
-        // randomly decide on next grid - we map numbers to a direction
-        unsigned int d = dist(prng);
-        switch (d) {
-            case 0 : y--;
-                     break;
-            case 1 : x++;
-                     break;
-            case 2 : y++;
-                     break;
-            case 3 : x--;
-                     break;
-        }
-        auto it = std::find_if(gridworld.blocks.begin(),
-                               gridworld.blocks.end(),
-                               [&](const auto b) {
-                                   return b.x == x && b.y == y;
-                               });
-        if (it == gridworld.blocks.end()) {
-            return rand_direction()(prng, gridworld, current);
-        }
-        if (it->occupied) {
-            return rand_direction()(prng, gridworld, current);
-        }
-        return std::make_pair(direction{d}, *it);
-    }
-};
-
-/**
- * Exploration technique is based on Monte-Carlo, e.g.: stochastic search.
- * The `agent` will randomly search the world experiencing different blocks.
- * The agent will internally map its experience using the State/Action pairs.
+ * Exploration technique is `online` meaning the agent will follow
+ * policies, if they exist for a particular state. It will revert to a 
+ * stochastic (random) approach only if policies don't exist, or if those
+ * policies have a negative value.
+ *
+ * For this type of approach to work, in between episodes, the agent must
+ * be rewarded and re-trained.
  */
 template <typename S, 
           typename A>
@@ -206,11 +61,9 @@ std::deque<relearn::link<S,A>> explore(const world & w,
     // if there exists a policy, then stay on it!
     while (!stop) 
     {
-        auto action = policy_map.best_action(state_now);
-        auto q_val  = policy_map.best_value(state_now);
-        if (action && q_val > 0)
-        {
-            switch (action->trait().dir) {
+        auto pair   = policy_map.best(state_now);
+        if (pair.first && pair.second > 0) {
+            switch (pair.first->trait().dir) {
                 case 0 : curr.y--;
                          break;
                 case 1 : curr.x++;
@@ -299,5 +152,14 @@ int main()
         }
         stop = (episode.back().state.reward() == 1 ? true : false);
     }
+    //
+    // The catch here is that although we explore and stay on policy at the same
+    // time, if we do not explore long enough, we may find "a solution" which
+    // is not necessarily the optimal or best one!
+    // the way to avoid doing this, is to not exit the loop as soon
+    // as a solution is found, and in conjunction with this,
+    // to also allow random actions, even when an optimal policy exists (this
+    // method is known as e-Greedy or explorative-Greedy).
+    //
     return 0;
 }

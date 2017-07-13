@@ -224,6 +224,11 @@ public:
      * @warning if none are found, returns nullptr
      */
     std::unique_ptr<action_class> best_action(state_class s_t);
+    /**
+     * @return a pair of action/value if one exists or a
+     * pair of <nullptr,0> if one doesn't exist
+     */
+    std::pair<std::unique_ptr<action_class>,value_type> best(state_class s_t);
 private:
 // if using boost serialization the policies used
 // are wrappers defined in internal header `serialize.tpl`
@@ -546,12 +551,25 @@ template <class state_class,
 std::unique_ptr<action_class> 
 		policy<state_class,action_class,value_type>::best_action(state_class s_t)
 {
-    auto it = std::max_element(__policies__[s_t].begin(), __policies__[s_t].end(),
-              [&](const auto &lhs, const auto &rhs) {
-                  return lhs.second < rhs.second;
-              });
+    auto it = std::max_element(__policies__[s_t].begin(), 
+                               __policies__[s_t].end(),
+              [&](const auto &lhs, const auto &rhs) { return lhs.second < rhs.second; });
     return it != __policies__[s_t].end() ?
            std::move(std::make_unique<action_class>(it->first)) : nullptr;
+}
+
+template <class state_class,
+          class action_class,
+          typename value_type>
+std::pair<std::unique_ptr<action_class>,value_type>
+    policy<state_class,action_class,value_type>::best(state_class s_t)
+{
+    auto it = std::max_element(__policies__[s_t].begin(), 
+                               __policies__[s_t].end(),
+              [&](const auto &lhs, const auto &rhs) { return lhs.second < rhs.second; });
+    return it != __policies__[s_t].end() ?
+           std::make_pair(std::make_unique<action_class>(it->first), it->second) :
+           std::make_pair(nullptr, 0);
 }
 
 #if USING_BOOST_SERIALIZATION
