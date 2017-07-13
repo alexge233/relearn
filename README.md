@@ -126,13 +126,80 @@ cmake ..
 make
 ```
 
+### build examples
+
+Simply do the following:
+
+```bash
+cmake .. -DBUILD_EXAMPLES=On
+make
+```
+
+### build tests
+
+```bash
+cmake .. -DBUILD_TESTS=On
+```
+
+### enable serialization
+
+In order to enable serialization, you need boost and boost-serialization.
+See your distro on how to install those.
+To enable it, pass a cmake flag:
+
+```bash
+cmake .. -DUSING_BOOST_SERIALIZATION=On
+```
+
+For example if you want to run the tests **with** serialization:
+
+```bash
+cmake .. -DUSING_BOOST_SERIALIZATION=On -DBUILD_EXAMPLES=On
+```
+
+You can also set this flag for your **own** project, if you wish to save and load
+policies, states or actions.
+Do bear in mind that the `state_trait` (e.g., your state **descriptor**) and the 
+`action_trait` (e.g., your action **descriptor**) must **also be serializable**.
+On how to achieve this, [have a look at this tutorial](http://www.boost.org/doc/libs/1_64_0/libs/serialization/doc/tutorial.html)
+if this condition is not met, you will end up with compilation errors.
+
+Because of the flexibility of boost serialization, you can save and load binary, text or xml archives.
+Later versions of boost support smart pointers, so even if your descriptors are
+`std::shared_ptr` or `std::unique_ptr` you can still save and load them.
+
 # Examples
 
 There is a folder `examples` which I'm populating with examples, starting from your typical *gridworld* problem, 
 and then moving on to a *blackjack* program.
-Currently there is a classical "Gridworld" example, with two versions:
+Currently there are two "Gridworld" examples:
 - an offline on-policy algorithm: `examples/gridworld_offline.cpp` built as `ex_gridworld_offline`
 - an online on-policy algorithm: `examples/gridworld_online.cpp` built as `ex_gridworld_online`
+
+## basic usage
+
+The basic way of using the library is the following:
+
+1. create a class **state**, or use an existing class, structure, or PDT which describes (in a *Markovian* sense) your state
+2. create a class **action**, or use an existing class, structure, or PDT which describes the action.
+3. create an *episode* which by default is an `std::deque<relearn::link<state,action>>` which you populate, and then reward.
+
+At this point, depending on wether you are using an **online** or **offline** algorith/approach, you have the following options:
+
+4. keep creating episodes, obtain a reward for the last/terminal state, and once you have finished, train the policy will all of them,
+**or**
+5. every time you create an episode, obtain the reward, then you can train your policy with it.
+
+That choice is up to you, and almost always depends on the domain, system or problem you're trying to solve.
+It is for this reason that there is no implementation of `on_policy` or `off_policy` or `e_greedy`, 
+those are very simple algorithms, and are application-specific.
+
+Take a look at the `gridworld` examples, which demonstrate two different ways of achieving the same task.
+The `blackjack` example is different: because playing Blackjack is a *probability* task, we can't use
+a *deterministic* approach, rather we use a *probabilistic* approach, in which case
+
+1. we have to take an offline approach (we don't know the transition from one state to another until we've experienced it)
+2. we have to train on probabilities of transitioning (e.g., non-deterministic)
 
 ## Gridworld
 
@@ -158,14 +225,22 @@ And the online approach:
 - the entire process is repeated until the goal is discovered.
 
 The actual gridworld is saved in a textfile `gridworld.txt` (feel free to change it).
-The example `src/gridworld.cpp` provides the minimal code to demonstrate this staged approach.
+The example `examples/gridworld_header.hpp` provides the minimal code to demonstrate this staged approach.
+The two files:
+
+- `examples/gridworld_offline.cpp`
+- `examples/gridworld_online.cpp`
+
+have the different versions of how this task can be solved.
 
 Once we have loaded the world (using function `populate`) we set the start at x:1, y:8 and then
 begin the exploration.
 
-The exploration runs in an inifinite until the grid block with a **positive** reward is found.
+### offline q-learning
+
+The offline exploration runs in an inifinite until the grid block with a **positive** reward is found.
 Until that happens, the agent takes a *stochastic* (e.g., random) approach and searches the gridworld.
-The function:
+The function (template parameter `S` is state, and `A` is action):
 
 ```cpp
 template <typename S, 
@@ -178,7 +253,7 @@ std::deque<relearn::link<S,A>> explore(const world & w,
 does the following:
 
 - creates a new episode (e.g., `relearn::markov_chain`)
-- sets as root state the starting gridblock x:1, y:8
+- sets as root state the starting gridblock
 - randomly picks a direction (see struct `rand_direction` for more)
 - repeats this until either (a) a negative reward has been found (e.g., stepped into a fire block), or (b) the goal block is discovered
 
@@ -212,6 +287,25 @@ and unnecessarily searching the gridworld.
 This is a __deterministic__ scenario, because the agent knows at any given moment, which action he is taking,
 and to __which__ state that action will lead to.
 
+### online q-learning
+
+The online exploration is somewhat different, because the `explore` method does the following:
+
+- creates a new episode
+- sets the root state
+- if a good policy (Q-value higher than zero and a valid action pointer) exist, it follows them
+- else if no good policy (or action pointer) exist, it takes a random action
+- repeats until a reward is found, it then **trains** the policies with the latest episode
+
+The difference here, is that the actual exploration is instantly affected by what has already be learnt.
+In comparison, the offline method is not affected, and may repeat the same sequences over and over again.
+However, if the online version stops too early, there is no guarantee that the agent has learned the
+ideal or optimal path to the goal, it could in fact be just a *mediocre* or *silly* path it has discovered.
+This of course, is also a problem with offline, where the solution may never be discovered.
+
+Other more complex algorithms exist (e.g., e-greedy) where the agent may follow the policy,
+but randomly chose to ignore it, in order to try and discover a better solution.
+
 ## Blackjack
 
 A simplified attempt, where one player uses classic probabilities, the dealer (house) simply draws until 17,
@@ -224,9 +318,12 @@ as well as the label or symbol of the cards held (feel free to change this, simp
 This example takes a lot of time to run, as the agent maps the transitional probabilities,
 using the observations from playing multiple games.
 
-## TODO
+The header file `examples/blackjack_header.hpp` contains the simple structures and methods needed to play blackjack,
+whereas the source file `examples/blackjack.cpp` has the high level logic behind it.
 
-1. implement the `boost_serialization` with internal header
-2. do the R-Learning continous algorithm
+# TODO
+
+1. do the R-Learning continous algorithm
+2. add eligibility traces (decay)
 
 [1]: Sutton, R.S. and Barto, A.G., 1998. Reinforcement learning: An introduction (Vol. 1, No. 1). Cambridge: MIT press
