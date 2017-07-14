@@ -9,10 +9,35 @@
  * @see the header (blackjack_header.hpp) for implementation details
  */
 #include "blackjack_header.hpp"
+#include <boost/predef.h>
 
+// create aliases for state and action: 
+// - a state is the current hand held by a player
+// - an action is draw(true) or stay(false)
 //
-int main(void)
+using state = relearn::state<hand>;
+using action = relearn::action<bool>;
+// policy memory
+relearn::policy<state,action> policies;
+
+// catching CTRL-C works only on Linux for now
+#if BOOST_OS_LINUX
+#include <signal.h>
+#include <fstream>
+#include <boost/archive/text_oarchive.hpp>
+#include <boost/serialization/vector.hpp>
+volatile sig_atomic_t flag = 0;
+void signal_handler(int sig) {
+    flag = 1;
+}
+#endif
+
+// TODO: add BOOST_OS_WINDOWS
+//       and BOOST_OS_MACOS
+
+int main()
 {
+    signal(SIGINT, signal_handler);
     // PRNG needed for, magic random voodoo
     std::mt19937 gen(static_cast<std::size_t>(std::chrono::high_resolution_clock::now()
                                                            .time_since_epoch().count()));
@@ -20,15 +45,7 @@ int main(void)
     auto dealer = std::make_shared<house>(cards, gen);
     auto agent = std::make_shared<client>();
 
-    // alias state, action: 
-    // - a state is the current hand
-    // - an action is draw(true) or stay(false)
-    using state  = relearn::state<hand>;
-    using action = relearn::action<bool>;
-    using link   = relearn::link<state,action>;
-
-    // policy memory
-    relearn::policy<state,action> policies;
+    using link = relearn::link<state,action>;
     std::deque<std::deque<link>>  experience;
     
     float sum  = 0;
@@ -95,6 +112,16 @@ int main(void)
                   << std::endl;
     }
 
+    // CTRL-C/SIGINT => save and exit
+    if (flag) {
+        std::cout << "save & exit\r\n";
+        std::ofstream ofs("blackjack.policy");
+        boost::archive::text_oarchive oa(ofs);
+        oa << policies;
+        ofs.close();
+        return 0;
+    }
+
     // at this point, we have some playing experience, which we're going to use
     // in order to train the agent.
     relearn::q_probabilistic<state,action> learner;
@@ -103,11 +130,11 @@ int main(void)
             learner(episode, policies);
         }
     }
+
     // clear experience - we'll add new ones!
     experience.clear();
     agent->reset();
-    sum  = 0;
-    wins = 0;
+    // restart - please don't use goto's in modern C++
     goto start;
 
     return 0;

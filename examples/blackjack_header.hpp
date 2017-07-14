@@ -42,6 +42,14 @@ struct card
                this->value == rhs.value;
 
     }
+
+    template<class Archive>
+    void serialize(Archive & ar, const unsigned int version)
+    {
+        ar & name;
+        ar & label;
+        ar & value;
+    }
 };
 
 // a 52 playing card constant vector with unicode symbols :-D
@@ -143,6 +151,13 @@ struct hand
 
 private:
     std::vector<card> cards;
+
+    friend class boost::serialization::access;
+    template<class Archive>
+    void serialize(Archive & ar, const unsigned int version)
+    {
+        ar & cards;
+    }
 };
 
 namespace std 

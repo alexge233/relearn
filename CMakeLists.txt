@@ -20,12 +20,13 @@ set(CMAKE_MACOSX_RPATH 1)
 set(SRC ${SRC} src)
 include_directories(${SRC})
 
-# build examples
+# build examples - default behaviour when CMake is invoked
+find_package(Boost 1.55 COMPONENTS serialization system)
 set(EXAMPLES ${EXAMPLES} examples)
 add_executable(ex_gridworld_offline ${EXAMPLES}/gridworld_offline.cpp)
 add_executable(ex_gridworld_online  ${EXAMPLES}/gridworld_online.cpp)
 add_executable(ex_blackjack         ${EXAMPLES}/blackjack.cpp)
-
+target_link_libraries(ex_blackjack  ${Boost_LIBRARIES})
 # TODO: add an example for serialization of policy, state, action
 #       which uses the definition: 
 
@@ -45,7 +46,6 @@ message(STATUS "CXX Linker: " ${CMAKE_EXE_LINKER_FLAGS})
 
 # if building tests
 if (BUILD_TESTS)
-
     message(STATUS "Checking ${PROJECT_SOURCE_DIR}/tests/catch.hpp")
     if (EXISTS "${PROJECT_SOURCE_DIR}/tests/catch.hpp")
         message(STATUS "catch.hpp exists, not downloading again - make sure it is up to date!")
