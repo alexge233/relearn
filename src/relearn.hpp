@@ -166,8 +166,8 @@ struct hasher<action<action_trait>>
 {
     std::size_t operator()(const action<action_trait> & arg) const;
 };
-template <class action_class> 
 #if USING_BOOST_SERIALIZATION
+template <class action_class> 
 struct hasher<action_serial<action_class>>
 {
     std::size_t operator()(const action_serial<action_class> & arg) const;
@@ -286,10 +286,10 @@ struct q_learning
     using triplet = std::tuple<state_class, 
                                action_class, 
                                value_type>;
-    /// learning rate
-    const value_type alpha;
-    /// discount rate
-    const value_type gamma;
+    /// learning rate - you may change this as you process episodes
+    value_type alpha = 0.9;
+    /// discount rate - you may change this as you process episodes
+    value_type gamma = 0.9;
     /// @brief the update rule of Q-learning
     triplet q_value(markov_chain &episode,
                     unsigned int index,
@@ -331,14 +331,16 @@ struct q_probabilistic
     using triplet = std::tuple<state_class, 
                        		   action_class, 
                        		   value_type>;
-    /// discount rate
-    value_type gamma;
-
+    /// discount rate - you can change this as you process episodes
+    value_type gamma = 0.9;
+    /// default empty ctor - discount will be 0.9
+    q_probabilistic() = default;
+    /// default ctor with discount
+    q_probabilistic(value_type discount);
     /// @brief the update rule of Q-learning
     triplet q_value(markov_chain &episode,
                     unsigned int index,
                     policy<state_class,action_class> & policy_map);
-
     /// @brief do the updating for an episode - @param policy_map will be modified
     void operator()(markov_chain episode, 
                     policy<state_class,action_class> & policy_map);
@@ -658,6 +660,15 @@ void q_learning<state_class,action_class,markov_chain,value_type
                           std::get<2>(triplet));
     }
 }
+
+template <class state_class, 
+          class action_class,
+          typename markov_chain,
+          typename value_type>
+q_probabilistic<state_class,action_class,markov_chain,value_type
+               >::q_probabilistic(value_type discount)
+: gamma(discount)
+{}
 
 template <class state_class, 
           class action_class,

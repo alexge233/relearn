@@ -29,6 +29,10 @@
  * it takes a random action.
  */
 #include "gridworld_header.hpp"
+// set shortcuts to state trait and action trait
+using state = relearn::state<grid>;
+using action = relearn::action<direction>;
+
 /**
  * Exploration technique is `online` meaning the agent will follow
  * policies, if they exist for a particular state. It will revert to a 
@@ -128,10 +132,6 @@ int main()
     std::mt19937 gen(static_cast<std::size_t>(
         std::chrono::high_resolution_clock::now()
                     .time_since_epoch().count()));
-
-    // set shortcuts to state trait and action trait
-    using state = relearn::state<grid>;
-    using action = relearn::action<direction>;
 
     // create the world and populate it randomly
     world w = populate();

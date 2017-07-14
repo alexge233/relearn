@@ -114,12 +114,16 @@ int main()
 
     // CTRL-C/SIGINT => save and exit
     if (flag) {
+    #if USING_BOOST_SERIALIZATION
         std::cout << "save & exit\r\n";
         std::ofstream ofs("blackjack.policy");
         boost::archive::text_oarchive oa(ofs);
         oa << policies;
         ofs.close();
         return 0;
+    #else
+        std::cout << "exiting...\r\n";
+    #endif
     }
 
     // at this point, we have some playing experience, which we're going to use

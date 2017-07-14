@@ -100,9 +100,6 @@ struct world
     std::unordered_set<grid> blocks;
 };
 
-using state = relearn::state<grid>;
-using action = relearn::action<direction>;
-
 /// load the gridworld from the text file
 /// boundaries are `occupied` e.g., can't move into them
 /// fire/danger blocks are marked with a reward -1

@@ -1,6 +1,5 @@
 #ifndef BLACKJACK_HPP
 #define BLACKJACK_HPP
-
 #include <iostream>
 #include <string>
 #include <deque>
@@ -9,7 +8,10 @@
 #include <ctime>
 #include <chrono>
 #include "../src/relearn.hpp"
-
+#if USING_BOOST_SERIALIZATION
+#include <boost/serialization/serialization.hpp>
+#include <boost/serialization/access.hpp>
+#endif
 /**
  * The basic Blackjack header structures:
  *  - card
@@ -42,7 +44,7 @@ struct card
                this->value == rhs.value;
 
     }
-
+#if USING_BOOST_SERIALIZATION
     template<class Archive>
     void serialize(Archive & ar, const unsigned int version)
     {
@@ -50,6 +52,7 @@ struct card
         ar & label;
         ar & value;
     }
+#endif
 };
 
 // a 52 playing card constant vector with unicode symbols :-D
@@ -151,13 +154,14 @@ struct hand
 
 private:
     std::vector<card> cards;
-
+#if USING_BOOST_SERIALIZATION
     friend class boost::serialization::access;
     template<class Archive>
     void serialize(Archive & ar, const unsigned int version)
     {
         ar & cards;
     }
+#endif
 };
 
 namespace std 

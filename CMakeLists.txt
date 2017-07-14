@@ -5,6 +5,15 @@ PROJECT(relearn)
 set (RAPP_VERSION_MAJOR 0)
 set (RAPP_VERSION_MINOR 1)
 cmake_minimum_required(VERSION 2.8)
+# set C++14
+set(CMAKE_CXX_FLAGS ${CMAKE_CXX_FLAGS} "-std=c++1y -Wall")
+add_compile_options(-std=c++1y)
+add_definitions("-std=c++1y")
+if (CMAKE_COMPILER_IS_GNUCXX)
+    set (CMAKE_CXX_STANDARD 14)
+endif()
+
+# Library paths for linux
 set(LIBRARY_PATH ${LIBRARY_PATH}
 		      /lib
 		      /usr/lib
@@ -33,12 +42,10 @@ target_link_libraries(ex_blackjack  ${Boost_LIBRARIES})
 # set output
 set(CMAKE_COLOR_MAKEFILE on)
 set(CMAKE_VERBOSE_MAKEFILE off)
+# set Release as default build type
+# you may use `-DCMAKE_BUILD_TYPE=Debug` if you wanna change this
+set(CMAKE_BUILD_TYPE Release)
 
-# set debug
-set(CMAKE_BUILD_TYPE Debug)
-
-# set C++14
-set(CMAKE_CXX_FLAGS ${CMAKE_CXX_FLAGS} "-std=c++14 -Wall")
 set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG}")
 set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -O3 -mtune=native -march=native")
 message(STATUS "CXX Flags: " ${CMAKE_CXX_FLAGS})

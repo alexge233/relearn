@@ -20,6 +20,9 @@
  * therefore if it is running for longer than a minute, feel free to CTRL-C it.
  */
 #include "gridworld_header.hpp"
+// set shortcuts to state trait and action trait
+using state = relearn::state<grid>;
+using action = relearn::action<direction>;
 
 /**
  * Exploration technique is based on Monte-Carlo, e.g.: stochastic search.
@@ -129,10 +132,6 @@ int main()
     std::mt19937 gen(static_cast<std::size_t>(
         std::chrono::high_resolution_clock::now()
                     .time_since_epoch().count()));
-
-    // set shortcuts to state trait and action trait
-    using state = relearn::state<grid>;
-    using action = relearn::action<direction>;
 
     // create the world and populate it randomly
     world w = populate();
