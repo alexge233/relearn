@@ -3,7 +3,7 @@
 #define CATCH_CONFIG_MAIN
 #include "catch.hpp"
 
-TEST_CASE("state template class test", "[state_class_test]") 
+TEST_CASE("state template class test", "[class_test]") 
 {
     auto s_x = relearn::state<int>(0); 
     auto s_y = relearn::state<int>(1., 1);
@@ -17,10 +17,11 @@ TEST_CASE("state template class test", "[state_class_test]")
     REQUIRE(s_x < s_y);
     REQUIRE(s_x.trait() < s_y.trait());
     REQUIRE(s_x.hash() == 0);
-    REQUIRE(s_y.hash()== 1);
+    REQUIRE(s_y.hash() == 1);
+    REQUIRE(s_x < s_y);
 }
 
-TEST_CASE("action template class test", "[action_class_test]")
+TEST_CASE("action template class test", "[class_test]")
 {
     auto a_x = relearn::action<float>(0);
     auto a_y = relearn::action<float>(0.5);
@@ -31,7 +32,7 @@ TEST_CASE("action template class test", "[action_class_test]")
     REQUIRE(a_x < a_y);
 }
 
-TEST_CASE("link template class test", "[link_class_test]")
+TEST_CASE("link template class test", "[class_test]")
 {
     using state  = relearn::state<int>;
     using action = relearn::action<float>;
@@ -43,7 +44,7 @@ TEST_CASE("link template class test", "[link_class_test]")
     REQUIRE(l_x < l_y);
 }
 
-SCENARIO("policy template class test", "[policy_clas_test]")
+SCENARIO("policy template class test", "[class_test]")
 {
     GIVEN("a policy memory of string states and uint actions")
     {
@@ -87,5 +88,31 @@ SCENARIO("policy template class test", "[policy_clas_test]")
                 REQUIRE(act_x_val  == 0);
             }
         }
+    }
+
+    GIVEN("two policy memories")
+    {
+        using state  = relearn::state<std::string>;
+        using action = relearn::action<unsigned int>;
+        relearn::policy<state,action> lhs, rhs;
+
+        WHEN("Q-values are updated in both and concatenated in `lhs`") {
+            lhs.update(state("hello"), action(1), 0);
+            lhs.update(state("world"), action(2), 1);
+            
+            rhs.update(state("hello"), action(1), 0);
+            rhs.update(state("cruel"), action(2), 0);
+            rhs.update(state("world"), action(3), 1);
+
+            lhs += rhs;
+
+            THEN("`lhs` must now contain `rhs` states-actions") {
+                REQUIRE(lhs.value(state("hello"), action(1)) == 0);
+                REQUIRE(lhs.value(state("cruel"), action(2)) == 0);
+                REQUIRE(lhs.value(state("world"), action(3)) == 1);
+                REQUIRE(lhs.value(state("world"), action(2)) == 1);
+            }
+        }
+
     }
 }

@@ -48,8 +48,8 @@
  * used later in policy, refers to template class `state` wrapper but because this
  * is a template-based library, you must roll out your own `state` class(es) provided
  * that it:
- *	- is hashable
- *  - is comparable
+ *	- is hashable (e.g., can be used with `std::hash` or exposes a `hash()` method
+ *  - is comparable (e.g., can be used with `operator<`)
  * Similary `action` takes the same approach.
  */
 namespace relearn 
@@ -241,6 +241,13 @@ public:
      * pair of <nullptr,0> if one doesn't exist
      */
     std::pair<std::unique_ptr<action_class>,value_type> best(state_class s_t);
+    /**
+     * @brief concatenate policies, using @param arg
+     * @warning the policy Q-values of @param arg take precedence `this` policies,
+     * meaning that if duplicates are found, `arg`'s values will be used,
+     * thereby overwritting old Q-values stored
+     */
+    void operator+=(const policy<state_class,action_class,value_type> & arg);
 private:
 #if USING_BOOST_SERIALIZATION
     friend class boost::serialization::access;
@@ -619,6 +626,27 @@ std::size_t hasher<action_serial<action_class>
     return arg.hash();
 }
 #endif
+
+template <class state_class,
+          class action_class,
+          typename value_type>
+void policy<state_class,action_class,value_type>::operator+=(const policy & arg)
+{
+#if USING_BOOST_SERIALIZATION
+    for (const auto & s_t : arg.__policies__) {
+        for (const auto & a_t : s_t.second) {
+            __policies__[static_cast<state_class>(s_t.first)]
+                        [static_cast<action_class>(a_t.first)] = a_t.second;
+        }
+    }
+#elif
+    for (const auto & s_t : arg.__policies__) {
+        for (const auto & a_t : s_t.second) {
+            __policies__[s_t][a_t] = a_t.second;
+        }
+    }
+#endif
+}
 
 template <class state_class, 
           class action_class,
