@@ -209,6 +209,10 @@ struct link
  * respect) but is instead calculated using another algorith (Q-Learning, etc.)
  *
  * Use this class in combination with an algorithm to train it (e.g., `q_learning`)
+ *
+ * If you need access to the underlying policies (std::unordered_map) then you
+ * must inherit from this class. By doing so you accept responsibility since
+ * you will have read-write access directly.
  */
 template <class state_class, 
           class action_class,
