@@ -248,7 +248,7 @@ public:
      * thereby overwritting old Q-values stored
      */
     void operator+=(const policy<state_class,action_class,value_type> & arg);
-private:
+protected:
 #if USING_BOOST_SERIALIZATION
     friend class boost::serialization::access;
     // serialize method
