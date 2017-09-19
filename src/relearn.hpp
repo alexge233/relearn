@@ -643,7 +643,7 @@ void policy<state_class,action_class,value_type>::operator+=(const policy & arg)
                         [static_cast<action_class>(a_t.first)] = a_t.second;
         }
     }
-#elif
+#else
     for (const auto & s_t : arg.__policies__) {
         for (const auto & a_t : s_t.second) {
             __policies__[s_t][a_t] = a_t.second;
