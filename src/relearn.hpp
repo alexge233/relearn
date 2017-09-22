@@ -575,7 +575,8 @@ value_type policy<state_class,action_class,value_type>::best_value(state_class s
     auto it = std::max_element(__policies__[s_t].begin(), 
                                __policies__[s_t].end(),
               [&](const auto &lhs, const auto &rhs) { return lhs.second < rhs.second; });
-    return it != __policies__[s_t].end() ? it->second : 0.;
+    return it != __policies__[s_t].end() ? it->second : 
+                                           std::numeric_limits<value_type>::quiet_NaN();
 }
 
 template <class state_class,
@@ -602,7 +603,7 @@ std::pair<std::unique_ptr<action_class>,value_type>
               [&](const auto &lhs, const auto &rhs) { return lhs.second < rhs.second; });
     return it != __policies__[s_t].end() ?
            std::make_pair(std::make_unique<action_class>(it->first), it->second) :
-           std::make_pair(nullptr, 0);
+           std::make_pair(nullptr, std::numeric_limits<value_type>::quiet_NaN());
 }
 
 #if USING_BOOST_SERIALIZATION
@@ -668,6 +669,7 @@ typename q_learning<state_class,action_class,markov_chain,value_type>::triplet
         auto next   = episode[index + 1];
         auto q_next = policy_map.best_value(next.state);
         auto r      = step.state.reward();
+        if (std::isnan(q_next)) q_next = 0.;
         return std::make_tuple(step.state, step.action, 
                                q + alpha * (r + (gamma * q_next) - q));
     }
@@ -717,6 +719,7 @@ typename q_probabilistic<state_class,action_class,markov_chain,value_type>::trip
         auto next   = episode[index + 1];
         auto q_next = policy_map.best_value(next.state);
         auto r      = step.state.reward();
+        if (std::isnan(q_next)) q_next = 0.;
         // transition probability (frequency of transition / total observations)
         value_type prob = (__memory__[step.state][step.action][next.state]) /
                           (__memory__[step.state][step.action].size());
@@ -728,7 +731,6 @@ typename q_probabilistic<state_class,action_class,markov_chain,value_type>::trip
     else {
         return std::make_tuple(step.state, step.action, step.state.reward());
     }
-
 }
 
 template <class state_class, 
