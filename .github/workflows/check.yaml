@@ -10,6 +10,9 @@ jobs:
     steps:
       - uses: actions/checkout@v2
 
+      - name: install boost
+        run: sudo apt install libboost-all-dev
+
       - name: build
         run: |
           mkdir build
