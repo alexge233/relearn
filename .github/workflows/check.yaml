@@ -1,0 +1,22 @@
+on:
+  push:
+  pull_request:
+
+name: check
+
+jobs:
+  check:
+    runs-on: ubuntu-18.04
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: install boost
+        run: sudo apt install libboost-all-dev
+
+      - name: build
+        run: |
+          mkdir build
+          cd build
+          cmake ..
+          make
+
