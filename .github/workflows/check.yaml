@@ -20,3 +20,11 @@ jobs:
           cmake ..
           make
 
+      - name: run example 1
+        run: ./ex_gridworld_online
+
+      - name: run example 2
+        run: ./ex_gridworld_offline
+
+      - name: run example 3
+        run: ./ex_blackjack
