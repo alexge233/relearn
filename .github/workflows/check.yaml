@@ -21,10 +21,19 @@ jobs:
           make
 
       - name: run example 1
-        run: ./ex_gridworld_online
+        run: |
+          cd build 
+          ./ex_gridworld_online 
+          cd ..
 
       - name: run example 2
-        run: ./ex_gridworld_offline
+        run: |
+          cd build 
+          ./ex_gridworld_offline
+          cd ..
 
       - name: run example 3
-        run: ./ex_blackjack
+        run: |
+          cd build 
+          ./ex_blackjack
+          cd ..
