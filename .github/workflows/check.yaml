@@ -26,11 +26,11 @@ jobs:
           ./ex_gridworld_online 
           cd ..
 
-      - name: run example 2
-        run: |
-          cd build 
-          ./ex_gridworld_offline
-          cd ..
+      #- name: run example 2
+      #  run: |
+      #    cd build 
+      #    ./ex_gridworld_offline
+      #    cd ..
 
       #- name: run example 3: requires user input to stop
       #  run: |
