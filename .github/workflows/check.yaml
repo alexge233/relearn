@@ -6,7 +6,7 @@ name: check
 
 jobs:
   check:
-    runs-on: ubuntu-18.04
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
 
@@ -20,3 +20,20 @@ jobs:
           cmake ..
           make
 
+      - name: run example 1
+        run: |
+          cd build 
+          ./ex_gridworld_online 
+          cd ..
+
+      #- name: run example 2
+      #  run: |
+      #    cd build 
+      #    ./ex_gridworld_offline
+      #    cd ..
+
+      #- name: run example 3: requires user input to stop
+      #  run: |
+      #    cd build 
+      #    ./ex_blackjack
+      #    cd ..

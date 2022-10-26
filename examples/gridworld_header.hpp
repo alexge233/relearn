@@ -106,6 +106,7 @@ struct world
 world populate()
 {
     std::ifstream infile("../examples/gridworld.txt");
+    assert(infile.good()); // Fails if the file cannot be found
     world environment = {};
     std::string line;
     while (std::getline(infile, line))
@@ -130,6 +131,7 @@ struct rand_direction
                                          world gridworld, 
                                          grid current)
     {
+        assert(!gridworld.blocks.empty()); // Fails if world is empty
         std::uniform_int_distribution<unsigned int> dist(0, 3);
         unsigned int x = current.x;
         unsigned int y = current.y;
