@@ -1,10 +1,11 @@
 # @date August 2016
 # @author Alex Giokas <alexge233@hotmail.com>
 # 
+# CMake >= 4.0 rejects compatibility with versions older than 3.5
+cmake_minimum_required(VERSION 3.5)
 PROJECT(relearn)
 set (RAPP_VERSION_MAJOR 0)
 set (RAPP_VERSION_MINOR 1)
-cmake_minimum_required(VERSION 2.8)
 # set C++14
 set(CMAKE_CXX_FLAGS ${CMAKE_CXX_FLAGS} "-std=c++1y -Wall")
 add_compile_options(-std=c++1y)
@@ -57,10 +58,15 @@ if (BUILD_TESTS)
     if (EXISTS "${PROJECT_SOURCE_DIR}/tests/catch.hpp")
         message(STATUS "catch.hpp exists, not downloading again - make sure it is up to date!")
     else()
-        set(wget_command "wget")
-        set(wget_arg "https://raw.githubusercontent.com/philsquared/Catch/master/single_include/catch.hpp")
+        # Catch2 v3 is no longer a single header, so pin the last v2 release
+        set(catch_url "https://github.com/catchorg/Catch2/releases/download/v2.13.10/catch.hpp")
         message(STATUS "Fetching catch.hpp single header")
-        execute_process(COMMAND ${wget_command} ${wget_arg} WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}/tests/)
+        file(DOWNLOAD ${catch_url} "${PROJECT_SOURCE_DIR}/tests/catch.hpp" STATUS catch_status)
+        list(GET catch_status 0 catch_error)
+        if (NOT catch_error EQUAL 0)
+            file(REMOVE "${PROJECT_SOURCE_DIR}/tests/catch.hpp")
+            message(FATAL_ERROR "Failed to download catch.hpp: ${catch_status}")
+        endif()
     endif()
 
     enable_testing()
@@ -68,6 +74,8 @@ if (BUILD_TESTS)
     add_test(unit_test test_classes)
     add_executable(test_logic tests/logic_test.cpp)
     add_test(logic_test test_logic)
+    add_executable(test_regression tests/regression_test.cpp)
+    add_test(regression_test test_regression)
 
     # if building tests & testing serialization
     if (USING_BOOST_SERIALIZATION)
