@@ -41,6 +41,19 @@ Therefore, the update rule for probabilistic systems is:
 
 ![Q(s_t,a_t) = E(r_{s_{t+1}}) + gamma * Σ maxQ(s_{t+1},a_t)P(s_t,a_t)(s_{t+1})](https://github.com/alexge233/relearn/blob/master/images/q_probabilistic.png?raw=true)
 
+### Reward convention
+
+In an episode, each link `(s_t, a_t)` carries in `s_t.reward()` the reward received *after* taking `a_t` in `s_t`.
+This is the `r_t` above, which Sutton & Barto (2nd ed.) write as `R_{t+1}`: the same reward, a different index.
+The last link of an episode is the final decision, and its state holds the final reward.
+With this convention both learners converge to the expected discounted return
+
+    Q(s,a) = E[ r_t + γ r_{t+1} + γ² r_{t+2} + ... | s_t = s, a_t = a ]
+
+which `tests/convergence_test.cpp` verifies against a Monte Carlo estimate on small stochastic MDPs.
+If you append an extra link after the final decision (e.g., a terminal state with a dummy action),
+every reward is discounted by one more factor of γ: the learnt policy is the same, but the Q-values are scaled.
+
 ## Implementation in C++
 
 The template class `policy` allows the use of your own `state` and `action` classes,

@@ -76,6 +76,8 @@ if (BUILD_TESTS)
     add_test(logic_test test_logic)
     add_executable(test_regression tests/regression_test.cpp)
     add_test(regression_test test_regression)
+    add_executable(test_convergence tests/convergence_test.cpp)
+    add_test(convergence_test test_convergence)
 
     # if building tests & testing serialization
     if (USING_BOOST_SERIALIZATION)
