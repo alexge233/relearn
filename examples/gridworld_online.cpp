@@ -41,6 +41,10 @@ using action = relearn::action<direction>;
  *
  * Every step is recorded in the episode, whether it followed the policy or not,
  * with the reward of the block the agent moved into.
+ *
+ * An episode cut short by the step limit is returned empty: its last move did
+ * not end the game, but `q_learning` treats the last link of an episode as
+ * final, so training on it would teach wrong values.
  * For this type of approach to work, in between episodes, the agent must
  * be rewarded and re-trained.
  */
@@ -84,10 +88,11 @@ std::deque<relearn::link<S,A>> explore(const world & w,
         std::cout << "coord: " << curr.x << "," 
                   << curr.y << " = " << curr.R << std::endl;
         if (terminal(curr)) {
-            break;
+            return episode;
         }
     }
-    return episode;
+    std::cout << "episode cut short after " << max_steps << " steps: discarded" << std::endl;
+    return {};
 }
 
 /**
@@ -119,6 +124,9 @@ int main()
     // next time we explore we can avoid bad actions !
     while (!stop) {
         auto episode = explore<state,action>(w, gen, policies, start);
+        if (episode.empty()) {
+            continue;
+        }
         // use Q-learning algorithm to update the episode's policies
         auto learner = relearn::q_learning<state,action>{0.9, 0.9};
         for (int k = 0; k < 10; k++) {
