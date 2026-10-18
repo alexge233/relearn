@@ -37,8 +37,10 @@ using action = relearn::action<direction>;
  * Exploration technique is `online` meaning the agent will follow
  * policies, if they exist for a particular state. It will revert to a 
  * stochastic (random) approach only if policies don't exist, or if those
- * policies have a negative value.
+ * policies have a negative value, or if they lead into a wall.
  *
+ * Every step is recorded in the episode, whether it followed the policy or not,
+ * with the reward of the block the agent moved into.
  * For this type of approach to work, in between episodes, the agent must
  * be rewarded and re-trained.
  */
@@ -46,73 +48,45 @@ template <typename S,
           typename A>
 std::deque<relearn::link<S,A>> explore(const world & w,
                                        std::mt19937 & gen,
-                                       relearn::policy<S,A> & policy_map,
+                                       const relearn::policy<S,A> & policy_map,
                                        grid start)
 {
-    // explore until we discover a negative or positive reward!
-    bool stop = false;
+    // an episode that wanders for too long without ending is cut short
+    const unsigned int max_steps = 1000;
     // the markov_chain/episode we populate
     std::deque<relearn::link<S,A>> episode;
 
-    // S_t (state now) is initially the root state
     std::cout << "starting exploration from: " << start.x 
               << "," << start.y << std::endl;
     grid curr = start;
-    auto state_now = state(curr.R, curr);
 
-    // explore while if no policy is found
-    // and keep populating the episode with states and actions
-    // if there exists a policy, then stay on it!
-    while (!stop) 
+    for (unsigned int step = 0; step < max_steps; step++)
     {
-        auto pair   = policy_map.best(state_now);
+        unsigned int dir = 0;
+        const grid * next = nullptr;
+        // stay on policy if there is a positive one that does not hit a wall
+        auto pair = policy_map.best(S(curr));
         if (pair.first && pair.second > 0) {
-            switch (pair.first->trait().dir) {
-                case 0 : curr.y--;
-                         break;
-                case 1 : curr.x++;
-                         break;
-                case 2 : curr.y++;
-                         break;
-                case 3 : curr.x--;
-                         break;
-            }
-            auto it = w.blocks.find(curr);
-            if (it != w.blocks.end()) {
-                curr = *it;
-                auto state_next = S(curr.R, curr);
-                state_now = state_next;
-                std::cout << "coord: " << curr.x << "," 
-                          << curr.y << " = " << curr.R << std::endl;
-
-                if (curr.R == -1.0 || curr.R == 1.0) {
-                    break;
-                }
-            }
+            dir  = pair.first->trait().dir;
+            next = w.move(curr, dir);
         }
-        else {
-            // randomly decide on next grid - we map numbers to a direction
-            auto result = rand_direction()(gen, w, curr);
-            // find the reward at the current coordinates
-            curr = result.second;
-            // create the action using direction as trait
-            auto action_now = A(result.first);
-            // add the state to the episode
-            episode.emplace_back(relearn::link<S,A>{state_now, action_now});
-            // update current state to next state
-            state_now = state(curr.R, curr);
-            std::cout << "coord: " << curr.x << "," 
-                      << curr.y << " = " << curr.R << std::endl;
-
-            if (curr.R == -1 || curr.R == 1) {
-                break;
-            }
+        // otherwise randomly decide on next grid
+        grid random_block;
+        if (!next) {
+            auto result  = rand_direction()(gen, w, curr);
+            dir          = result.first.dir;
+            random_block = result.second;
+            next         = &random_block;
+        }
+        // record (s_t, a_t) with the reward of the block we moved into
+        episode.emplace_back(relearn::link<S,A>{S(next->R, curr), A(direction{dir})});
+        curr = *next;
+        std::cout << "coord: " << curr.x << "," 
+                  << curr.y << " = " << curr.R << std::endl;
+        if (terminal(curr)) {
+            break;
         }
     }
-    // Add the terminal state last
-    // note: we don't have an empty action - we could use pointers instead...
-    auto action_empty = action(direction({100}));
-    episode.emplace_back(relearn::link<state,action>{state_now, action_empty});
     return episode;
 }
 
@@ -150,7 +124,7 @@ int main()
         for (int k = 0; k < 10; k++) {
             learner(episode, policies);
         }
-        stop = (episode.back().state.reward() == 1 ? true : false);
+        stop = (!episode.empty() && episode.back().state.reward() == 1);
     }
     //
     // The catch here is that although we explore and stay on policy at the same
