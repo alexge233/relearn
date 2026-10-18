@@ -51,8 +51,11 @@ With this convention both learners converge to the expected discounted return
     Q(s,a) = E[ r_t + γ r_{t+1} + γ² r_{t+2} + ... | s_t = s, a_t = a ]
 
 which `tests/convergence_test.cpp` verifies against a Monte Carlo estimate on small stochastic MDPs.
-If you append an extra link after the final decision (e.g., a terminal state with a dummy action),
-every reward is discounted by one more factor of γ: the learnt policy is the same, but the Q-values are scaled.
+Put each reward on the link of the decision that earned it. Placing a reward on a *later* link delays it
+by one step and changes the values: for example, putting the final reward on an extra terminal-state link
+with a dummy action (as the gridworld example does) instead of on the last decision. When the only reward is
+the final one, this scales the Q-values by γ and leaves the policy unchanged, but in general delaying rewards
+changes both the values and the policy. Appending a link with zero reward changes nothing.
 
 ## Implementation in C++
 

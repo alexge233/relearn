@@ -297,8 +297,11 @@ protected:
  *
  * Q(s_t,a_t) = Q(s_t,a_t) + α * (r_t - Q(s_t, a_t))
  *
- * In stochastic environments a decaying α (e.g., α = 1/k for episode k) makes
- * the Q-values converge to the expected discounted return.
+ * In stochastic environments the Q-values converge to the expected discounted
+ * return when, for every (s,a) pair, the learning rates used on its visits
+ * satisfy Σ α = ∞ and Σ α² < ∞, e.g., α = 1/n with n the visits of that pair.
+ * `alpha` is shared by all pairs, so a global schedule such as α = 1/k for
+ * episode k only meets this if every pair keeps being visited regularly.
  */
 template <class state_class, 
           class action_class,
@@ -332,7 +335,7 @@ struct q_learning
  * received after taking a_t in s_t.
  *
  * The algorithm remembers, for every observed (s_t, a_t), how many times it was
- * taken, the rewards received, and how often each next state s_{t+1} followed.
+ * taken, the mean reward received, and how often each next state s_{t+1} followed.
  * From these it estimates the transition probability P(s_{t+1} | s_t, a_t) and
  * the expected reward E[r_t | s_t, a_t], and sets:
  *
@@ -375,7 +378,7 @@ private:
     struct statistics
     {
         std::size_t visits = 0;     // times (s_t, a_t) was taken
-        value_type reward_sum = 0;  // sum of the rewards r_t received
+        value_type reward_mean = 0; // running mean of the rewards r_t received
         frequency next;             // how often each s_{t+1} followed
     };
     // statistics of each action a_t taken in a state
@@ -745,7 +748,7 @@ typename q_probabilistic<state_class,action_class,markov_chain,value_type>::trip
     }
     const auto visits = static_cast<value_type>(stats.visits);
     // expected reward E[r | s_t, a_t]
-    value_type q = stats.reward_sum / visits;
+    value_type q = stats.reward_mean;
     // plus the discounted value of every observed next state, weighted by
     // P(s_{t+1} | s_t, a_t); episodes that ended after (s_t, a_t) contribute 0
     for (const auto & item : stats.next) {
@@ -768,7 +771,9 @@ void q_probabilistic<state_class,action_class,markov_chain,value_type
     for (unsigned int i = 0; i < episode.size(); i++) {
         auto & stats = __memory__[episode[i].state][episode[i].action];
         stats.visits += 1;
-        stats.reward_sum += episode[i].state.reward();
+        // running mean rather than a sum: a float sum stops growing at 2^24 visits
+        value_type r = episode[i].state.reward();
+        stats.reward_mean += (r - stats.reward_mean) / static_cast<value_type>(stats.visits);
         if (i + 1 < episode.size()) {
             stats.next[episode[i + 1].state] += 1;
         }
