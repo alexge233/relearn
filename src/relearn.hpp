@@ -1094,10 +1094,10 @@ void q_learning<state_class,action_class,markov_chain,value_type
     const std::size_t learnt = (terminated || episode.size() == 0) ? episode.size() 
                                                                : episode.size() - 1;
     for (std::size_t i = 0; i < learnt; i++) {
-        auto triplet = q_value(episode, i, policy_map);
-        policy_map.update(std::get<0>(triplet), 
-                          std::get<1>(triplet), 
-                          std::get<2>(triplet));
+        auto update = q_value(episode, i, policy_map);
+        policy_map.update(std::get<0>(update), 
+                          std::get<1>(update), 
+                          std::get<2>(update));
     }
 }
 
@@ -1162,10 +1162,10 @@ void q_probabilistic<state_class,action_class,markov_chain,value_type
         }
     }
     for (std::size_t i = 0; i < learnt; i++) {
-        auto triplet = q_value(episode, i, policy_map);
-        policy_map.update(std::get<0>(triplet), 
-                          std::get<1>(triplet), 
-                          std::get<2>(triplet));
+        auto update = q_value(episode, i, policy_map);
+        policy_map.update(std::get<0>(update), 
+                          std::get<1>(update), 
+                          std::get<2>(update));
     }
 }
 template <class state_class, 
@@ -1212,10 +1212,10 @@ void sarsa<state_class,action_class,markov_chain,value_type
     const std::size_t learnt = (terminated || episode.size() == 0) ? episode.size() 
                                                                : episode.size() - 1;
     for (std::size_t i = 0; i < learnt; i++) {
-        auto triplet = q_value(episode, i, policy_map);
-        policy_map.update(std::get<0>(triplet), 
-                          std::get<1>(triplet), 
-                          std::get<2>(triplet));
+        auto update = q_value(episode, i, policy_map);
+        policy_map.update(std::get<0>(update), 
+                          std::get<1>(update), 
+                          std::get<2>(update));
     }
 }
 
@@ -1284,10 +1284,10 @@ void expected_sarsa<state_class,action_class,markov_chain,value_type
     const std::size_t learnt = (terminated || episode.size() == 0) ? episode.size() 
                                                                : episode.size() - 1;
     for (std::size_t i = 0; i < learnt; i++) {
-        auto triplet = q_value(episode, i, policy_map);
-        policy_map.update(std::get<0>(triplet), 
-                          std::get<1>(triplet), 
-                          std::get<2>(triplet));
+        auto update = q_value(episode, i, policy_map);
+        policy_map.update(std::get<0>(update), 
+                          std::get<1>(update), 
+                          std::get<2>(update));
     }
 }
 template <typename value_type>
