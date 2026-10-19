@@ -14,6 +14,9 @@
 #include "../examples/games/gamblers_problem.hpp"
 #include "../examples/games/dyna_maze.hpp"
 #include "../examples/games/tic_tac_toe.hpp"
+#include "../examples/games/cart_pole.hpp"
+#include "../examples/games/mountain_car.hpp"
+#include "../examples/games/discretised.hpp"
 #include <map>
 #include <queue>
 #include "solvers.hpp"
@@ -773,4 +776,150 @@ TEST_CASE("tic-tac-toe: q_learning beats a random opponent and draws a perfect o
         auto wdl = results(game, memory, 1, prng);    // the perfect opponent is deterministic
         REQUIRE(wdl[1] == 1);         // a draw: the best possible result
     }
+}
+
+// ------------------------------------------------------------------ cart-pole
+
+TEST_CASE("cart-pole: physics", "[games][cart_pole]")
+{
+    games::cart_pole game(1);
+    for (int i = 0; i < 100; i++) {
+        for (double v : game.reset()) {
+            REQUIRE(v >= -0.05);
+            REQUIRE(v <= 0.05);
+        }
+    }
+    // one push to the right from rest, worked out by hand from the equations:
+    // temp = 10 / 1.1, angular acc. = -temp / (0.5 (4/3 - 0.1 / 1.1)) = -14.634146,
+    // cart acc. = temp + 0.05 * 14.634146 / 1.1 = 9.756098, then one Euler step of 0.02 s
+    game.place({0, 0, 0, 0});
+    auto out = game.step(games::cart_pole::push_right);
+    REQUIRE(out.next[0] == Approx(0.0));
+    REQUIRE(out.next[1] == Approx(0.195122).epsilon(1e-5));
+    REQUIRE(out.next[2] == Approx(0.0));
+    REQUIRE(out.next[3] == Approx(-0.292683).epsilon(1e-5));
+    REQUIRE(out.reward == 1);
+    REQUIRE(!out.terminated);
+    // pushing left is the mirror image
+    game.place({0, 0, 0, 0});
+    out = game.step(games::cart_pole::push_left);
+    REQUIRE(out.next[1] == Approx(-0.195122).epsilon(1e-5));
+    REQUIRE(out.next[3] == Approx(0.292683).epsilon(1e-5));
+    // leaning past 12 degrees, or leaving the track, ends the episode (still worth +1)
+    const double angle = games::cart_pole::angle_limit;
+    game.place({0, 0, angle - 0.001, 1.0});
+    out = game.step(games::cart_pole::push_right);
+    REQUIRE(out.terminated);
+    REQUIRE(out.reward == 1);
+    game.place({2.39, 1.0, 0, 0});
+    REQUIRE(game.step(games::cart_pole::push_right).terminated);
+}
+
+TEST_CASE("cart-pole: q_learning on a discretised state learns to balance longer", "[games][cart_pole]")
+{
+    using game_type = games::discretised<games::cart_pole>;
+    using types = games::types<game_type>;
+    // boxes after Barto, Sutton & Anderson: position, velocity, angle, angular velocity
+    game_type game(games::cart_pole(1), {{-0.8, 0.8, 3}, {-0.5, 0.5, 3}, {-0.21, 0.21, 6}, {-0.87, 0.87, 3}});
+    REQUIRE(game.cells() == 162u);
+    std::mt19937 prng(1);
+    types::policy memory;
+    relearn::q_learning<types::state, types::action> learner;
+    learner.alpha = 0.1;
+    learner.gamma = 0.99;
+    double first = 0, last = 0;
+    for (int i = 0; i < 10000; i++) {
+        auto r = games::play(game, [&](const unsigned int & s, const std::vector<unsigned int> & legal) {
+            return games::epsilon_greedy<game_type>(memory, s, legal, 0.05, prng);
+        }, game.inner().step_limit());
+        learner(r.episode, memory, r.terminated);
+        if (i < 1000) first += r.steps / 1000.0;
+        if (i >= 9000) last += r.steps / 1000.0;
+    }
+    INFO("average steps: first 1000 episodes " << first << ", last 1000 " << last);
+    REQUIRE(first < 100);
+    REQUIRE(last > 150);
+}
+
+// --------------------------------------------------------------- mountain car
+
+TEST_CASE("mountain car: physics", "[games][mountain_car]")
+{
+    games::mountain_car car(1);
+    for (int i = 0; i < 100; i++) {
+        auto s = car.reset();
+        REQUIRE(s[0] >= -0.6);
+        REQUIRE(s[0] <= -0.4);
+        REQUIRE(s[1] == 0);
+    }
+    // coasting from rest at -0.5: velocity = cos(-1.5) * -0.0025
+    car.place({-0.5, 0});
+    auto out = car.step(games::mountain_car::coast);
+    REQUIRE(out.next[1] == Approx(std::cos(-1.5) * -0.0025));
+    REQUIRE(out.next[0] == Approx(-0.5 + std::cos(-1.5) * -0.0025));
+    REQUIRE(out.reward == -1);
+    // the car stops against the left wall
+    car.place({-1.19, -0.05});
+    out = car.step(games::mountain_car::accelerate_left);
+    REQUIRE(out.next[0] == Approx(-1.2));
+    REQUIRE(out.next[1] == 0);
+    // the speed is limited to 0.07 (at -0.8 gravity and engine both speed the car up)
+    car.place({-0.8, 0.07});
+    REQUIRE(car.step(games::mountain_car::accelerate_right).next[1] == Approx(0.07));
+    // reaching 0.5 ends the episode
+    car.place({0.49, 0.05});
+    REQUIRE(car.step(games::mountain_car::coast).terminated);
+    // the engine alone cannot climb the hill, but rocking back and forth
+    // (accelerating in the direction of motion) reaches the flag in time
+    for (int i = 0; i < 100; i++) {
+        auto s = car.reset();
+        bool reached = false;
+        for (std::size_t t = 0; t < car.step_limit() && !reached; t++) {
+            auto o = car.step(s[1] < 0 ? games::mountain_car::accelerate_left
+                                       : games::mountain_car::accelerate_right);
+            s = o.next;
+            reached = o.terminated;
+        }
+        REQUIRE(reached);
+    }
+}
+
+TEST_CASE("mountain car: q_learning on a discretised state learns to reach the flag", "[games][mountain_car]")
+{
+    using game_type = games::discretised<games::mountain_car>;
+    using types = games::types<game_type>;
+    game_type game(games::mountain_car(1), {{-1.2, 0.6, 20}, {-0.07, 0.07, 20}});
+    std::mt19937 prng(1);
+    types::policy memory;
+    relearn::q_learning<types::state, types::action> learner;
+    learner.alpha = 0.1;
+    learner.gamma = 1.0;
+    double last = 0;
+    for (int i = 0; i < 5000; i++) {
+        // greedy: values start at 0 and every step costs -1, so untried moves look
+        // best and the agent explores without random moves (optimistic start)
+        auto r = games::play(game, [&](const unsigned int & s, const std::vector<unsigned int> & legal) {
+            return games::greedy<game_type>(memory, s, legal, prng);
+        }, game.inner().step_limit());
+        learner(r.episode, memory, r.terminated);
+        if (i >= 4500) last += r.total_reward / 500;
+    }
+    INFO("average return of the last 500 episodes " << last);
+    REQUIRE(last > -175);       // -200 means the flag is never reached
+}
+
+TEST_CASE("discretised: bins and cells", "[games][discretised]")
+{
+    games::bins b{-1.0, 1.0, 4};
+    REQUIRE(b.of(-5) == 0u);
+    REQUIRE(b.of(-0.9) == 0u);
+    REQUIRE(b.of(-0.4) == 1u);
+    REQUIRE(b.of(0.1) == 2u);
+    REQUIRE(b.of(0.99) == 3u);
+    REQUIRE(b.of(7) == 3u);
+    games::discretised<games::mountain_car> game(games::mountain_car(), {{-1.2, 0.6, 3}, {-0.07, 0.07, 2}});
+    REQUIRE(game.cells() == 6u);
+    REQUIRE(game.cell({-1.2, -0.07}) == 0u);
+    REQUIRE(game.cell({-1.2, 0.07}) == 1u);
+    REQUIRE(game.cell({0.6, 0.07}) == 5u);
 }
