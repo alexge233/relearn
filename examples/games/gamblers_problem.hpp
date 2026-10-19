@@ -19,37 +19,66 @@
 
 namespace games
 {
+/**
+ * @class gamblers_problem
+ * @brief bet on coin flips until the capital reaches the goal, or runs out
+ */
 class gamblers_problem
 {
 public:
-    using state_type  = unsigned int;    // capital
-    using action_type = unsigned int;    // stake
+    /// a state is the capital
+    using state_type  = unsigned int;
+    /// an action is the stake
+    using action_type = unsigned int;
 
-    /// @param start_capital 0 starts each episode with a random capital
+    /**
+     * @brief create the game
+     * @param p_heads is the probability of heads, which wins the stake
+     * @param start_capital is the capital each episode starts with;
+     *        0 starts each episode with a random capital
+     * @param goal is the capital to reach
+     * @param seed seeds the coin and the random starting capital
+     */
     explicit gamblers_problem(double p_heads = 0.4,
                               unsigned int start_capital = 0,
                               unsigned int goal = 100,
                               unsigned int seed = 0)
-    : p_(p_heads), start_(start_capital), goal_(goal), prng_(seed)
+    : p_(p_heads),
+      start_(start_capital),
+      goal_(goal),
+      prng_(seed)
     {}
 
-    unsigned int goal() const { return goal_; }
-    double p_heads() const { return p_; }
+    /// @return the capital to reach
+    unsigned int goal() const
+    {
+        return goal_;
+    }
 
+    /// @return the probability of heads
+    double p_heads() const
+    {
+        return p_;
+    }
+
+    /// @brief start a new episode @return the starting capital
     state_type reset()
     {
         if (start_ > 0) {
             capital_ = start_;
         }
         else {
+            // a random capital, so that every capital gets visited
             std::uniform_int_distribution<unsigned int> any(1, goal_ - 1);
             capital_ = any(prng_);
         }
         return capital_;
     }
 
+    /// @brief bet @param stake on a coin flip @return the capital reached, the reward and whether the game ended
     step_result<state_type> step(const action_type & stake)
     {
+        // heads wins the stake, tails loses it
         std::bernoulli_distribution heads(p_);
         if (heads(prng_)) {
             capital_ += stake;
@@ -57,6 +86,7 @@ public:
         else {
             capital_ -= stake;
         }
+        // reaching the goal is worth +1; the game ends at the goal or when the money runs out
         step_result<state_type> out;
         out.next = capital_;
         out.reward = capital_ >= goal_ ? 1 : 0;
@@ -64,6 +94,7 @@ public:
         return out;
     }
 
+    /// @return the legal stakes for @param capital: 1 ... min(capital, goal - capital)
     std::vector<action_type> actions(const state_type & capital) const
     {
         std::vector<action_type> stakes;
@@ -74,10 +105,15 @@ public:
     }
 
 private:
+    // probability of heads
     double p_;
+    // starting capital, 0 for a random one
     unsigned int start_;
+    // the capital to reach
     unsigned int goal_;
+    // the coin, and the random starting capital
     std::mt19937 prng_;
+    // the current capital
     unsigned int capital_ = 0;
 };
 } // namespace games

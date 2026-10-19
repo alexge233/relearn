@@ -24,26 +24,45 @@
 
 namespace games
 {
+/**
+ * @class mountain_car
+ * @brief drive an underpowered car out of a valley, by rocking it back and forth
+ */
 class mountain_car
 {
 public:
-    using state_type  = std::array<double, 2>;    // position, velocity
+    /// a state is the position and the velocity of the car
+    using state_type  = std::array<double, 2>;
+    /// an action is to accelerate left, coast, or accelerate right
     using action_type = unsigned int;
-    enum : action_type { accelerate_left = 0, coast = 1, accelerate_right = 2 };
+    /// the three actions
+    enum : action_type
+    {
+        accelerate_left  = 0,
+        coast            = 1,
+        accelerate_right = 2
+    };
 
-    static constexpr double min_position = -1.2;
-    static constexpr double max_position = 0.6;
-    static constexpr double max_speed = 0.07;
+    // the limits and physical constants of Gymnasium's MountainCar-v0
+    static constexpr double min_position  = -1.2;
+    static constexpr double max_position  = 0.6;
+    static constexpr double max_speed     = 0.07;
     static constexpr double goal_position = 0.5;
-    static constexpr double force = 0.001;
-    static constexpr double gravity = 0.0025;
+    static constexpr double force         = 0.001;
+    static constexpr double gravity       = 0.0025;
 
+    /// @brief create the game @param seed seeds the random starting position
     explicit mountain_car(unsigned int seed = 0)
     : prng_(seed)
     {}
 
-    std::size_t step_limit() const { return 200; }
+    /// @return Gymnasium's step limit, after which an episode is cut short
+    std::size_t step_limit() const
+    {
+        return 200;
+    }
 
+    /// @brief start a new episode @return a state at rest, somewhere near the bottom of the valley
     state_type reset()
     {
         std::uniform_real_distribution<double> start(-0.6, -0.4);
@@ -51,24 +70,35 @@ public:
         return s_;
     }
 
-    /// set the state to @param s (for tests)
-    void place(const state_type & s) { s_ = s; }
+    /// @brief set the state to @param s (for tests)
+    void place(const state_type & s)
+    {
+        s_ = s;
+    }
 
+    /// @brief drive with action @param a for one step
+    /// @return the state reached, the reward and whether the car reached the flag
     step_result<state_type> step(const action_type & a)
     {
         // local copies: std::min/max take references, which C++14 static
         // constexpr members cannot bind to without a separate definition
-        const double speed_limit = max_speed, left_end = min_position, right_end = max_position;
-        double position = s_[0], velocity = s_[1];
+        const double speed_limit = max_speed;
+        const double left_end    = min_position;
+        const double right_end   = max_position;
+        double position = s_[0];
+        double velocity = s_[1];
+        // the engine pushes by (a - 1) * force, and gravity pulls down the slope
         velocity += (static_cast<double>(a) - 1.0) * force + std::cos(3 * position) * (-gravity);
         velocity = std::max(-speed_limit, std::min(speed_limit, velocity));
         position += velocity;
         position = std::max(left_end, std::min(right_end, position));
+        // the car stops against the left wall
         if (position == left_end && velocity < 0) {
-            velocity = 0;                       // the car stops against the left wall
+            velocity = 0;
         }
         s_ = {position, velocity};
 
+        // every step costs -1; the episode ends at the flag
         step_result<state_type> out;
         out.next = s_;
         out.reward = -1;
@@ -76,13 +106,16 @@ public:
         return out;
     }
 
+    /// @return the legal actions: all three, in every state
     std::vector<action_type> actions(const state_type &) const
     {
         return {accelerate_left, coast, accelerate_right};
     }
 
 private:
+    // the random starting position
     std::mt19937 prng_;
+    // the current state
     state_type s_{};
 };
 } // namespace games
