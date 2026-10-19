@@ -9,7 +9,8 @@
  *    Dyna-Q+ finds the new way quickly; Dyna-Q, whose model still believes in the
  *    old way, takes much longer.
  * 3. Figure 8.5: in the shortcut maze a shorter way opens after 3000 moves.
- *    Dyna-Q never finds it, since its model says the old way works fine;
+ *    Dyna-Q almost never finds it (only by chance, whilst exploring), since its model
+ *    says the old way works fine;
  *    Dyna-Q+'s bonus sends it to check the moves it has not made for a long time.
  *
  * The program succeeds if planning learns the maze in fewer episodes, and if
