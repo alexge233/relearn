@@ -4,6 +4,7 @@
 #include "../examples/games/game.hpp"
 #include "../examples/games/cliff_walking.hpp"
 #include <cmath>
+#include <limits>
 #include <string>
 #include "solvers.hpp"
 #define CATCH_CONFIG_MAIN
@@ -172,7 +173,8 @@ corridor_types::policy learn_corridor(learner_type & learner,
  * @param memory is the learnt policy
  * @param m is the exact model
  * @param v are the exact state values the action values are computed from
- * @return the largest |Q(s,a) - exact Q(s,a)| over the cells 0 ... 3 and both moves
+ * @return the largest |Q(s,a) - exact Q(s,a)| over the cells 0 ... 3 and both moves,
+ *         or infinity if a learnt value is not finite
  */
 double worst_error(const corridor_types::policy & memory,
                    const solvers::tabular & m,
@@ -182,6 +184,10 @@ double worst_error(const corridor_types::policy & memory,
     for (int s = 0; s < 4; s++) {
         for (unsigned int a = 0; a < 2; a++) {
             double learnt = memory.value(corridor_types::state(s), corridor_types::action(a));
+            // a value that is not a number never converges: std::max would skip it
+            if (!std::isfinite(learnt)) {
+                return std::numeric_limits<double>::infinity();
+            }
             worst = std::max(worst, std::fabs(learnt - m.q(v, s, static_cast<int>(a))));
         }
     }

@@ -63,7 +63,7 @@ void prepare(relearn::expected_sarsa<types::state,types::action> & learner,
 }
 
 /**
- * @brief draw the grid, marking with `*` the cells the greedy policy visits
+ * @brief draw the grid, marking with `*` the cells the greedy policy visits in up to 100 moves
  * @param memory is the learnt policy
  * @param prng breaks ties between actions of equal value
  */
@@ -87,10 +87,6 @@ void draw(const types::policy & memory,
             reached = true;
             break;
         }
-        // a greedy policy that comes back to a cell it has visited goes round in circles
-        if (rows[out.next.y][out.next.x] == '*') {
-            break;
-        }
         s = out.next;
     }
     // mark the start and the goal, then print the grid
@@ -100,7 +96,7 @@ void draw(const types::policy & memory,
         std::cout << "    " << row << std::endl;
     }
     if (!reached) {
-        std::cout << "    (the greedy policy goes round in circles: with a constant α"
+        std::cout << "    (the greedy policy did not reach the goal in 100 moves: with a constant α"
                   << " its values are still noisy)" << std::endl;
     }
 }
