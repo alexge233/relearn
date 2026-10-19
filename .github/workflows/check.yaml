@@ -71,3 +71,37 @@ jobs:
         run: |
           cd build
           ctest --output-on-failure
+
+  # Apple Clang and its standard library (libc++), as on a Mac: Clang rejects some code
+  # GCC only warns about (e.g., narrowing in braces), and libc++'s random distributions
+  # give other numbers than libstdc++'s for the same seeds
+  check-macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: build with Apple Clang
+        run: |
+          clang++ --version
+          mkdir build
+          cd build
+          cmake .. -DBUILD_TESTS=ON
+          make
+
+      - name: run tests
+        run: |
+          cd build
+          ctest --output-on-failure
+
+      - name: run the examples and the games
+        timeout-minutes: 30
+        run: |
+          cd build
+          for example in gridworld_online gridworld_offline \
+                         bandit blackjack cart_pole cliff_walking dyna_maze frozen_lake \
+                         gamblers_problem maximization_bias mountain_car random_walk \
+                         tic_tac_toe windy_gridworld; do
+            echo "::group::$example"
+            ./ex_$example
+            echo "::endgroup::"
+          done

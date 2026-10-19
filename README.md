@@ -96,7 +96,7 @@ However, your compiler **must support C++14**, so you will need:
 - GCC 5 or higher
 - Clang 3.4 or higher
 
-These are the first releases with complete C++14 support, and the CI builds with GCC on Ubuntu.
+These are the first releases with complete C++14 support. The CI builds with GCC on Ubuntu, and with Apple Clang on macOS.
 
 __note__: I haven't tested with a Windows platform!
 
