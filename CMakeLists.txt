@@ -94,6 +94,8 @@ if (BUILD_TESTS)
     add_test(schedules_test test_schedules)
     add_executable(test_double_q tests/double_q_learning_test.cpp)
     add_test(double_q_test test_double_q)
+    add_executable(test_dyna_q tests/dyna_q_test.cpp)
+    add_test(dyna_q_test test_dyna_q)
 
     # if building tests & testing serialization
     if (USING_BOOST_SERIALIZATION)
