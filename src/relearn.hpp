@@ -321,9 +321,9 @@ struct polynomial_decay
     value_type exponent = 1;
     /// default ctor: v(k) = 1/k
     polynomial_decay() = default;
-    /// ctor with the value @param first at k = 1, and the decay @param power (the `exponent`)
-    polynomial_decay(value_type first, 
-                     value_type power);
+    /// ctor with the value @param initial_value at k = 1, and the decay @param decay_exponent (the `exponent`)
+    polynomial_decay(value_type initial_value, 
+                     value_type decay_exponent);
     /// @return the value at @param k, for k = 1, 2, ...
     value_type operator()(std::size_t k) const;
 };
@@ -347,10 +347,11 @@ struct exponential_decay
     value_type minimum = 0;
     /// default ctor: v(k) = 0.99^(k-1)
     exponential_decay() = default;
-    /// ctor with the value @param first at k = 1, the decay @param factor (the `rate`) and the @param floor (the `minimum`)
-    exponential_decay(value_type first, 
-                      value_type factor, 
-                      value_type floor);
+    /// ctor with the value @param initial_value at k = 1, the @param decay_rate (the `rate`)
+    /// and the @param minimum_value
+    exponential_decay(value_type initial_value, 
+                      value_type decay_rate, 
+                      value_type minimum_value);
     /// @return the value at @param k, for k = 1, 2, ...
     value_type operator()(std::size_t k) const;
 };
@@ -373,10 +374,10 @@ struct linear_decay
     std::size_t steps = 1;
     /// default ctor: 1 at k = 1, then 0
     linear_decay() = default;
-    /// ctor going from the value @param first to the value @param end over @param count steps
-    linear_decay(value_type first, 
-                 value_type end, 
-                 std::size_t count);
+    /// ctor going from @param initial_value to @param last_value over @param step_count steps
+    linear_decay(value_type initial_value, 
+                 value_type last_value, 
+                 std::size_t step_count);
     /// @return the value at @param k, for k = 1, 2, ...
     value_type operator()(std::size_t k) const;
 };
@@ -471,9 +472,9 @@ struct q_learning
     std::function<value_type(std::size_t)> learning_rate;
     /// the number of updates of each state/action pair (counted only when `learning_rate` is set)
     visit_counter<state_class,action_class> visits;
-    /// ctor with a learning rate @param rate (`alpha`) and a discount rate @param discount (`gamma`), both 0.9 by default
-    q_learning(value_type rate = 0.9,
-               value_type discount = 0.9);
+    /// ctor with a learning rate @param initial_alpha and a discount rate @param initial_gamma, both 0.9 by default
+    q_learning(value_type initial_alpha = 0.9,
+               value_type initial_gamma = 0.9);
     /// @brief the update rule of Q-learning
     triplet q_value(markov_chain &episode,
                     unsigned int index,
@@ -524,8 +525,8 @@ struct q_probabilistic
     value_type gamma = 0.9;
     /// default empty ctor - discount will be 0.9
     q_probabilistic() = default;
-    /// default ctor with discount
-    q_probabilistic(value_type discount);
+    /// ctor with a discount rate @param initial_gamma
+    q_probabilistic(value_type initial_gamma);
     /// @brief the update rule of Q-learning
     triplet q_value(markov_chain &episode,
                     unsigned int index,
@@ -612,9 +613,9 @@ struct sarsa
     std::function<value_type(std::size_t)> learning_rate;
     /// the number of updates of each state/action pair (counted only when `learning_rate` is set)
     visit_counter<state_class,action_class> visits;
-    /// ctor with a learning rate @param rate (`alpha`) and a discount rate @param discount (`gamma`), both 0.9 by default
-    sarsa(value_type rate = 0.9,
-          value_type discount = 0.9);
+    /// ctor with a learning rate @param initial_alpha and a discount rate @param initial_gamma, both 0.9 by default
+    sarsa(value_type initial_alpha = 0.9,
+          value_type initial_gamma = 0.9);
     /// @brief the update rule of SARSA
     triplet q_value(markov_chain & episode,
                     unsigned int index,
@@ -688,11 +689,11 @@ struct expected_sarsa
     /// the policy π(a | s) the agent follows - if not set, the greedy policy is used
     std::function<distribution(const state_class &)> probabilities;
     /**
-     * @brief ctor with a learning rate @param rate (`alpha`), a discount rate @param discount
-     *        (`gamma`), both 0.9 by default, and the policy @param pi (`probabilities`), not set by default
+     * @brief ctor with a learning rate @param initial_alpha, a discount rate @param initial_gamma,
+     *        both 0.9 by default, and the policy @param pi (`probabilities`), not set by default
      */
-    expected_sarsa(value_type rate = 0.9,
-                   value_type discount = 0.9,
+    expected_sarsa(value_type initial_alpha = 0.9,
+                   value_type initial_gamma = 0.9,
                    std::function<distribution(const state_class &)> pi = nullptr);
 
     /**
@@ -775,12 +776,12 @@ struct double_q_learning
     std::mt19937 coin;
 
     /**
-     * @brief ctor with a learning rate @param rate (`alpha`), a discount rate @param discount
-     *        (`gamma`), both 0.9 by default, and the @param seed of the coin
+     * @brief ctor with a learning rate @param initial_alpha, a discount rate @param initial_gamma,
+     *        both 0.9 by default, and the @param coin_seed of the coin
      */
-    double_q_learning(value_type rate = 0.9,
-                      value_type discount = 0.9,
-                      unsigned int seed = 0);
+    double_q_learning(value_type initial_alpha = 0.9,
+                      value_type initial_gamma = 0.9,
+                      unsigned int coin_seed = 0);
     /// @brief the update rule of Double Q-learning: updates `first` or `second`,
     ///        and @return their average for the pair
     triplet q_value(markov_chain & episode,
@@ -1108,10 +1109,10 @@ template <class state_class,
           typename markov_chain,
           typename value_type>
 q_learning<state_class,action_class,markov_chain,value_type
-          >::q_learning(value_type rate,
-                        value_type discount)
-: alpha(rate),
-  gamma(discount)
+          >::q_learning(value_type initial_alpha,
+                        value_type initial_gamma)
+: alpha(initial_alpha),
+  gamma(initial_gamma)
 {}
 
 template <class state_class, 
@@ -1119,10 +1120,10 @@ template <class state_class,
           typename markov_chain,
           typename value_type>
 sarsa<state_class,action_class,markov_chain,value_type
-     >::sarsa(value_type rate,
-              value_type discount)
-: alpha(rate),
-  gamma(discount)
+     >::sarsa(value_type initial_alpha,
+              value_type initial_gamma)
+: alpha(initial_alpha),
+  gamma(initial_gamma)
 {}
 
 template <class state_class, 
@@ -1130,11 +1131,11 @@ template <class state_class,
           typename markov_chain,
           typename value_type>
 expected_sarsa<state_class,action_class,markov_chain,value_type
-              >::expected_sarsa(value_type rate,
-                                value_type discount,
+              >::expected_sarsa(value_type initial_alpha,
+                                value_type initial_gamma,
                                 std::function<distribution(const state_class &)> pi)
-: alpha(rate),
-  gamma(discount),
+: alpha(initial_alpha),
+  gamma(initial_gamma),
   probabilities(pi)
 {}
 
@@ -1194,8 +1195,8 @@ template <class state_class,
           typename markov_chain,
           typename value_type>
 q_probabilistic<state_class,action_class,markov_chain,value_type
-               >::q_probabilistic(value_type discount)
-: gamma(discount)
+               >::q_probabilistic(value_type initial_gamma)
+: gamma(initial_gamma)
 {}
 
 template <class state_class, 
@@ -1379,10 +1380,10 @@ void expected_sarsa<state_class,action_class,markov_chain,value_type
     }
 }
 template <typename value_type>
-polynomial_decay<value_type>::polynomial_decay(value_type first, 
-                                               value_type power)
-: initial(first), 
-  exponent(power)
+polynomial_decay<value_type>::polynomial_decay(value_type initial_value, 
+                                               value_type decay_exponent)
+: initial(initial_value), 
+  exponent(decay_exponent)
 {}
 
 template <typename value_type>
@@ -1394,12 +1395,12 @@ value_type polynomial_decay<value_type>::operator()(std::size_t k) const
 }
 
 template <typename value_type>
-exponential_decay<value_type>::exponential_decay(value_type first, 
-                                                 value_type factor, 
-                                                 value_type floor)
-: initial(first), 
-  rate(factor), 
-  minimum(floor)
+exponential_decay<value_type>::exponential_decay(value_type initial_value, 
+                                                 value_type decay_rate, 
+                                                 value_type minimum_value)
+: initial(initial_value), 
+  rate(decay_rate), 
+  minimum(minimum_value)
 {}
 
 template <typename value_type>
@@ -1411,12 +1412,12 @@ value_type exponential_decay<value_type>::operator()(std::size_t k) const
 }
 
 template <typename value_type>
-linear_decay<value_type>::linear_decay(value_type first, 
-                                       value_type end, 
-                                       std::size_t count)
-: initial(first), 
-  last(end), 
-  steps(count)
+linear_decay<value_type>::linear_decay(value_type initial_value, 
+                                       value_type last_value, 
+                                       std::size_t step_count)
+: initial(initial_value), 
+  last(last_value), 
+  steps(step_count)
 {}
 
 template <typename value_type>
@@ -1478,12 +1479,12 @@ template <class state_class,
           typename markov_chain,
           typename value_type>
 double_q_learning<state_class,action_class,markov_chain,value_type
-                 >::double_q_learning(value_type rate,
-                                      value_type discount,
-                                      unsigned int seed)
-: alpha(rate),
-  gamma(discount),
-  coin(seed)
+                 >::double_q_learning(value_type initial_alpha,
+                                      value_type initial_gamma,
+                                      unsigned int coin_seed)
+: alpha(initial_alpha),
+  gamma(initial_gamma),
+  coin(coin_seed)
 {}
 
 template <class state_class, 
