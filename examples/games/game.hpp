@@ -110,11 +110,74 @@ played<game_type> play(game_type & game,
     }
     if (!result.terminated && result.steps > 0) {
         // cut short: add the state reached, so that the last step taken can be
-        // learnt from it (a cut-short episode's last link is never learnt itself)
+        // learnt from it (a cut-short episode's last link is never learnt itself).
+        // Its action is the one the agent would take next, which SARSA learns from
         auto legal = game.actions(s_t);
         if (!legal.empty()) {
-            result.episode.push_back({state(0, s_t), action(legal.front())});
+            auto a_next = choose(s_t, legal);
+            result.episode.push_back({state(0, s_t), action(a_next)});
         }
+    }
+    return result;
+}
+
+/**
+ * @brief play one episode of @param game, learning after every step (online)
+ * @param choose is called as `choose(state, legal_actions)` and returns an action
+ * @param learner is any relearn learner: `q_learning`, `sarsa`, `expected_sarsa`
+ * @param memory is the policy being learnt (and used by @param choose)
+ * @param max_steps cuts the episode short
+ * @return the played episode, already learnt
+ *
+ * Sutton & Barto's TD algorithms learn after every step, while the episode is
+ * played, so that what the agent learns changes how it plays at once.
+ * After each step, the learner is given two links: (s_t, a_t) with its reward,
+ * and (s_{t+1}, a_{t+1}) with the action chosen next, and `terminated = false`.
+ * It learns step t from the next state and action, and not yet step t+1.
+ * The next action is chosen before learning, as in the book's SARSA.
+ * When the game ends, the last step is learnt alone, as the end of the game.
+ */
+template <class game_type,
+          class chooser,
+          class learner_type>
+played<game_type> play_online(game_type & game,
+                              chooser && choose,
+                              learner_type & learner,
+                              typename types<game_type>::policy & memory,
+                              std::size_t max_steps)
+{
+    using state   = typename types<game_type>::state;
+    using action  = typename types<game_type>::action;
+    using episode = typename types<game_type>::episode;
+    played<game_type> result;
+    // start a new game, and choose the first action
+    auto s_t = game.reset();
+    auto a_t = choose(s_t, game.actions(s_t));
+    while (result.steps < max_steps) {
+        // take the action, and record (s_t, a_t) with the reward received
+        auto out = game.step(a_t);
+        result.episode.push_back({state(out.reward, s_t), action(a_t)});
+        result.total_reward += out.reward;
+        result.steps++;
+        if (out.terminated) {
+            // the game ended: learn the last step alone, as the end of the game
+            result.terminated = true;
+            episode last = {result.episode.back()};
+            learner(last, memory, true);
+            break;
+        }
+        // choose the next action first: SARSA learns step t from it
+        auto a_next = choose(out.next, game.actions(out.next));
+        // learn step t from (s_{t+1}, a_{t+1}), without learning step t+1 yet
+        episode window = {result.episode.back(), {state(0, out.next), action(a_next)}};
+        learner(window, memory, false);
+        // move on to the next state and action
+        s_t = out.next;
+        a_t = a_next;
+    }
+    if (!result.terminated && result.steps > 0) {
+        // cut short: as in `play`, end with the state reached and the action chosen next
+        result.episode.push_back({state(0, s_t), action(a_t)});
     }
     return result;
 }
@@ -180,6 +243,53 @@ typename game_type::action_type epsilon_greedy(const typename types<game_type>::
     }
     // exploit: the best known action
     return greedy<game_type>(memory, s_t, legal, prng);
+}
+
+/**
+ * @brief the probabilities of the ε-greedy choice, π(a | s), as Expected SARSA needs them
+ * @param memory is the learnt policy
+ * @param s_t is the current state
+ * @param legal are the legal actions in @param s_t
+ * @param epsilon is the probability of exploring
+ * @return each legal action with the probability that `epsilon_greedy` takes it:
+ *         ε / |A| for every action, plus (1 - ε) shared between the best actions
+ * @note like `greedy`, actions never tried count as 0, and tied best actions
+ *       share the greedy probability equally
+ */
+template <class game_type>
+std::vector<std::pair<typename types<game_type>::action,double>>
+    epsilon_greedy_probabilities(const typename types<game_type>::policy & memory,
+                                 const typename game_type::state_type & s_t,
+                                 const std::vector<typename game_type::action_type> & legal,
+                                 double epsilon)
+{
+    using state  = typename types<game_type>::state;
+    using action = typename types<game_type>::action;
+    // find the highest value, and how many actions share it
+    double best_value = 0;
+    std::size_t ties = 0;
+    for (const auto & a : legal) {
+        double q = memory.value(state(s_t), action(a));
+        if (ties == 0 || q > best_value) {
+            best_value = q;
+            ties = 1;
+        }
+        else if (q == best_value) {
+            ties++;
+        }
+    }
+    // every action is explored with probability ε / |A|,
+    // and the best actions share the remaining 1 - ε
+    std::vector<std::pair<action,double>> probabilities;
+    const double explore = epsilon / static_cast<double>(legal.size());
+    for (const auto & a : legal) {
+        double p = explore;
+        if (memory.value(state(s_t), action(a)) == best_value) {
+            p += (1.0 - epsilon) / static_cast<double>(ties);
+        }
+        probabilities.push_back(std::make_pair(action(a), p));
+    }
+    return probabilities;
 }
 
 /**

@@ -140,6 +140,46 @@ struct tabular
         }
         return v;
     }
+
+    /**
+     * @brief the state values of following a stochastic policy, by iterative evaluation
+     *        (Sutton & Barto, Section 4.1): V(s) = Σ_a π(a | s) Q(s,a)
+     * @param pi gives, for every state, the probability of each action
+     * @param tolerance stops the sweeps once no value changes by more than this
+     * @param max_sweeps is the most sweeps over the states
+     * @return the value of every state
+     */
+    std::vector<double> policy_values(const std::vector<std::vector<double>> & pi,
+                                      double tolerance = 1e-12,
+                                      int max_sweeps = 100000) const
+    {
+        std::vector<double> v(states, 0.0);
+        for (int sweep = 0; sweep < max_sweeps; sweep++) {
+            double change = 0;
+            for (int s = 0; s < states; s++) {
+                // V(s) = Σ_a π(a | s) Q(s,a), over the allowed actions
+                double value = 0;
+                bool any = false;
+                for (int a = 0; a < actions; a++) {
+                    double q_value = q(v, s, a);
+                    if (!std::isnan(q_value)) {
+                        value += pi[s][a] * q_value;
+                        any = true;
+                    }
+                }
+                // a terminal state (no allowed action) keeps its value of 0
+                if (!any) {
+                    continue;
+                }
+                change = std::max(change, std::fabs(value - v[s]));
+                v[s] = value;
+            }
+            if (change < tolerance) {
+                break;
+            }
+        }
+        return v;
+    }
 };
 
 /**

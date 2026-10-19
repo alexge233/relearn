@@ -6,11 +6,15 @@ A Reinforcement Learning *header-only* template library for C++14.
 Minimal and simple to use, for a variety of scenarios.
 It is based on Sutton and Barto's book [1] and implements *some* of the functionality described in it.
 
-The library currently implements two learners:
+The library currently implements four learners:
 
 - `q_learning`: Q-learning, which updates from each step it is shown, with a learning rate α.
 - `q_probabilistic`: Q-learning for non-deterministic systems, which learns the expected reward and the
   transition probabilities from experience, and needs no learning rate.
+- `sarsa`: SARSA, which learns the value of the policy the agent follows, exploration included
+  (see [docs/sarsa.md](docs/sarsa.md)).
+- `expected_sarsa`: Expected SARSA, which learns like SARSA, but from the value the next state is
+  expected to have under the agent's policy, so it learns more steadily (see [docs/sarsa.md](docs/sarsa.md)).
 
 It also comes with a collection of classic games to learn, described in [Games](#games) below.
 
@@ -385,11 +389,18 @@ auto r = games::play(game, [&](const auto & s, const auto & legal) {
 learner(r.episode, memory, r.terminated);     // a cut-short episode is not learnt as finished
 ```
 
+`games::play_online` plays an episode and learns after every step instead, as Sutton & Barto's
+TD algorithms do. SARSA needs it with a large learning rate (see [docs/sarsa.md](docs/sarsa.md)):
+
+```cpp
+auto r = games::play_online(game, agent, learner, memory, 1000);
+```
+
 | Game | Source | Learnt with | What it shows |
 |---|---|---|---|
 | `bandit` | S&B 2.3 | `q_probabilistic` | Exploration vs exploitation; greedy vs ε-greedy (Figure 2.2) |
 | `blackjack` | S&B 5.1 | `q_probabilistic` | A random game; the learnt strategy matches Figure 5.2 |
-| `cliff_walking` | S&B 6.6 | `q_learning` | The 13-move path along the cliff edge |
+| `cliff_walking` | S&B 6.6 | `q_learning`, `sarsa`, `expected_sarsa` | On-policy vs off-policy: Q-learning learns the path along the cliff edge, SARSA a safer one, and both SARSAs earn more while exploring |
 | `windy_gridworld` | S&B 6.5, Ex. 6.10 | both | Steady wind: the 15-move path. Random wind: `q_probabilistic` finds the best policy, `q_learning` with a fixed learning rate does not |
 | `random_walk` | S&B 6.2, 7.1 | `q_probabilistic` | Prediction: learnt values next to the exact ones |
 | `maximization_bias` | S&B 6.7 | `q_learning` | Q-learning's overestimation (for Double Q-learning) |
@@ -412,11 +423,10 @@ AI-generated contributions are welcome, as long as they have been reviewed and a
 
 # TODO
 
-1. SARSA and Expected SARSA (compare with Q-learning on `cliff_walking`)
-2. Double Q-learning (`maximization_bias`)
-3. Dyna-Q and Dyna-Q+ (`dyna_maze`)
-4. the R-Learning continuous algorithm
-5. eligibility traces
+1. Double Q-learning (`maximization_bias`)
+2. Dyna-Q and Dyna-Q+ (`dyna_maze`)
+3. the R-Learning continuous algorithm
+4. eligibility traces
 
 # References
 
