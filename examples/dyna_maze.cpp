@@ -114,8 +114,14 @@ std::vector<double> goals_so_far(game_type::layout_type layout,
         std::size_t next_report = 0;
         while (maze.moves() < total) {
             auto r = games::play_online(maze, agent, learner, memory, total - maze.moves());
+            // the counts the episode went past before it ended: its goal came after them,
+            // since the maze rewards only the move onto G, which is the episode's last move
+            while (next_report < goals.size() && maze.moves() > (next_report + 1) * report) {
+                goals[next_report] += reached / runs;
+                next_report++;
+            }
+            // then count its goal, which includes a count at the very move it ended on
             reached += r.total_reward;
-            // record the count each time another `report` moves have been made
             while (next_report < goals.size() && maze.moves() >= (next_report + 1) * report) {
                 goals[next_report] += reached / runs;
                 next_report++;

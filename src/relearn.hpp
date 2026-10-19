@@ -1740,7 +1740,7 @@ void dyna_q<state_class,action_class,markov_chain,value_type
     auto step = episode[index];
     // what happened: the reward, and the state reached (the last link of an episode ends it)
     const bool terminal = index == episode.size() - 1;
-    outcome happened = {step.state.reward(),
+    outcome happened = {static_cast<value_type>(step.state.reward()),
                         terminal ? step.state : episode[index + 1].state,
                         terminal,
                         steps_,

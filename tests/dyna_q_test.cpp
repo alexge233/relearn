@@ -290,6 +290,17 @@ TEST_CASE("dyna_q+: actions not tried yet are imagined to lead back with a rewar
     REQUIRE(dyna_memory.actions(state("s0")).size() == 1);
 }
 
+/// verifies that the learner works with `float` values, though a state's reward is a `double`
+TEST_CASE("dyna_q: float values", "[dyna_q][regression]")
+{
+    // the same as the first test, in float: 0.5, 0.75, 0.875, 0.9375
+    using float_learner = relearn::dyna_q<state,action,episode,float>;
+    float_learner learner(0.5f, 0.9f, 3, 1);
+    relearn::policy<state,action,float> memory;
+    learner(episode {{state(1, "s0"), action("a")}}, memory);
+    REQUIRE(memory.value(state("s0"), action("a")) == Approx(0.9375f));
+}
+
 /// verifies the constructor, and brace initialisation
 TEST_CASE("dyna_q: constructor and brace initialisation", "[dyna_q]")
 {

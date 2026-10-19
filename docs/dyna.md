@@ -256,14 +256,14 @@ The goals reached so far, every 100 moves (`o` Dyna-Q, `+` Dyna-Q+, `|` the mome
       |         |             ++
   120 |         |           ++
       |         |         ++
-  100 |         |      +++
-      |         |    ++
-   80 |         |  ++
-      |         +++
+  100 |         |       ++
+      |         |     ++
+   80 |         |   ++
+      |         ++++
    60 |        +ooooooooooooooooooooo
       |       +o|
-   40 |     ++o |
-      |    +oo  |
+   40 |      +o |
+      |    +#o  |
    20 |   +o    |
       |  #o     |
     0 |##       |
@@ -273,8 +273,8 @@ The goals reached so far, every 100 moves (`o` Dyna-Q, `+` Dyna-Q+, `|` the mome
 
 | moves | 500 | 1000 | 1500 | 2000 | 2500 | 3000 |
 |---|---|---|---|---|---|---|
-| Dyna-Q | 19.2 | 58.7 | 59.4 | 60.8 | 62.1 | 63.7 |
-| Dyna-Q+ | 26.6 | 69.1 | 85.4 | 108.3 | 133.6 | 156.0 |
+| Dyna-Q | 18.3 | 58.4 | 59.2 | 60.6 | 61.9 | 63.7 |
+| Dyna-Q+ | 25.6 | 68.2 | 84.4 | 107.4 | 132.6 | 156.0 |
 
 When the wall moves, both stop reaching the goal for a while (the line goes flat).
 Dyna-Q soon bumps into the new wall, and its model learns that the gap on the right is closed.
@@ -306,21 +306,21 @@ The goals reached so far, every 200 moves:
       |              |        ++ oo
   240 |              |      ++ooo
       |              |    +#oo
-  180 |              |  o#o
-      |              |##+
+  180 |              |   #o
+      |              |###
   120 |            ###
       |         ###  |
-   60 |      ###     |
-      |  +###        |
-    0 |##o           |
+   60 |      +##     |
+      |  ++##o       |
+    0 |##oo          |
       +------------------------------
                   3000           6000   moves
 ```
 
 | moves | 1000 | 2000 | 3000 | 4000 | 5000 | 6000 |
 |---|---|---|---|---|---|---|
-| Dyna-Q | 25.1 | 77.5 | 131.9 | 187.1 | 242.1 | 296.1 |
-| Dyna-Q+ | 35.8 | 82.0 | 129.9 | 197.4 | 275.9 | 353.5 |
+| Dyna-Q | 24.2 | 76.5 | 130.9 | 186.1 | 241.1 | 296.1 |
+| Dyna-Q+ | 34.8 | 81.0 | 128.9 | 196.5 | 274.9 | 353.5 |
 
 This one is harder. Nothing goes wrong for Dyna-Q: the long way still works, its model says so,
 and so it never looks for anything better. Dyna-Q+ goes back to check the wall on the right,
