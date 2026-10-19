@@ -344,7 +344,8 @@ The online exploration is somewhat different, because the `explore` method does 
 - if a good policy (a Q-value higher than zero, for a move that does not lead into a wall) exists, it follows it
 - else if no good policy exists, it takes a random action
 - repeats until a reward is found; the agent then **trains** its policies with the latest episode (10 passes)
-- an episode that wanders for more than 1000 moves is discarded
+- an episode that wanders for more than 1000 moves is cut short, and learnt with `terminated = false`
+  (see [Reward convention](#reward-convention)), so that its last move is not learnt as the end of the game
 
 The difference here, is that the actual exploration is instantly affected by what has already been learnt.
 In comparison, the offline method is not affected, and may repeat the same sequences over and over again.
