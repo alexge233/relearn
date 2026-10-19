@@ -16,6 +16,10 @@ The library currently implements four learners:
 - `expected_sarsa`: Expected SARSA, which learns like SARSA, but from the value the next state is
   expected to have under the agent's policy, so it learns more steadily (see [docs/sarsa.md](docs/sarsa.md)).
 
+The learning rate of `q_learning`, `sarsa` and `expected_sarsa` can decay as each state/action pair
+is updated, and the exploration rate can fade as the agent learns, using the schedules
+`polynomial_decay`, `exponential_decay` and `linear_decay` (see [docs/schedules.md](docs/schedules.md)).
+
 It also comes with a collection of classic games to learn, described in [Games](#games) below.
 
 ## Q-learning
@@ -401,7 +405,7 @@ auto r = games::play_online(game, agent, learner, memory, 1000);
 | `bandit` | S&B 2.3 | `q_probabilistic` | Exploration vs exploitation; greedy vs ε-greedy (Figure 2.2) |
 | `blackjack` | S&B 5.1 | `q_probabilistic` | A random game; the learnt strategy matches Figure 5.2 |
 | `cliff_walking` | S&B 6.6 | `q_learning`, `sarsa`, `expected_sarsa` | On-policy vs off-policy: Q-learning learns the path along the cliff edge, SARSA a safer one, and both SARSAs earn more while exploring |
-| `windy_gridworld` | S&B 6.5, Ex. 6.10 | both | Steady wind: the 15-move path. Random wind: `q_probabilistic` finds the best policy, `q_learning` with a fixed learning rate does not |
+| `windy_gridworld` | S&B 6.5, Ex. 6.10 | both | Steady wind: the 15-move path. Random wind: `q_probabilistic`, and `q_learning` with a learning rate that decays per pair, find the best policy; `q_learning` with α = 0.5 does not |
 | `random_walk` | S&B 6.2, 7.1 | `q_probabilistic` | Prediction: learnt values next to the exact ones |
 | `maximization_bias` | S&B 6.7 | `q_learning` | Q-learning's overestimation (for Double Q-learning) |
 | `gamblers_problem` | S&B 4.3 | `q_probabilistic` | Values that match the exact solution |

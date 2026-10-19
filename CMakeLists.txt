@@ -90,6 +90,8 @@ if (BUILD_TESTS)
     add_test(games_test test_games)
     add_executable(test_sarsa tests/sarsa_test.cpp)
     add_test(sarsa_test test_sarsa)
+    add_executable(test_schedules tests/schedules_test.cpp)
+    add_test(schedules_test test_schedules)
 
     # if building tests & testing serialization
     if (USING_BOOST_SERIALIZATION)
