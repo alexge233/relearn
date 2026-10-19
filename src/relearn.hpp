@@ -326,9 +326,16 @@ struct q_learning
                     unsigned int index,
                     policy<state_class,action_class,value_type> & policy_map);
 
-    /// @brief do the updating for an episode - @param policy_map will be modified
+    /**
+     * @brief do the updating for an episode - @param policy_map will be modified
+     * @param terminated true if the episode really ended after its last link.
+     *        Pass false for an episode cut short (e.g., by a step limit): its last
+     *        link is then not learnt as the end of the game, and only serves as
+     *        the next state of the link before it.
+     */
     void operator()(markov_chain episode, 
-                    policy<state_class,action_class,value_type> & policy_map);
+                    policy<state_class,action_class,value_type> & policy_map,
+                    bool terminated = true);
 };
 
 /**
@@ -370,9 +377,16 @@ struct q_probabilistic
     triplet q_value(markov_chain &episode,
                     unsigned int index,
                     policy<state_class,action_class,value_type> & policy_map);
-    /// @brief do the updating for an episode - @param policy_map will be modified
+    /**
+     * @brief do the updating for an episode - @param policy_map will be modified
+     * @param terminated true if the episode really ended after its last link.
+     *        Pass false for an episode cut short (e.g., by a step limit): its last
+     *        link is then not learnt as the end of the game, and only serves as
+     *        the next state of the link before it.
+     */
     void operator()(markov_chain episode, 
-                    policy<state_class,action_class,value_type> & policy_map);
+                    policy<state_class,action_class,value_type> & policy_map,
+                    bool terminated = true);
 private:
     // map of state, frequency (s_t_+1)
     using frequency   = std::unordered_map<state_class,
@@ -738,10 +752,13 @@ template <class state_class,
           typename value_type>
 void q_learning<state_class,action_class,markov_chain,value_type
                 >::operator()(markov_chain episode, 
-                 			  policy<state_class,action_class,value_type> & policy_map)
+                 			  policy<state_class,action_class,value_type> & policy_map,
+                              bool terminated)
 {
-    // @NOTE - maybe replace index with an STL iterator?
-    for (unsigned int i = 0; i < episode.size(); i++) {
+    // a cut-short episode does not learn its last link: it has no outcome yet
+    const std::size_t learnt = (terminated || episode.size() == 0) ? episode.size() 
+                                                               : episode.size() - 1;
+    for (std::size_t i = 0; i < learnt; i++) {
         auto triplet = q_value(episode, i, policy_map);
         policy_map.update(std::get<0>(triplet), 
                           std::get<1>(triplet), 
@@ -792,10 +809,14 @@ template <class state_class,
           typename value_type>
 void q_probabilistic<state_class,action_class,markov_chain,value_type
                     >::operator()(markov_chain episode, 
-                 			      policy<state_class,action_class,value_type> & policy_map)
+                 			      policy<state_class,action_class,value_type> & policy_map,
+                                  bool terminated)
 {
+    // a cut-short episode does not learn its last link: it has no outcome yet
+    const std::size_t learnt = (terminated || episode.size() == 0) ? episode.size() 
+                                                               : episode.size() - 1;
     // record what was observed: visits, rewards and next states of each (s_t, a_t)
-    for (unsigned int i = 0; i < episode.size(); i++) {
+    for (std::size_t i = 0; i < learnt; i++) {
         auto & stats = __memory__[episode[i].state][episode[i].action];
         stats.visits += 1;
         // running mean rather than a sum: a float sum stops growing at 2^24 visits
@@ -805,7 +826,7 @@ void q_probabilistic<state_class,action_class,markov_chain,value_type
             stats.next[episode[i + 1].state] += 1;
         }
     }
-    for (unsigned int i = 0; i < episode.size(); i++) {
+    for (std::size_t i = 0; i < learnt; i++) {
         auto triplet = q_value(episode, i, policy_map);
         policy_map.update(std::get<0>(triplet), 
                           std::get<1>(triplet), 

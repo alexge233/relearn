@@ -134,3 +134,64 @@ TEST_CASE("policy queries do not modify the policy", "[regression]")
     REQUIRE(view.actions(state("known")).size() == 1);
     REQUIRE(view.best_value(state("known")) == 0.5);
 }
+
+TEST_CASE("episodes cut short are not learnt as the end of the game", "[regression]")
+{
+    // an episode stopped by a step limit has not ended: its last link has no
+    // outcome yet, so it must only serve as the next state of the link before it
+    using state  = relearn::state<std::string>;
+    using action = relearn::action<std::string>;
+    using link   = relearn::link<state,action>;
+    std::deque<link> episode = {{state(0, "s0"), action("a")},
+                                {state(5, "s1"), action("b")}};
+
+    SECTION("q_learning") {
+        relearn::policy<state,action> memory;
+        memory.update(state("s1"), action("b"), 1.0);   // what s1 is already worth
+        relearn::q_learning<state,action> learner;
+        learner.alpha = 1;
+        learner.gamma = 0.9;
+        learner(episode, memory, false);
+        REQUIRE(memory.value(state("s0"), action("a")) == Approx(0.9));  // 0 + 0.9 * Q(s1)
+        REQUIRE(memory.value(state("s1"), action("b")) == Approx(1.0));  // unchanged
+        // the same episode, when it really ended, learns its last reward
+        learner(episode, memory, true);
+        REQUIRE(memory.value(state("s1"), action("b")) == Approx(5.0));
+    }
+    SECTION("q_probabilistic") {
+        relearn::policy<state,action> memory;
+        memory.update(state("s1"), action("b"), 1.0);
+        relearn::q_probabilistic<state,action> learner(0.9);
+        learner(episode, memory, false);
+        REQUIRE(memory.value(state("s0"), action("a")) == Approx(0.9));
+        REQUIRE(memory.value(state("s1"), action("b")) == Approx(1.0));
+        learner(episode, memory, true);
+        REQUIRE(memory.value(state("s1"), action("b")) == Approx(5.0));
+    }
+}
+
+TEST_CASE("learners only need size() and [] from the episode container", "[regression]")
+{
+    // the episode type is a template parameter: a container that offers only
+    // size() and operator[] (no empty(), no iterators) must still work
+    using state  = relearn::state<std::string>;
+    using action = relearn::action<std::string>;
+    using link   = relearn::link<state,action>;
+    struct minimal_chain
+    {
+        std::vector<link> links;
+        std::size_t size() const { return links.size(); }
+        link & operator[](std::size_t i) { return links[i]; }
+        const link & operator[](std::size_t i) const { return links[i]; }
+    };
+    minimal_chain episode{{{state(0, "s0"), action("a")}, {state(1, "s1"), action("b")}}};
+    relearn::policy<state,action> memory;
+    relearn::q_learning<state,action,minimal_chain> q;
+    q.alpha = 1;
+    q(episode, memory);
+    q(episode, memory, false);
+    relearn::q_probabilistic<state,action,minimal_chain> p(0.9);
+    p(episode, memory);
+    p(episode, memory, false);
+    REQUIRE(memory.value(state("s1"), action("b")) == Approx(1.0));
+}
