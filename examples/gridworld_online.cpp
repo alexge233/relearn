@@ -42,18 +42,23 @@ using action = relearn::action<direction>;
  * Every step is recorded in the episode, whether it followed the policy or not,
  * with the reward of the block the agent moved into.
  *
- * An episode cut short by the step limit is returned empty: its last move did
- * not end the game, but `q_learning` treats the last link of an episode as
- * final, so training on it would teach wrong values.
+ * An episode can be cut short by the step limit, before it reaches the goal or
+ * a fire block. Its last move did not end the game, so it must not be learnt
+ * as the end of the game: the learner is told so with `terminated = false`.
+ * The learner then needs to know which block that last move reached, so a
+ * cut-short episode ends with one extra link holding that block.
  * For this type of approach to work, in between episodes, the agent must
  * be rewarded and re-trained.
+ *
+ * @return the episode, and `true` if it ended in the goal or a fire block,
+ *         or `false` if it was cut short by the step limit
  */
-template <typename S, 
+template <typename S,
           typename A>
-std::deque<relearn::link<S,A>> explore(const world & w,
-                                       std::mt19937 & gen,
-                                       const relearn::policy<S,A> & policy_map,
-                                       grid start)
+std::pair<std::deque<relearn::link<S,A>>,bool> explore(const world & w,
+                                                       std::mt19937 & gen,
+                                                       const relearn::policy<S,A> & policy_map,
+                                                       grid start)
 {
     // an episode that wanders for too long without ending is cut short
     const unsigned int max_steps = 1000;
@@ -88,11 +93,14 @@ std::deque<relearn::link<S,A>> explore(const world & w,
         std::cout << "coord: " << curr.x << "," 
                   << curr.y << " = " << curr.R << std::endl;
         if (terminal(curr)) {
-            return episode;
+            return std::make_pair(episode, true);
         }
     }
-    std::cout << "episode cut short after " << max_steps << " steps: discarded" << std::endl;
-    return {};
+    std::cout << "episode cut short after " << max_steps << " steps" << std::endl;
+    // the extra link is not a move: it only holds the block the last move reached,
+    // so that the learner can learn that move from the value of this block
+    episode.emplace_back(relearn::link<S,A>{S(0, curr), A(direction{0})});
+    return std::make_pair(episode, false);
 }
 
 /**
@@ -123,16 +131,18 @@ int main()
     // explore the grid and update at the end of the episode
     // next time we explore we can avoid bad actions !
     while (!stop) {
-        auto episode = explore<state,action>(w, gen, policies, start);
-        if (episode.empty()) {
-            continue;
-        }
+        auto result = explore<state,action>(w, gen, policies, start);
+        auto episode = result.first;
+        // false if the episode was cut short by the step limit
+        bool terminated = result.second;
         // use Q-learning algorithm to update the episode's policies
+        // a cut-short episode is learnt too, but not as the end of the game
         auto learner = relearn::q_learning<state,action>{0.9, 0.9};
         for (int k = 0; k < 10; k++) {
-            learner(episode, policies);
+            learner(episode, policies, terminated);
         }
-        stop = (!episode.empty() && episode.back().state.reward() == 1);
+        // stop once an episode has reached the goal
+        stop = (terminated && episode.back().state.reward() == 1);
     }
     //
     // The catch here is that although we explore and stay on policy at the same
