@@ -42,7 +42,7 @@ jobs:
       - name: run the games
         run: |
           cd build
-          for game in bandit blackjack cart_pole cliff_walking dyna_maze frozen_lake \
+          for game in bandit blackjack blackjack_monte_carlo cart_pole cliff_walking dyna_maze frozen_lake \
                       gamblers_problem maximization_bias mountain_car random_walk \
                       tic_tac_toe windy_gridworld; do
             echo "::group::$game"
@@ -98,7 +98,7 @@ jobs:
         run: |
           cd build
           for example in gridworld_online gridworld_offline \
-                         bandit blackjack cart_pole cliff_walking dyna_maze frozen_lake \
+                         bandit blackjack blackjack_monte_carlo cart_pole cliff_walking dyna_maze frozen_lake \
                          gamblers_problem maximization_bias mountain_car random_walk \
                          tic_tac_toe windy_gridworld; do
             echo "::group::$example"

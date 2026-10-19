@@ -52,4 +52,5 @@
 #include "relearn/sarsa.hpp"
 #include "relearn/double_q_learning.hpp"
 #include "relearn/dyna.hpp"
+#include "relearn/monte_carlo.hpp"
 #endif
