@@ -156,7 +156,11 @@ relearn::policy<state,action> train_q_learning(const mdp & sample,
     relearn::q_learning<state,action> learner;
     learner.gamma = discount;
     for (int k = 1; k <= episodes; k++) {
-        // α = 1/k averages the sampled returns (Sutton & Barto, Section 2.4)
+        // decay the learning rate as α = 1/k, where k counts episodes (not visits).
+        // Each update moves Q(s,a) towards r + γ max Q(s',a'), the current estimate
+        // of the next state (bootstrapping), not towards a sampled return.
+        // While every pair keeps being visited, this decay meets the conditions
+        // Σα = ∞ and Σα² < ∞ under which Q-learning converges
         learner.alpha = 1.0 / k;
         learner(sample(prng), memory);
     }
