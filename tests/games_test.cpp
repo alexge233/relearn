@@ -7,6 +7,7 @@
 #include "../examples/games/blackjack.hpp"
 #include "../examples/games/cliff_walking.hpp"
 #include "../examples/games/windy_gridworld.hpp"
+#include "../examples/games/frozen_lake.hpp"
 #include "solvers.hpp"
 #include <cmath>
 #define CATCH_CONFIG_MAIN
@@ -308,4 +309,92 @@ TEST_CASE("windy gridworld: q_probabilistic learns the best policy in random win
     auto learnt = exact.policy_values(greedy_policy<game_type>(memory, game_type::width, game_type::height, prng));
     const int start = 3 * game_type::width;
     REQUIRE(learnt[start] == Approx(best[start]).margin(0.1));
+}
+
+// ---------------------------------------------------------------- frozen lake
+
+namespace
+{
+/// exact model of FrozenLake, written from Gymnasium's rules
+solvers::tabular frozen_lake_model(const std::vector<std::string> & map, double gamma, bool slippery)
+{
+    solvers::tabular m;
+    const int rows = static_cast<int>(map.size()), cols = static_cast<int>(map[0].size());
+    m.states = rows * cols;
+    m.actions = 4;
+    m.gamma = gamma;
+    m.model = [map, rows, cols, slippery](int s, int a) {
+        std::vector<solvers::outcome> out;
+        char here = map[s / cols][s % cols];
+        if (here == 'H' || here == 'G') return out;
+        std::vector<int> slides = slippery ? std::vector<int>{-1, 0, 1} : std::vector<int>{0};
+        for (int d : slides) {
+            int b = (a + 4 + d) % 4, r = s / cols, c = s % cols;
+            if (b == 0) c = std::max(c - 1, 0);          // left
+            if (b == 1) r = std::min(r + 1, rows - 1);   // down
+            if (b == 2) c = std::min(c + 1, cols - 1);   // right
+            if (b == 3) r = std::max(r - 1, 0);          // up
+            char t = map[r][c];
+            out.push_back({1.0 / slides.size(), r * cols + c, t == 'G' ? 1.0 : 0.0, t == 'G' || t == 'H'});
+        }
+        return out;
+    };
+    return m;
+}
+} // namespace
+
+TEST_CASE("frozen lake: rules", "[games][frozen_lake]")
+{
+    using game_type = games::frozen_lake;
+    // without slipping, every move from every cell matches the exact model
+    game_type ice(game_type::map_4x4(), false);
+    auto model = frozen_lake_model(game_type::map_4x4(), 1.0, false);
+    REQUIRE(ice.reset() == 0u);
+    REQUIRE(ice.tile(15) == 'G');
+    for (int s = 0; s < model.states; s++) {
+        for (unsigned int a = 0; a < 4; a++) {
+            auto expected = model.model(s, static_cast<int>(a));
+            if (expected.empty()) continue;                 // hole or goal
+            ice.place(static_cast<unsigned int>(s));
+            auto out = ice.step(a);
+            REQUIRE(static_cast<int>(out.next) == expected[0].next);
+            REQUIRE(out.reward == expected[0].reward);
+            REQUIRE(out.terminated == expected[0].terminal);
+        }
+    }
+    // on slippery ice, "down" from cell 0 goes down, left (stays) or right, a third each
+    game_type slippery(game_type::map_4x4(), true, 5);
+    int down = 0, stay = 0, right = 0;
+    const int n = 30000;
+    for (int i = 0; i < n; i++) {
+        slippery.place(0);
+        auto next = slippery.step(game_type::down).next;
+        if (next == 4) down++;
+        else if (next == 0) stay++;
+        else if (next == 1) right++;
+    }
+    REQUIRE(down + stay + right == n);
+    REQUIRE(down  == Approx(n / 3.0).epsilon(0.05));
+    REQUIRE(stay  == Approx(n / 3.0).epsilon(0.05));
+    REQUIRE(right == Approx(n / 3.0).epsilon(0.05));
+}
+
+TEST_CASE("frozen lake: q_probabilistic learns the optimal policy", "[games][frozen_lake]")
+{
+    using game_type = games::frozen_lake;
+    const double gamma = 0.95;
+    game_type game(game_type::map_4x4(), true, 1);
+    std::mt19937 prng(11);
+    games::types<game_type>::policy memory;
+    relearn::q_probabilistic<games::types<game_type>::state, games::types<game_type>::action> learner(gamma);
+    train(game, learner, memory, 10000, 0.1, game.step_limit(), prng);
+    // the learnt greedy policy, evaluated exactly, is worth as much as the optimal one
+    auto exact = frozen_lake_model(game_type::map_4x4(), gamma, true);
+    std::vector<int> policy(exact.states);
+    for (int s = 0; s < exact.states; s++) {
+        policy[s] = static_cast<int>(games::greedy<game_type>(memory, static_cast<unsigned int>(s), {0, 1, 2, 3}, prng));
+    }
+    double best = exact.optimal_values()[0];
+    double learnt = exact.policy_values(policy)[0];
+    REQUIRE(learnt == Approx(best).margin(0.005));
 }
