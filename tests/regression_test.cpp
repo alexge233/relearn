@@ -114,7 +114,7 @@ TEST_CASE("policy queries do not modify the policy", "[regression]")
     // inheriting gives access to the stored policies (see class `policy`)
     struct inspect : relearn::policy<state,action>
     {
-        std::size_t states() const { return __policies__.size(); }
+        std::size_t states() const { return policies_.size(); }
     };
     inspect memory;
     memory.update(state("known"), action(1), 0.5);
