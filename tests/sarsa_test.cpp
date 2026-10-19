@@ -259,6 +259,91 @@ double cliff_return(learner_type & learner,
     }
     return sum / 400;
 }
+/**
+ * @brief nothing to prepare for SARSA: it learns from the action the agent takes
+ * @param learner is the learner
+ * @param memory is the policy being learnt
+ * @param epsilon is the agent's current exploration rate
+ */
+void prepare_control(relearn::sarsa<corridor_types::state,corridor_types::action> &,
+                     const corridor_types::policy &,
+                     const double &)
+{}
+
+/**
+ * @brief give Expected SARSA the ε-greedy policy π of the corridor agent
+ * @param learner is the learner
+ * @param memory is the policy being learnt, which the agent is greedy on
+ * @param epsilon is the agent's current exploration rate: π follows it as it changes
+ */
+void prepare_control(relearn::expected_sarsa<corridor_types::state,corridor_types::action> & learner,
+                     const corridor_types::policy & memory,
+                     const double & epsilon)
+{
+    corridor rules(0);
+    learner.probabilities = [&memory, rules, &epsilon](const corridor_types::state & s) {
+        return games::epsilon_greedy_probabilities<corridor>(memory,
+                                                             s.trait(),
+                                                             rules.actions(s.trait()),
+                                                             epsilon);
+    };
+}
+
+/**
+ * @brief learn the corridor online with an ε-greedy agent: control, not prediction
+ * @param learner is the learner to train; its learning rate is α = 1/n^0.6 per visit
+ * @param seed seeds the corridor and the agent
+ * @param episodes is the number of episodes to play
+ * @param decay is true for ε = 1/k in episode k (exploration fades out),
+ *        false for a constant ε = 0.1
+ * @return the learnt policy
+ */
+template <class learner_type>
+corridor_types::policy learn_corridor_control(learner_type & learner,
+                                              unsigned int seed,
+                                              int episodes,
+                                              bool decay)
+{
+    corridor game(seed);
+    std::mt19937 prng(seed + 100);
+    corridor_types::policy memory;
+    double epsilon = 0.1;
+    learner.learning_rate = relearn::polynomial_decay<>(1.0, 0.6);
+    prepare_control(learner, memory, epsilon);
+    // the ε-greedy agent, greedy on what it has learnt so far
+    auto agent = [&](const int & s,
+                     const std::vector<unsigned int> & legal) {
+        return games::epsilon_greedy<corridor>(memory, s, legal, epsilon, prng);
+    };
+    relearn::polynomial_decay<> fade(1.0, 1.0);
+    for (int k = 1; k <= episodes; k++) {
+        if (decay) {
+            epsilon = fade(static_cast<std::size_t>(k));
+        }
+        games::play_online(game, agent, learner, memory, 1000);
+    }
+    return memory;
+}
+
+/**
+ * @brief the largest difference between the learnt values of moving right and exact ones
+ * @return the largest |Q(s, right) - exact Q(s, right)| over the cells 0 ... 3,
+ *         or infinity if a learnt value is not finite
+ */
+double worst_error_right(const corridor_types::policy & memory,
+                         const solvers::tabular & m,
+                         const std::vector<double> & v)
+{
+    double worst = 0;
+    for (int s = 0; s < 4; s++) {
+        double learnt = memory.value(corridor_types::state(s), corridor_types::action(1u));
+        if (!std::isfinite(learnt)) {
+            return std::numeric_limits<double>::infinity();
+        }
+        worst = std::max(worst, std::fabs(learnt - m.q(v, s, 1)));
+    }
+    return worst;
+}
 } // namespace
 
 /// verifies that SARSA learns from the action taken next, where Q-learning uses the best one
@@ -392,6 +477,51 @@ TEST_CASE("sarsa and expected_sarsa converge to q_pi, q_learning to q*", "[sarsa
         learner.gamma = gamma;
         auto memory = learn_corridor(learner, 3);
         REQUIRE(worst_error(memory, exact, v_star) < 0.1);
+    }
+}
+
+/// verifies that SARSA with a constant ε learns the values of the ε-greedy policy it follows,
+/// not the optimal ones: exploring forever has a cost, and SARSA learns it (Section 6.4)
+TEST_CASE("sarsa with a constant epsilon learns q of the epsilon-greedy policy", "[sarsa][schedules][convergence]")
+{
+    // the exact values of the ε-greedy policy around the best one (right): right 0.95, left 0.05
+    const double gamma = 0.9;
+    auto exact = corridor::model(gamma);
+    std::vector<std::vector<double>> pi(5, {0.05, 0.95});
+    auto v_epsilon = exact.policy_values(pi);
+    auto v_star    = exact.optimal_values();
+    relearn::sarsa<corridor_types::state,corridor_types::action> learner;
+    learner.gamma = gamma;
+    auto memory = learn_corridor_control(learner, 1, 20000, false);
+    // across seeds 1 ... 10 the worst error to q_ε was 0.07, and the values stayed
+    // 0.27 away from q*: from cell 0, moving right is worth -4.31 under ε-greedy, -4.06 at best
+    REQUIRE(worst_error(memory, exact, v_epsilon) < 0.15);
+    double right = memory.value(corridor_types::state(0), corridor_types::action(1u));
+    REQUIRE(std::fabs(right - exact.q(v_star, 0, 1)) > 0.15);
+}
+
+/// verifies that when exploration fades out (ε = 1/k), SARSA and Expected SARSA learn
+/// the optimal values of the actions they come to take (Section 6.4). In the corridor every
+/// pair is one exploratory move away from the agent's path, so ε = 1/k keeps visiting them all
+TEST_CASE("sarsa and expected_sarsa with a fading epsilon learn q* of the best actions", "[sarsa][expected_sarsa][schedules][convergence]")
+{
+    const double gamma = 0.9;
+    auto exact  = corridor::model(gamma);
+    auto v_star = exact.optimal_values();
+    // across seeds 1 ... 10, after 20000 episodes, the worst errors on moving right were
+    // 0.045 for both. Moving left is taken less and less often as ε fades, so its
+    // values learn slowly (errors up to 1.2): only the best action is checked
+    SECTION("sarsa") {
+        relearn::sarsa<corridor_types::state,corridor_types::action> learner;
+        learner.gamma = gamma;
+        auto memory = learn_corridor_control(learner, 1, 20000, true);
+        REQUIRE(worst_error_right(memory, exact, v_star) < 0.1);
+    }
+    SECTION("expected_sarsa") {
+        relearn::expected_sarsa<corridor_types::state,corridor_types::action> learner;
+        learner.gamma = gamma;
+        auto memory = learn_corridor_control(learner, 2, 20000, true);
+        REQUIRE(worst_error_right(memory, exact, v_star) < 0.1);
     }
 }
 

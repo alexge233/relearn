@@ -378,6 +378,31 @@ TEST_CASE("windy gridworld: q_probabilistic learns the best policy in random win
     REQUIRE(learnt[start] == Approx(best[start]).margin(0.1));
 }
 
+/// verifies that, in random wind, `q_learning` with a learning rate that decays per visit
+/// (α = 1/n^0.6) learns the best policy, which a constant α = 0.5 does not
+TEST_CASE("windy gridworld: q_learning with a decaying learning rate learns the best policy in random wind", "[games][windy][schedules]")
+{
+    using game_type = games::windy_gridworld;
+    using types     = games::types<game_type>;
+    game_type game(true, 1);
+    std::mt19937 prng(11);
+    types::policy memory;
+    relearn::q_learning<types::state, types::action> learner;
+    learner.gamma = 1.0;
+    // α = 1/n^0.6 for the n-th update of each pair: it decays slowly enough to keep
+    // learning, and fast enough to average out the wind. α = 1/n decays too fast:
+    // its early updates, made from wrong values, weigh as much as the later ones
+    learner.learning_rate = relearn::polynomial_decay<>(1.0, 0.6);
+    // across seeds 1 ... 10, after 5000 episodes, the learnt policy was the best one
+    // in every run (exactly: the gap was below 1e-11)
+    train(game, learner, memory, 5000, 0.1, 1000, prng);
+    auto exact  = windy_model(true);
+    auto best   = exact.optimal_values();
+    auto learnt = exact.policy_values(greedy_policy<game_type>(memory, game_type::width, game_type::height, prng));
+    const int start = 3 * game_type::width;
+    REQUIRE(learnt[start] == Approx(best[start]).margin(0.1));
+}
+
 // ---------------------------------------------------------------- frozen lake
 
 namespace

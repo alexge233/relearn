@@ -288,6 +288,144 @@ private:
 };
 
 /*******************************************************************************
+ * Schedules: values that change as learning goes on
+ *
+ * A schedule is called with a count k = 1, 2, 3, ... and returns a value.
+ * Use one for the learning rate α (k is the number of times a state/action
+ * pair has been updated, see `learning_rate` in the learners) or for the
+ * exploration rate ε (k is the episode).
+ *
+ * For the learning rate, Q-learning, SARSA and Expected SARSA converge when,
+ * for every state/action pair, the rates used on its updates satisfy
+ *
+ *      Σ_k α(k) = ∞   and   Σ_k α(k)² < ∞      (Sutton & Barto, Section 2.5, equation 2.7)
+ *
+ * which `polynomial_decay` meets for 0.5 < exponent ≤ 1.
+ */
+
+/**
+ * @struct polynomial_decay
+ * @brief a schedule that decays as v(k) = initial / k^exponent, for k = 1, 2, ...
+ *
+ * With exponent = 1 and initial = 1, v(k) = 1/k: as a learning rate, each value
+ * is then the plain average of everything it has learnt from.
+ * With 0.5 < exponent ≤ 1, as a learning rate, it meets the conditions above.
+ */
+template <typename value_type = double>
+struct polynomial_decay
+{
+    /// the value at k = 1
+    value_type initial = 1;
+    /// how fast the value decays: 1 for 1/k, 0.5 ... 1 to meet the conditions above
+    value_type exponent = 1;
+    /// default ctor: v(k) = 1/k
+    polynomial_decay() = default;
+    /// ctor with the value @param first at k = 1, and the decay @param power (the `exponent`)
+    polynomial_decay(value_type first, 
+                     value_type power);
+    /// @return the value at @param k, for k = 1, 2, ...
+    value_type operator()(std::size_t k) const;
+};
+
+/**
+ * @struct exponential_decay
+ * @brief a schedule that decays as v(k) = initial * rate^(k-1), but not below a minimum
+ *
+ * Often used for the exploration rate ε. As a learning rate it does not meet the
+ * conditions above: Σ v(k) stays finite, so learning stops before the values are reached
+ * (unless the minimum is above 0, which keeps it learning at that rate).
+ */
+template <typename value_type = double>
+struct exponential_decay
+{
+    /// the value at k = 1
+    value_type initial = 1;
+    /// the factor applied at each step, 0 < rate < 1
+    value_type rate = 0.99;
+    /// the value never falls below this
+    value_type minimum = 0;
+    /// default ctor: v(k) = 0.99^(k-1)
+    exponential_decay() = default;
+    /// ctor with the value @param first at k = 1, the decay @param factor (the `rate`) and the @param floor (the `minimum`)
+    exponential_decay(value_type first, 
+                      value_type factor, 
+                      value_type floor);
+    /// @return the value at @param k, for k = 1, 2, ...
+    value_type operator()(std::size_t k) const;
+};
+
+/**
+ * @struct linear_decay
+ * @brief a schedule that goes in a straight line from `initial` to `last` over `steps` steps,
+ *        and then stays at `last`
+ *
+ * Often used for the exploration rate ε: explore a lot at first, then a little.
+ */
+template <typename value_type = double>
+struct linear_decay
+{
+    /// the value at k = 1
+    value_type initial = 1;
+    /// the value from k = steps + 1 on
+    value_type last = 0;
+    /// the number of steps to go from `initial` to `last`
+    std::size_t steps = 1;
+    /// default ctor: 1 at k = 1, then 0
+    linear_decay() = default;
+    /// ctor going from the value @param first to the value @param end over @param count steps
+    linear_decay(value_type first, 
+                 value_type end, 
+                 std::size_t count);
+    /// @return the value at @param k, for k = 1, 2, ...
+    value_type operator()(std::size_t k) const;
+};
+
+/**
+ * @class visit_counter
+ * @brief counts how many times each state/action pair has been updated
+ *
+ * The learners use it to give each pair its own learning rate, α = α(n),
+ * where n is the number of updates of that pair.
+ */
+template <class state_class, 
+          class action_class>
+class visit_counter
+{
+public:
+    /// @return how many times (@param s_t, @param a_t) has been counted
+    std::size_t count(const state_class & s_t, 
+                      const action_class & a_t) const;
+    /// @brief count one more visit of (@param s_t, @param a_t) @return its visits, this one included
+    std::size_t increment(const state_class & s_t, 
+                          const action_class & a_t);
+    /// @brief forget every count
+    void clear();
+private:
+    // visits of each action, per state
+    using action_counts = std::unordered_map<action_class,
+                                             std::size_t,
+                                             hasher<action_class>>;
+    std::unordered_map<state_class,
+                       action_counts,
+                       hasher<state_class>> counts_;
+};
+
+/**
+ * @brief the learning rate of one update of (@param s_t, @param a_t)
+ * @param learning_rate gives the rate of the n-th update of a pair; if it is not set, @param alpha is used
+ * @param visits counts the updates of each pair: it is incremented here
+ * @return `learning_rate(n)` for the n-th update of (s_t, a_t), or `alpha`
+ */
+template <class state_class, 
+          class action_class,
+          typename value_type>
+value_type step_size(const std::function<value_type(std::size_t)> & learning_rate,
+                     value_type alpha,
+                     visit_counter<state_class,action_class> & visits,
+                     const state_class & s_t,
+                     const action_class & a_t);
+
+/*******************************************************************************
  * @class q_learning This is the **deterministic** Q-Learning algorithm
  * @brief Q-Learning update algorithm sets policies using episodes (`markov_chain`)
  * @param gamma is the discount rate
@@ -308,6 +446,8 @@ private:
  * satisfy Σ α = ∞ and Σ α² < ∞, e.g., α = 1/n with n the visits of that pair.
  * `alpha` is shared by all pairs, so a global schedule such as α = 1/k for
  * episode k only meets this if every pair keeps being visited regularly.
+ * Set `learning_rate` instead to give each pair its own rate, from its own
+ * number of updates: e.g. `polynomial_decay<>(1.0, 0.6)` for α = 1/n^0.6.
  */
 template <class state_class, 
           class action_class,
@@ -322,6 +462,17 @@ struct q_learning
     value_type alpha = 0.9;
     /// discount rate - you may change this as you process episodes
     value_type gamma = 0.9;
+    /**
+     * optional: the learning rate of each update, given the number of times n = 1, 2, ...
+     * the state/action pair has been updated, e.g. `relearn::polynomial_decay<>()` for α = 1/n.
+     * If it is not set, `alpha` is used for every update.
+     */
+    std::function<value_type(std::size_t)> learning_rate;
+    /// the number of updates of each state/action pair (counted only when `learning_rate` is set)
+    visit_counter<state_class,action_class> visits;
+    /// ctor with a learning rate @param rate (`alpha`) and a discount rate @param discount (`gamma`), both 0.9 by default
+    q_learning(value_type rate = 0.9,
+               value_type discount = 0.9);
     /// @brief the update rule of Q-learning
     triplet q_value(markov_chain &episode,
                     unsigned int index,
@@ -452,6 +603,17 @@ struct sarsa
     value_type alpha = 0.9;
     /// discount rate - you may change this as you process episodes
     value_type gamma = 0.9;
+    /**
+     * optional: the learning rate of each update, given the number of times n = 1, 2, ...
+     * the state/action pair has been updated, e.g. `relearn::polynomial_decay<>()` for α = 1/n.
+     * If it is not set, `alpha` is used for every update.
+     */
+    std::function<value_type(std::size_t)> learning_rate;
+    /// the number of updates of each state/action pair (counted only when `learning_rate` is set)
+    visit_counter<state_class,action_class> visits;
+    /// ctor with a learning rate @param rate (`alpha`) and a discount rate @param discount (`gamma`), both 0.9 by default
+    sarsa(value_type rate = 0.9,
+          value_type discount = 0.9);
     /// @brief the update rule of SARSA
     triplet q_value(markov_chain & episode,
                     unsigned int index,
@@ -514,8 +676,23 @@ struct expected_sarsa
     value_type alpha = 0.9;
     /// discount rate - you may change this as you process episodes
     value_type gamma = 0.9;
+    /**
+     * optional: the learning rate of each update, given the number of times n = 1, 2, ...
+     * the state/action pair has been updated, e.g. `relearn::polynomial_decay<>()` for α = 1/n.
+     * If it is not set, `alpha` is used for every update.
+     */
+    std::function<value_type(std::size_t)> learning_rate;
+    /// the number of updates of each state/action pair (counted only when `learning_rate` is set)
+    visit_counter<state_class,action_class> visits;
     /// the policy π(a | s) the agent follows - if not set, the greedy policy is used
     std::function<distribution(const state_class &)> probabilities;
+    /**
+     * @brief ctor with a learning rate @param rate (`alpha`), a discount rate @param discount
+     *        (`gamma`), both 0.9 by default, and the policy @param pi (`probabilities`), not set by default
+     */
+    expected_sarsa(value_type rate = 0.9,
+                   value_type discount = 0.9,
+                   std::function<distribution(const state_class &)> pi = nullptr);
 
     /**
      * @return the expected value of @param s_t under the policy π:
@@ -848,6 +1025,41 @@ template <class state_class,
           class action_class,
           typename markov_chain,
           typename value_type>
+q_learning<state_class,action_class,markov_chain,value_type
+          >::q_learning(value_type rate,
+                        value_type discount)
+: alpha(rate),
+  gamma(discount)
+{}
+
+template <class state_class, 
+          class action_class,
+          typename markov_chain,
+          typename value_type>
+sarsa<state_class,action_class,markov_chain,value_type
+     >::sarsa(value_type rate,
+              value_type discount)
+: alpha(rate),
+  gamma(discount)
+{}
+
+template <class state_class, 
+          class action_class,
+          typename markov_chain,
+          typename value_type>
+expected_sarsa<state_class,action_class,markov_chain,value_type
+              >::expected_sarsa(value_type rate,
+                                value_type discount,
+                                std::function<distribution(const state_class &)> pi)
+: alpha(rate),
+  gamma(discount),
+  probabilities(pi)
+{}
+
+template <class state_class, 
+          class action_class,
+          typename markov_chain,
+          typename value_type>
 typename q_learning<state_class,action_class,markov_chain,value_type>::triplet
             q_learning<state_class,action_class,markov_chain,value_type
 					  >::q_value(markov_chain & episode, 
@@ -855,6 +1067,8 @@ typename q_learning<state_class,action_class,markov_chain,value_type>::triplet
 								 policy<state_class,action_class,value_type> & policy_map) 
 {
     auto step = episode[index];
+    // α: `alpha`, or the scheduled learning rate of this update of (s_t, a_t)
+    auto rate = step_size(learning_rate, alpha, visits, step.state, step.action);
     if (index < episode.size() - 1)  {
         auto q      = policy_map.value(step.state, step.action);
         auto next   = episode[index + 1];
@@ -862,14 +1076,14 @@ typename q_learning<state_class,action_class,markov_chain,value_type>::triplet
         auto r      = step.state.reward();
         if (std::isnan(q_next)) q_next = 0.;
         return std::make_tuple(step.state, step.action, 
-                               q + alpha * (r + (gamma * q_next) - q));
+                               q + rate * (r + (gamma * q_next) - q));
     }
     else {
         // last decision of the episode: no next state to bootstrap from,
         // but the reward may be stochastic, so average it with the learning rate
         auto q = policy_map.value(step.state, step.action);
         auto r = step.state.reward();
-        return std::make_tuple(step.state, step.action, q + alpha * (r - q));
+        return std::make_tuple(step.state, step.action, q + rate * (r - q));
     }
 }
 
@@ -886,10 +1100,10 @@ void q_learning<state_class,action_class,markov_chain,value_type
     const std::size_t learnt = (terminated || episode.size() == 0) ? episode.size() 
                                                                : episode.size() - 1;
     for (std::size_t i = 0; i < learnt; i++) {
-        auto triplet = q_value(episode, i, policy_map);
-        policy_map.update(std::get<0>(triplet), 
-                          std::get<1>(triplet), 
-                          std::get<2>(triplet));
+        auto update = q_value(episode, i, policy_map);
+        policy_map.update(std::get<0>(update), 
+                          std::get<1>(update), 
+                          std::get<2>(update));
     }
 }
 
@@ -954,10 +1168,10 @@ void q_probabilistic<state_class,action_class,markov_chain,value_type
         }
     }
     for (std::size_t i = 0; i < learnt; i++) {
-        auto triplet = q_value(episode, i, policy_map);
-        policy_map.update(std::get<0>(triplet), 
-                          std::get<1>(triplet), 
-                          std::get<2>(triplet));
+        auto update = q_value(episode, i, policy_map);
+        policy_map.update(std::get<0>(update), 
+                          std::get<1>(update), 
+                          std::get<2>(update));
     }
 }
 template <class state_class, 
@@ -971,6 +1185,8 @@ typename sarsa<state_class,action_class,markov_chain,value_type>::triplet
                             policy<state_class,action_class,value_type> & policy_map) 
 {
     auto step = episode[index];
+    // α: `alpha`, or the scheduled learning rate of this update of (s_t, a_t)
+    auto rate = step_size(learning_rate, alpha, visits, step.state, step.action);
     // Q(s_t, a_t): the value we update
     auto q = policy_map.value(step.state, step.action);
     // r_t: the reward received after taking a_t in s_t
@@ -980,12 +1196,12 @@ typename sarsa<state_class,action_class,markov_chain,value_type>::triplet
         auto next   = episode[index + 1];
         auto q_next = policy_map.value(next.state, next.action);
         return std::make_tuple(step.state, step.action, 
-                               q + alpha * (r + (gamma * q_next) - q));
+                               q + rate * (r + (gamma * q_next) - q));
     }
     else {
         // last decision of the episode: no next state to bootstrap from,
         // but the reward may be stochastic, so average it with the learning rate
-        return std::make_tuple(step.state, step.action, q + alpha * (r - q));
+        return std::make_tuple(step.state, step.action, q + rate * (r - q));
     }
 }
 
@@ -1002,10 +1218,10 @@ void sarsa<state_class,action_class,markov_chain,value_type
     const std::size_t learnt = (terminated || episode.size() == 0) ? episode.size() 
                                                                : episode.size() - 1;
     for (std::size_t i = 0; i < learnt; i++) {
-        auto triplet = q_value(episode, i, policy_map);
-        policy_map.update(std::get<0>(triplet), 
-                          std::get<1>(triplet), 
-                          std::get<2>(triplet));
+        auto update = q_value(episode, i, policy_map);
+        policy_map.update(std::get<0>(update), 
+                          std::get<1>(update), 
+                          std::get<2>(update));
     }
 }
 
@@ -1041,6 +1257,8 @@ typename expected_sarsa<state_class,action_class,markov_chain,value_type>::tripl
                                      policy<state_class,action_class,value_type> & policy_map) 
 {
     auto step = episode[index];
+    // α: `alpha`, or the scheduled learning rate of this update of (s_t, a_t)
+    auto rate = step_size(learning_rate, alpha, visits, step.state, step.action);
     // Q(s_t, a_t): the value we update
     auto q = policy_map.value(step.state, step.action);
     // r_t: the reward received after taking a_t in s_t
@@ -1050,12 +1268,12 @@ typename expected_sarsa<state_class,action_class,markov_chain,value_type>::tripl
         auto next   = episode[index + 1];
         auto v_next = expected_value(next.state, policy_map);
         return std::make_tuple(step.state, step.action, 
-                               q + alpha * (r + (gamma * v_next) - q));
+                               q + rate * (r + (gamma * v_next) - q));
     }
     else {
         // last decision of the episode: no next state to bootstrap from,
         // but the reward may be stochastic, so average it with the learning rate
-        return std::make_tuple(step.state, step.action, q + alpha * (r - q));
+        return std::make_tuple(step.state, step.action, q + rate * (r - q));
     }
 }
 
@@ -1072,11 +1290,106 @@ void expected_sarsa<state_class,action_class,markov_chain,value_type
     const std::size_t learnt = (terminated || episode.size() == 0) ? episode.size() 
                                                                : episode.size() - 1;
     for (std::size_t i = 0; i < learnt; i++) {
-        auto triplet = q_value(episode, i, policy_map);
-        policy_map.update(std::get<0>(triplet), 
-                          std::get<1>(triplet), 
-                          std::get<2>(triplet));
+        auto update = q_value(episode, i, policy_map);
+        policy_map.update(std::get<0>(update), 
+                          std::get<1>(update), 
+                          std::get<2>(update));
     }
+}
+template <typename value_type>
+polynomial_decay<value_type>::polynomial_decay(value_type first, 
+                                               value_type power)
+: initial(first), 
+  exponent(power)
+{}
+
+template <typename value_type>
+value_type polynomial_decay<value_type>::operator()(std::size_t k) const
+{
+    // v(k) = initial / k^exponent, counting from k = 1
+    const value_type n = static_cast<value_type>(std::max<std::size_t>(k, 1));
+    return initial / std::pow(n, exponent);
+}
+
+template <typename value_type>
+exponential_decay<value_type>::exponential_decay(value_type first, 
+                                                 value_type factor, 
+                                                 value_type floor)
+: initial(first), 
+  rate(factor), 
+  minimum(floor)
+{}
+
+template <typename value_type>
+value_type exponential_decay<value_type>::operator()(std::size_t k) const
+{
+    // v(k) = initial * rate^(k-1), but never below the minimum
+    const value_type n = static_cast<value_type>(std::max<std::size_t>(k, 1) - 1);
+    return std::max(minimum, initial * std::pow(rate, n));
+}
+
+template <typename value_type>
+linear_decay<value_type>::linear_decay(value_type first, 
+                                       value_type end, 
+                                       std::size_t count)
+: initial(first), 
+  last(end), 
+  steps(count)
+{}
+
+template <typename value_type>
+value_type linear_decay<value_type>::operator()(std::size_t k) const
+{
+    // the fraction of the way from `initial` to `last`: 0 at k = 1, 1 from k = steps + 1
+    const std::size_t done = std::min(std::max<std::size_t>(k, 1) - 1, steps);
+    const value_type fraction = steps == 0 ? value_type(1) 
+                                           : static_cast<value_type>(done) / static_cast<value_type>(steps);
+    return initial + (last - initial) * fraction;
+}
+
+template <class state_class, 
+          class action_class>
+std::size_t visit_counter<state_class,action_class>::count(const state_class & s_t, 
+                                                           const action_class & a_t) const
+{
+    auto state = counts_.find(s_t);
+    if (state == counts_.end()) {
+        return 0;
+    }
+    auto entry = state->second.find(a_t);
+    return entry == state->second.end() ? 0 : entry->second;
+}
+
+template <class state_class, 
+          class action_class>
+std::size_t visit_counter<state_class,action_class>::increment(const state_class & s_t, 
+                                                               const action_class & a_t)
+{
+    return ++counts_[s_t][a_t];
+}
+
+template <class state_class, 
+          class action_class>
+void visit_counter<state_class,action_class>::clear()
+{
+    counts_.clear();
+}
+
+template <class state_class, 
+          class action_class,
+          typename value_type>
+value_type step_size(const std::function<value_type(std::size_t)> & learning_rate,
+                     value_type alpha,
+                     visit_counter<state_class,action_class> & visits,
+                     const state_class & s_t,
+                     const action_class & a_t)
+{
+    // no schedule: the same learning rate for every update
+    if (!learning_rate) {
+        return alpha;
+    }
+    // the n-th update of (s_t, a_t) uses the n-th learning rate of the schedule
+    return learning_rate(visits.increment(s_t, a_t));
 }
 #if USING_BOOST_SERIALIZATION
 #include "serialize.tpl"

@@ -2,10 +2,16 @@
  * Windy Gridworld (Sutton & Barto, Example 6.5 and Exercise 6.10).
  *
  * 1. Steady wind: `q_learning` learns the shortest path (15 moves).
- * 2. Random wind: the same move can end in different cells. `q_learning` with a
- *    fixed learning rate keeps chasing the latest outcome, while
- *    `q_probabilistic` averages the outcomes it has seen, and learns the
- *    policy with the fewest expected moves.
+ * 2. Random wind: the same move can end in different cells.
+ *    - `q_learning` with a large constant learning rate (α = 0.5) keeps chasing
+ *      the latest outcome, and does not settle on a good policy.
+ *    - `q_learning` with a learning rate that decays for each state/action pair,
+ *      α = 1/n^0.6 for its n-th update, averages the outcomes out, and learns
+ *      the policy with the fewest expected moves.
+ *    - `q_probabilistic` averages the outcomes it has seen by design, and learns
+ *      that policy too.
+ *
+ * @see docs/schedules.md for learning rates that decay
  *
  * @see games/windy_gridworld.hpp for the rules
  */
@@ -95,21 +101,32 @@ int main()
               << "steady wind, q_learning: " << moves << " moves (the shortest path is 15)" << std::endl;
     draw(steady, memory, prng);
 
-    // 2. random wind: compare Q-learning with probabilistic Q-learning
+    // 2. random wind: compare Q-learning, with a constant and with a decaying
+    //    learning rate, and probabilistic Q-learning, each trained for 5000 episodes
     game_type random_wind(true, 2);
-    relearn::q_learning<types::state, types::action> q_random;
-    q_random.alpha = 0.5;
-    q_random.gamma = 1.0;
+    relearn::q_learning<types::state, types::action> q_constant;
+    q_constant.alpha = 0.5;
+    q_constant.gamma = 1.0;
+    relearn::q_learning<types::state, types::action> q_decaying;
+    q_decaying.gamma = 1.0;
+    // α = 1/n^0.6 for the n-th update of each state/action pair
+    q_decaying.learning_rate = relearn::polynomial_decay<>(1.0, 0.6);
     relearn::q_probabilistic<types::state, types::action> p_random(1.0);
-    auto memory_q = train(random_wind, q_random, 2000, prng);
-    auto memory_p = train(random_wind, p_random, 2000, prng);
+    auto memory_constant = train(random_wind, q_constant, 5000, prng);
+    auto memory_decaying = train(random_wind, q_decaying, 5000, prng);
+    auto memory_p        = train(random_wind, p_random, 5000, prng);
     // a policy that wanders forever is stopped at 1000 moves
-    double moves_q = -games::evaluate(random_wind, memory_q, 1000, 1000, prng);
-    double moves_p = -games::evaluate(random_wind, memory_p, 1000, 1000, prng);
-    std::cout << std::endl << "random wind, average moves over 1000 greedy episodes:" << std::endl;
+    double moves_constant = -games::evaluate(random_wind, memory_constant, 1000, 1000, prng);
+    double moves_decaying = -games::evaluate(random_wind, memory_decaying, 1000, 1000, prng);
+    double moves_p        = -games::evaluate(random_wind, memory_p, 1000, 1000, prng);
+    std::cout << std::endl << "random wind, average moves over 1000 greedy episodes"
+              << " (the best policy needs 20.6 on average):" << std::endl;
     std::cout << std::setprecision(1);
-    std::cout << "    q_learning      " << std::setw(7) << moves_q << std::endl;
-    std::cout << "    q_probabilistic " << std::setw(7) << moves_p
-              << "   (the best policy needs 20.6 on average)" << std::endl;
-    return moves == 15 ? EXIT_SUCCESS : EXIT_FAILURE;
+    std::cout << "    q_learning, α = 0.5           " << std::setw(7) << moves_constant << std::endl;
+    std::cout << "    q_learning, α = 1/n^0.6       " << std::setw(7) << moves_decaying << std::endl;
+    std::cout << "    q_probabilistic               " << std::setw(7) << moves_p << std::endl;
+    // the steady path must be the shortest, and the decaying learning rate must
+    // come close to the best policy in random wind
+    bool learnt = (moves == 15) && (moves_decaying < 21.6);
+    return learnt ? EXIT_SUCCESS : EXIT_FAILURE;
 }
