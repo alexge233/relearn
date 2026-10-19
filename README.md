@@ -408,6 +408,7 @@ optimal results given by the book.
 
 Contributions are welcome! Please read [CONTRIBUTING.md](CONTRIBUTING.md) first:
 it describes the code style, and how changes are tested.
+AI-generated contributions are welcome, as long as they have been reviewed and approved by a human.
 
 # TODO
 

@@ -14,6 +14,7 @@ and by students meeting reinforcement learning for the first time.
 - **Every change comes with a test**, and every learning test is checked against a known
   answer (an exact solution, or a result from the book), across several random seeds.
 - **Keep pull requests small** enough to review in one sitting.
+- **AI-generated contributions are welcome**, as long as they have been reviewed and approved by a human.
 
 ## Code style
 
