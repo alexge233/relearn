@@ -6,6 +6,7 @@
  */
 #include "../examples/games/blackjack.hpp"
 #include "../examples/games/cliff_walking.hpp"
+#include "../examples/games/windy_gridworld.hpp"
 #include "solvers.hpp"
 #include <cmath>
 #define CATCH_CONFIG_MAIN
@@ -193,4 +194,118 @@ TEST_CASE("cliff walking: q_learning learns the shortest path", "[games][cliff]"
     REQUIRE(greedy.terminated);
     REQUIRE(greedy.steps == 13);
     REQUIRE(greedy.total_reward == -13);
+}
+
+// ------------------------------------------------------------ windy gridworld
+
+namespace
+{
+/// exact model of the windy gridworld, written from the rules of Sutton & Barto
+solvers::tabular windy_model(bool stochastic)
+{
+    using game_type = games::windy_gridworld;
+    solvers::tabular m;
+    m.states = game_type::width * game_type::height;
+    m.actions = 4;
+    m.gamma = 1;
+    m.model = [stochastic](int s, int a) {
+        std::vector<solvers::outcome> out;
+        int x = s % game_type::width, y = s / game_type::width;
+        if (x == 7 && y == 3) return out;                       // goal
+        const int wind[] = {0, 0, 0, 1, 1, 1, 2, 2, 1, 0};
+        std::vector<int> pushes = {wind[x]};
+        if (stochastic && wind[x] > 0) pushes = {wind[x] - 1, wind[x], wind[x] + 1};
+        for (int push : pushes) {
+            int nx = std::min(std::max(x + (a == 1) - (a == 3), 0), game_type::width - 1);
+            int ny = std::min(std::max(y - (a == 0) + (a == 2), 0), game_type::height - 1);
+            ny = std::min(std::max(ny - push, 0), game_type::height - 1);
+            out.push_back({1.0 / pushes.size(), ny * game_type::width + nx, -1.0, nx == 7 && ny == 3});
+        }
+        return out;
+    };
+    return m;
+}
+
+/// the greedy action of @param memory in every state of a grid game
+template <class game_type>
+std::vector<int> greedy_policy(const typename games::types<game_type>::policy & memory,
+                               int width, int height, std::mt19937 & prng)
+{
+    std::vector<int> policy(width * height);
+    for (int s = 0; s < width * height; s++) {
+        games::position p{s % width, s / width};
+        policy[s] = games::greedy<game_type>(memory, p, {0, 1, 2, 3}, prng);
+    }
+    return policy;
+}
+} // namespace
+
+TEST_CASE("windy gridworld: rules", "[games][windy]")
+{
+    using game_type = games::windy_gridworld;
+    game_type game;
+    REQUIRE(game.reset() == game_type::start());
+    // the game agrees with the exact model on every move from every cell
+    auto model = windy_model(false);
+    for (int s = 0; s < model.states; s++) {
+        games::position at{s % game_type::width, s / game_type::width};
+        if (at == game_type::goal()) continue;
+        for (unsigned int a = 0; a < 4; a++) {
+            game.place(at);
+            auto out = game.step(a);
+            auto expected = model.model(s, static_cast<int>(a));
+            REQUIRE(expected.size() == 1);
+            REQUIRE(out.next.x + out.next.y * game_type::width == expected[0].next);
+            REQUIRE(out.reward == expected[0].reward);
+            REQUIRE(out.terminated == expected[0].terminal);
+        }
+    }
+    // from the start, moving right is pushed up once it leaves column 3 (wind 1)
+    game.reset();
+    for (int i = 0; i < 3; i++) {
+        REQUIRE(game.step(games::right).next == (games::position{i + 1, 3}));
+    }
+    REQUIRE(game.step(games::right).next == (games::position{4, 2}));
+    // random wind only varies where there is wind: column 0 has none
+    game_type random_wind(true, 3);
+    for (int i = 0; i < 100; i++) {
+        random_wind.place({0, 3});
+        REQUIRE(random_wind.step(games::up).next == (games::position{0, 2}));
+    }
+}
+
+TEST_CASE("windy gridworld: q_learning learns the shortest path", "[games][windy]")
+{
+    using game_type = games::windy_gridworld;
+    game_type game;
+    std::mt19937 prng(1);
+    games::types<game_type>::policy memory;
+    relearn::q_learning<games::types<game_type>::state, games::types<game_type>::action> learner;
+    learner.alpha = 0.5;
+    learner.gamma = 1.0;
+    train(game, learner, memory, 500, 0.1, 1000, prng);
+    auto exact = windy_model(false);
+    REQUIRE(exact.optimal_values()[3 * game_type::width] == Approx(-15));
+    auto greedy = games::play(game,
+                              [&](const game_type::state_type & s, const std::vector<unsigned int> & legal) {
+                                  return games::greedy<game_type>(memory, s, legal, prng);
+                              }, 100);
+    REQUIRE(greedy.terminated);
+    REQUIRE(greedy.steps == 15);
+}
+
+TEST_CASE("windy gridworld: q_probabilistic learns the best policy in random wind", "[games][windy]")
+{
+    using game_type = games::windy_gridworld;
+    game_type game(true, 1);
+    std::mt19937 prng(11);
+    games::types<game_type>::policy memory;
+    relearn::q_probabilistic<games::types<game_type>::state, games::types<game_type>::action> learner(1.0);
+    train(game, learner, memory, 2000, 0.1, 1000, prng);
+    // the learnt greedy policy, evaluated exactly, needs as few moves as the optimal one
+    auto exact = windy_model(true);
+    auto best = exact.optimal_values();
+    auto learnt = exact.policy_values(greedy_policy<game_type>(memory, game_type::width, game_type::height, prng));
+    const int start = 3 * game_type::width;
+    REQUIRE(learnt[start] == Approx(best[start]).margin(0.1));
 }

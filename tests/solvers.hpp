@@ -16,6 +16,84 @@
 
 namespace solvers
 {
+/// one possible outcome of taking an action in a tabular model
+struct outcome
+{
+    double probability;
+    int next;          // index of the next state
+    double reward;
+    bool terminal;     // the episode ends: the next state is worth 0
+};
+
+/**
+ * A finite MDP with states 0 ... states-1 and actions 0 ... actions-1.
+ * `model(s, a)` lists the outcomes of action a in state s; an empty list
+ * means the action is not allowed there (or s is terminal).
+ */
+struct tabular
+{
+    int states = 0;
+    int actions = 0;
+    double gamma = 1;
+    std::function<std::vector<outcome>(int, int)> model;
+
+    /// value of taking @param a in @param s given state values @param v (NaN if not allowed)
+    double q(const std::vector<double> & v, int s, int a) const
+    {
+        auto outcomes = model(s, a);
+        if (outcomes.empty()) return std::nan("");
+        double value = 0;
+        for (const auto & o : outcomes) {
+            value += o.probability * (o.reward + (o.terminal ? 0.0 : gamma * v[o.next]));
+        }
+        return value;
+    }
+
+    /// optimal state values, by value iteration
+    std::vector<double> optimal_values(double tolerance = 1e-12, int max_sweeps = 100000) const
+    {
+        std::vector<double> v(states, 0.0);
+        for (int sweep = 0; sweep < max_sweeps; sweep++) {
+            double change = 0;
+            for (int s = 0; s < states; s++) {
+                double best = -1e300;
+                bool any = false;
+                for (int a = 0; a < actions; a++) {
+                    double value = q(v, s, a);
+                    if (!std::isnan(value)) { best = std::max(best, value); any = true; }
+                }
+                if (!any) continue;
+                change = std::max(change, std::fabs(best - v[s]));
+                v[s] = best;
+            }
+            if (change < tolerance) break;
+        }
+        return v;
+    }
+
+    /// state values of following @param policy (one action per state), by iterative evaluation;
+    /// a policy that never ends an episode (with gamma = 1) keeps falling below @param floor
+    std::vector<double> policy_values(const std::vector<int> & policy,
+                                      double tolerance = 1e-12,
+                                      int max_sweeps = 100000,
+                                      double floor = -1e6) const
+    {
+        std::vector<double> v(states, 0.0);
+        for (int sweep = 0; sweep < max_sweeps; sweep++) {
+            double change = 0;
+            for (int s = 0; s < states; s++) {
+                double value = q(v, s, policy[s]);
+                if (std::isnan(value)) continue;
+                value = std::max(value, floor);
+                change = std::max(change, std::fabs(value - v[s]));
+                v[s] = value;
+            }
+            if (change < tolerance) break;
+        }
+        return v;
+    }
+};
+
 /**
  * Blackjack (Sutton & Barto, Example 5.1) solved exactly by recursion.
  * The infinite deck makes every card independent: P(10) = 4/13, others 1/13.
