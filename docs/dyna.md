@@ -323,7 +323,8 @@ The goals reached so far, every 200 moves:
 | Dyna-Q+ | 34.8 | 81.0 | 128.9 | 196.5 | 274.9 | 353.5 |
 
 This one is harder. Nothing goes wrong for Dyna-Q: the long way still works, its model says so,
-and so it never looks for anything better. Dyna-Q+ goes back to check the wall on the right,
+and so it never looks for anything better: it only finds the shortcut if its random moves happen to stumble on it,
+which is rare. Dyna-Q+ goes back to check the wall on the right,
 finds the shortcut, and reaches the goal more and more often.
 
 ## Tests
@@ -336,7 +337,8 @@ finds the shortcut, and reaches the goal more and more often.
 - Dyna-Q+'s bonus, `κ √τ`, and its untried actions, which settle at `κ √τ / (1 - γ)` as above
 - Figure 8.2 over 10 runs: n = 50 learns the maze in fewer episodes than n = 5, and n = 5 than n = 0
 - Figure 8.4 over 10 runs: Dyna-Q+ finds the new way in every run, and reaches the goal more often than Dyna-Q
-- Figure 8.5 over 10 runs: Dyna-Q never takes the shortcut, and Dyna-Q+ takes it in at least half of the runs
+- Figure 8.5 over 10 runs: Dyna-Q takes the shortcut in at most 2 runs (only by chance, whilst exploring),
+  and Dyna-Q+ in at least half of them
 
 ## References
 

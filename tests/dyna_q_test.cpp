@@ -322,8 +322,8 @@ TEST_CASE("dyna_q: constructor and brace initialisation", "[dyna_q]")
 /// verifies Figure 8.2: the more it plans, the fewer episodes Dyna-Q needs to learn the maze
 TEST_CASE("dyna_q: Figure 8.2, more planning learns the maze in fewer episodes", "[dyna_q][dyna_maze]")
 {
-    // over 10 groups of 10 runs, the mean moves of episodes 2 to 10 were
-    // 265 to 363 (n = 0), 37 to 44 (n = 5) and 19 to 22 (n = 50)
+    // over 10 groups of 10 runs, with libstdc++ and with libc++, the mean moves of episodes
+    // 2 to 10 were 221 to 363 (n = 0), 36 to 44 (n = 5) and 19 to 22 (n = 50)
     const double none = early_moves(0, 10);
     const double some = early_moves(5, 10);
     const double many = early_moves(50, 10);
@@ -336,7 +336,8 @@ TEST_CASE("dyna_q: Figure 8.2, more planning learns the maze in fewer episodes",
 /// verifies Figure 8.4: when the short way is blocked, Dyna-Q+ finds the new way, every time
 TEST_CASE("dyna_q+: Figure 8.4, the blocking maze", "[dyna_q][dyna_q_plus][dyna_maze]")
 {
-    // the wall moves after 1000 moves, and the runs last 3000. Over 10 groups of 10 runs,
+    // the wall moves after 1000 moves, and the runs last 3000. Over 10 groups of 10 runs
+    // (with libstdc++ and with libc++),
     // Dyna-Q+ found the new way in all runs (at most 25 moves per goal at the end), and
     // Dyna-Q in 0 to 5; Dyna-Q+ reached 151 to 161 goals per run, Dyna-Q 47 to 92
     double goals = 0;
@@ -351,13 +352,15 @@ TEST_CASE("dyna_q+: Figure 8.4, the blocking maze", "[dyna_q][dyna_q_plus][dyna_
     REQUIRE(plus_goals > 1.5 * goals);
 }
 
-/// verifies Figure 8.5: when a shortcut opens, Dyna-Q+ finds it, and Dyna-Q never does
+/// verifies Figure 8.5: when a shortcut opens, Dyna-Q+ finds it, and Dyna-Q rarely does
 TEST_CASE("dyna_q+: Figure 8.5, the shortcut maze", "[dyna_q][dyna_q_plus][dyna_maze]")
 {
     // the shortcut opens after 3000 moves, and the runs last 6000. Taking it costs 10 moves,
     // the old way 16, so at most 13 moves per goal at the end means the shortcut is taken.
-    // Over 10 groups of 10 runs, Dyna-Q+ took it in 6 to 9 runs, and Dyna-Q in none;
-    // Dyna-Q+ reached 350 to 359 goals per run, Dyna-Q 281 to 302
+    // Over 10 groups of 10 runs, with GCC's standard library (libstdc++), Dyna-Q+ took it in
+    // 6 to 9 runs, and Dyna-Q in none; with Clang's (libc++, as on macOS), whose random numbers
+    // differ, Dyna-Q+ took it in 7 to 10 runs, and Dyna-Q in 0 or 1, by chance whilst exploring.
+    // Dyna-Q+ reached 350 to 359 goals per run, Dyna-Q 280 to 308
     unsigned int taken = 0;
     unsigned int plus_taken = 0;
     double goals = 0;
@@ -370,7 +373,7 @@ TEST_CASE("dyna_q+: Figure 8.5, the shortcut maze", "[dyna_q][dyna_q_plus][dyna_
         goals += dyna.goals;
         plus_goals += plus.goals;
     }
-    REQUIRE(taken == 0);
+    REQUIRE(taken <= 2);
     REQUIRE(plus_taken >= 5);
     REQUIRE(plus_goals > 1.1 * goals);
 }
