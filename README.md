@@ -29,8 +29,9 @@ Q(s_t,a_t) \leftarrow Q(s_t,a_t) + \alpha \left[ r_t - Q(s_t,a_t) \right]
 ```
 
 where `r_t` is the reward received after taking action `a_t` in state `s_t` (see [Reward convention](#reward-convention)).
-It works in deterministic systems, and also in non-deterministic ones provided the learning rate of every
-state/action pair decays over its visits (for example α = 1/n after n visits).
+It works in deterministic systems, and also in non-deterministic ones provided every state/action pair keeps
+being visited, and the learning rates used on its visits satisfy Σα = ∞ and Σα² < ∞ (for example α = 1/n
+after n visits). A rate that decays faster, such as α = 1/n², stops learning before the values are reached.
 
 The policy decision is entirely up to you to decide; in the case of a deterministic system,
 usually the options are to either stay on policy, taking the action of highest value:
