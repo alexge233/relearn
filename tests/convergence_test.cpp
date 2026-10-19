@@ -323,3 +323,47 @@ TEST_CASE("expected_sarsa converges to the true Q on stochastic MDPs", "[converg
         REQUIRE(memory.value(state("s0"), action("a")) == Approx(mdp_b{}.q_s0).margin(0.02));
     }
 }
+
+/**
+ * @brief train Double Q-learning with α = 1/n per estimate: each estimate is then the
+ *        plain average of its own targets
+ * @param sample draws one episode of the MDP
+ * @param episodes is the number of episodes to train on
+ * @param seed seeds the random outcomes of the MDP and the coin
+ * @return the learnt policy: the average of both estimates
+ */
+template <class mdp>
+relearn::policy<state,action> train_double_q(const mdp & sample,
+                                             int episodes,
+                                             unsigned int seed)
+{
+    std::mt19937 prng(seed);
+    relearn::policy<state,action> memory;
+    relearn::double_q_learning<state,action> learner(0.9, discount, seed + 50);
+    learner.learning_rate = relearn::polynomial_decay<>(1.0, 1.0);
+    for (int k = 1; k <= episodes; k++) {
+        learner(sample(prng), memory);
+    }
+    return memory;
+}
+
+/// verifies that `double_q_learning` reaches the exact Q of both MDPs (Sutton & Barto, Section 6.7)
+TEST_CASE("double_q_learning converges to the true Q on stochastic MDPs", "[convergence][double_q]")
+{
+    // each estimate gets about half of the updates, so each counts its own: α = 1/n for
+    // the n-th update of a pair in that estimate. On MDP B, across seeds 1 ... 10, the worst
+    // error was 0.125 with α = 1/k per episode, and 0.0023 with a count per estimate
+    // (0.0034 on MDP A)
+    const int n = 200000;
+    SECTION("MDP A: stochastic final reward") {
+        auto memory = train_double_q(mdp_a{}, n, 6);
+        REQUIRE(memory.value(state("s1"), action("b")) == Approx(mdp_a{}.q_s1).margin(0.02));
+        REQUIRE(memory.value(state("s0"), action("a")) == Approx(mdp_a{}.q_s0).margin(0.02));
+    }
+    SECTION("MDP B: stochastic transition, intermediate reward") {
+        auto memory = train_double_q(mdp_b{}, n, 6);
+        REQUIRE(memory.value(state("s1"), action("x")) == Approx(mdp_b{}.q_s1).margin(0.02));
+        REQUIRE(memory.value(state("s2"), action("y")) == Approx(mdp_b{}.q_s2).margin(0.02));
+        REQUIRE(memory.value(state("s0"), action("a")) == Approx(mdp_b{}.q_s0).margin(0.02));
+    }
+}

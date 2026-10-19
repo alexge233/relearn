@@ -92,6 +92,8 @@ if (BUILD_TESTS)
     add_test(sarsa_test test_sarsa)
     add_executable(test_schedules tests/schedules_test.cpp)
     add_test(schedules_test test_schedules)
+    add_executable(test_double_q tests/double_q_learning_test.cpp)
+    add_test(double_q_test test_double_q)
 
     # if building tests & testing serialization
     if (USING_BOOST_SERIALIZATION)
