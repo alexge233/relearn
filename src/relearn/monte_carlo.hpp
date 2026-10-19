@@ -105,6 +105,9 @@ struct monte_carlo
  * The greedy action is the action of highest value among those stored for s_t (ties go to
  * the one `policy::best_action` returns). The cumulative weights C are kept in `weights`.
  * Like `monte_carlo`, it only learns from episodes that ended.
+ *
+ * b(a_t | s_t) is read for every step *before* any value changes, so b may depend on Q
+ * (e.g. ε-greedy on the values being learnt): the probabilities used are the ones the episode was played with.
  */
 template <class state_class, 
           class action_class,
@@ -215,6 +218,12 @@ void off_policy_monte_carlo<state_class,action_class,markov_chain,value_type
         return;
     }
     assert(behaviour && "off_policy_monte_carlo needs the behaviour policy b(a | s)");
+    // b(a_t | s_t) of every step, read before any value changes: if b depends on Q,
+    // these are still the probabilities the episode was played with
+    std::vector<value_type> b(episode.size());
+    for (std::size_t t = 0; t < episode.size(); t++) {
+        b[t] = behaviour(episode[t].state, episode[t].action);
+    }
     // walk the episode backwards: the return G, and the importance weight W
     value_type G = 0;
     value_type W = 1;
@@ -233,11 +242,10 @@ void off_policy_monte_carlo<state_class,action_class,markov_chain,value_type
             break;
         }
         // π takes a_t for sure, b with probability b(a_t | s_t): W = W * 1 / b(a_t | s_t)
-        auto b = behaviour(step.state, step.action);
-        if (b <= 0) {
+        if (b[i] <= 0) {
             break;
         }
-        W = W / b;
+        W = W / b[i];
     }
 }
 } // end of namespace

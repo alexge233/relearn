@@ -225,6 +225,9 @@ or in short, `relearn::off_policy_monte_carlo<state,action> learner(1.0, b)`.
 - The greedy action of a state is the one of highest value among those stored for it, so actions
   never tried there do not count. The sums of the weights `C` are kept in `learner.weights`.
 - As with `monte_carlo`, only episodes that ended are learnt.
+- `b` may depend on the values being learnt, e.g., ε-Greedy on `policy`. Do bear in mind that the learner
+  reads `b(a | s)` for every step of the episode *before* it changes any value, so that the probabilities
+  it uses are the ones the episode was played with.
 - Off-policy Monte Carlo only learns from the *end* of each episode, back to the last move the greedy
   policy would not have made. When episodes are long and `b` is very different from `π`, that can be
   very little, and learning is slow. Blackjack's games are short, so it works well there.

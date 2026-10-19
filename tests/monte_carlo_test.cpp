@@ -208,6 +208,28 @@ TEST_CASE("off_policy_monte_carlo: the earlier steps are not learnt after a non-
     REQUIRE(learner.weights.value(state("s0"), action("a")) == Approx(0));
 }
 
+/// verifies that b(a | s) is read before any value changes, when b is ε-greedy on the values being learnt
+TEST_CASE("off_policy_monte_carlo: a behaviour policy that depends on Q", "[monte_carlo][off_policy]")
+{
+    // b is ε-greedy on memory, with ε = 0.1 and two actions: 0.95 for the greedy action, 0.05 for the other.
+    // In s1 the greedy action is a (worth 1), but the episode explores x there, with probability 0.05.
+    // Backwards, with γ = 1:
+    //    (s1, x): W = 1, C = 1, Q = 0 + 1/1 (5 - 0) = 5, so x is now greedy; W = 1 / 0.05 = 20
+    //    (s0, a): C = 0 + 20 = 20
+    // Reading b after Q(s1, x) changed would give x 0.95 instead, and C(s0, a) = 1/0.95
+    policy memory;
+    memory.update(state("s1"), action("a"), 1);
+    relearn::off_policy_monte_carlo<state,action> learner(1.0,
+        [&](const state & s, const action & a) {
+            auto greedy = memory.best_action(s);
+            return (greedy && *greedy == a) ? 0.95 : 0.05;
+        });
+    learner(episode {{state(0, "s0"), action("a")},
+                     {state(5, "s1"), action("x")}}, memory);
+    REQUIRE(memory.value(state("s1"), action("x")) == Approx(5));
+    REQUIRE(learner.weights.value(state("s0"), action("a")) == Approx(20));
+}
+
 /// verifies the constructors, and brace initialisation
 TEST_CASE("monte_carlo: constructors and brace initialisation", "[monte_carlo]")
 {
