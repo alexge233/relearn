@@ -97,6 +97,12 @@ if (BUILD_TESTS)
     add_executable(test_dyna_q tests/dyna_q_test.cpp)
     add_test(dyna_q_test test_dyna_q)
 
+    # every part of the library compiles on its own (see tests/headers)
+    foreach(part core schedules q_learning sarsa double_q_learning dyna)
+        add_executable(test_header_${part} tests/headers/${part}.cpp)
+        add_test(header_${part}_test test_header_${part})
+    endforeach()
+
     # if building tests & testing serialization
     if (USING_BOOST_SERIALIZATION)
         add_definitions(-DUSING_BOOST_SERIALIZATION)

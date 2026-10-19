@@ -6,7 +6,7 @@ and by students who are meeting reinforcement learning for the first time.
 
 ## Ground rules
 
-- **`src/relearn.hpp` stays header-only, with no required dependencies.**
+- **The library (`src/relearn.hpp` and `src/relearn/`) stays header-only, with no required dependencies.**
   It must build with nothing but a C++14 compiler, so that it runs on embedded boards,
   drones and robots. Optional features (such as Boost serialization) stay behind a macro.
 - **Examples and games may use third-party libraries**, but only in their own optional
@@ -21,8 +21,12 @@ and by students who are meeting reinforcement learning for the first time.
 ```
 .
 ├── src
-|   ├── relearn.hpp           the library, and all you need to use it
-|   └── serialize.tpl         Boost serialization (only with USING_BOOST_SERIALIZATION)
+|   ├── relearn.hpp           includes the whole library, and all you need to use it
+|   └── relearn
+|       ├── core.hpp          state, action, link and policy
+|       ├── schedules.hpp     the schedules and the visit counter
+|       ├── *.hpp             one header per algorithm (q_learning, sarsa, dyna, ...)
+|       └── serialize.tpl     Boost serialization (only with USING_BOOST_SERIALIZATION)
 ├── docs                      one document per algorithm: formulas, pseudocode and usage
 ├── examples
 |   ├── gridworld_*           the original gridworld examples
@@ -53,7 +57,7 @@ flowchart LR
 
 ## Code style
 
-The style below is the one used in `src/relearn.hpp` and the gridworld examples.
+The style below is the one used in the library (`src/relearn/`) and the gridworld examples.
 
 ### Layout
 
