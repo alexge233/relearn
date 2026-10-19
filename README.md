@@ -15,6 +15,9 @@ Currently the library implements the following algorithms, each one explained in
   actually follows, exploration included, see [docs/sarsa.md](docs/sarsa.md)
 - **Double Q-Learning** (`double_q_learning`), which keeps two estimates, so that the one picking the best next action
   is not the one valuing it, and isn't fooled by noisy values, see [docs/double_q_learning.md](docs/double_q_learning.md)
+- **Dyna-Q** and **Dyna-Q+** (`dyna_q`), which remember every move made, and replay them in their head (planning)
+  to learn far more from the same experience, whilst Dyna-Q+ also goes back to check moves it hasn't made for a while,
+  in case the world has changed, see [docs/dyna.md](docs/dyna.md)
 - **schedules** for the learning rate and the exploration rate, so that each one can *decay* as the agent learns
   (`polynomial_decay`, `exponential_decay` and `linear_decay`), see [docs/schedules.md](docs/schedules.md).
   Do bear in mind that `q_learning`, `sarsa`, `expected_sarsa` and `double_q_learning` can each decay the learning rate
@@ -342,7 +345,7 @@ auto r = games::play_online(game, agent, learner, memory, 1000);
 | `random_walk` | S&B 6.2, 7.1 | `q_probabilistic` | Prediction, with the learnt values next to the exact ones |
 | `maximization_bias` | S&B 6.7 | `q_learning`, `double_q_learning` | Q-Learning's overestimation, which Double Q-Learning removes (Figure 6.5) |
 | `gamblers_problem` | S&B 4.3 | `q_probabilistic` | Values that match the exact solution |
-| `dyna_maze` | S&B 8.1 to 8.3 | `q_learning` | Learning a maze, and mazes that change (for Dyna-Q, Dyna-Q+) |
+| `dyna_maze` | S&B 8.1 to 8.3 | `dyna_q` | Planning learns a maze in far fewer episodes (Figure 8.2), and Dyna-Q+ copes with mazes that change (Figures 8.4, 8.5) |
 | `tic_tac_toe` | S&B 1.5 | `q_learning` | Against a random or a perfect (minimax) opponent |
 | `frozen_lake` | Gymnasium | `q_probabilistic` | Slippery ice, where the learnt 4x4 policy is optimal |
 | `cart_pole` | Gymnasium | `q_learning` | A continuous state, cut into boxes (`games::discretised`) |
@@ -360,10 +363,16 @@ AI-generated contributions are welcome, as long as they have been reviewed and a
 
 # TODO
 
-1. Dyna-Q and Dyna-Q+ (`dyna_maze`)
-2. the R-Learning continuous algorithm
-3. eligibility traces
-4. watch the agents play: a `--watch` mode for the examples, with one drawing hook for two views
+1. split `relearn.hpp` into one header per algorithm (still header-only, with `relearn.hpp` including them all)
+2. Monte Carlo control: with exploring starts, on-policy, and off-policy with importance sampling (`blackjack`)
+3. TD(0) prediction, and n-step TD and n-step SARSA (`random_walk`)
+4. eligibility traces: TD(λ), SARSA(λ) and Watkins's Q(λ)
+5. REINFORCE, REINFORCE with a baseline, and Actor-Critic, which learn the policy itself (a new short corridor game)
+6. the R-Learning continuous algorithm, for tasks that never end (a new access-control queue game)
+7. UCB and gradient bandits (`bandit`)
+8. Monte Carlo Tree Search (`tic_tac_toe`)
+9. prioritized sweeping (`dyna_maze`), and policy iteration and value iteration in the library
+10. watch the agents play: a `--watch` mode for the examples, with one drawing hook for two views
    - in the terminal, as good old ASCII art
    - in a window, as retro pixel art: 2D, drawn at a low resolution and scaled up with sharp pixels,
      with sprites and a 16-colour palette defined in the code (so no asset files), a pixel font, optional
