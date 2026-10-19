@@ -107,8 +107,22 @@ __note__: serialization is optional, and needs Boost (see [enable serialization]
 
 # Building
 
-There is nothing to build! This is a header-only library, you only need to use the **relearn.hpp** header.
+There is nothing to build! This is a header-only library, you only need the `src` folder, and to include the **relearn.hpp** header.
 **However**, you may compile the examples in order to see how the library is used.
+
+`relearn.hpp` simply includes the parts of the library, which live in `src/relearn/`, one header for each:
+
+| header | what's in it |
+|---|---|
+| `relearn/core.hpp` | `state`, `action`, the `link` of an episode, and the `policy` |
+| `relearn/schedules.hpp` | `polynomial_decay`, `exponential_decay`, `linear_decay`, and the `visit_counter` |
+| `relearn/q_learning.hpp` | `q_learning` and `q_probabilistic` |
+| `relearn/sarsa.hpp` | `sarsa` and `expected_sarsa` |
+| `relearn/double_q_learning.hpp` | `double_q_learning` |
+| `relearn/dyna.hpp` | `dyna_q` |
+
+Each one includes whatever it needs, so if you only use one learner (e.g., on a small board, where every byte
+and every second of compiling counts) feel free to include just that one, `#include "relearn/q_learning.hpp"`.
 
 To do that, simply:
 
@@ -363,16 +377,15 @@ AI-generated contributions are welcome, as long as they have been reviewed and a
 
 # TODO
 
-1. split `relearn.hpp` into one header per algorithm (still header-only, with `relearn.hpp` including them all)
-2. Monte Carlo control: with exploring starts, on-policy, and off-policy with importance sampling (`blackjack`)
-3. TD(0) prediction, and n-step TD and n-step SARSA (`random_walk`)
-4. eligibility traces: TD(λ), SARSA(λ) and Watkins's Q(λ)
-5. REINFORCE, REINFORCE with a baseline, and Actor-Critic, which learn the policy itself (a new short corridor game)
-6. the R-Learning continuous algorithm, for tasks that never end (a new access-control queue game)
-7. UCB and gradient bandits (`bandit`)
-8. Monte Carlo Tree Search (`tic_tac_toe`)
-9. prioritized sweeping (`dyna_maze`), and policy iteration and value iteration in the library
-10. watch the agents play: a `--watch` mode for the examples, with one drawing hook for two views
+1. Monte Carlo control: with exploring starts, on-policy, and off-policy with importance sampling (`blackjack`)
+2. TD(0) prediction, and n-step TD and n-step SARSA (`random_walk`)
+3. eligibility traces: TD(λ), SARSA(λ) and Watkins's Q(λ)
+4. REINFORCE, REINFORCE with a baseline, and Actor-Critic, which learn the policy itself (a new short corridor game)
+5. the R-Learning continuous algorithm, for tasks that never end (a new access-control queue game)
+6. UCB and gradient bandits (`bandit`)
+7. Monte Carlo Tree Search (`tic_tac_toe`)
+8. prioritized sweeping (`dyna_maze`), and policy iteration and value iteration in the library
+9. watch the agents play: a `--watch` mode for the examples, with one drawing hook for two views
    - in the terminal, as good old ASCII art
    - in a window, as retro pixel art: 2D, drawn at a low resolution and scaled up with sharp pixels,
      with sprites and a 16-colour palette defined in the code (so no asset files), a pixel font, optional
