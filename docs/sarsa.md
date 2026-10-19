@@ -42,7 +42,7 @@ Q(s_t,a_t) \leftarrow Q(s_t,a_t) + \alpha \left[ r_t - Q(s_t,a_t) \right]
 ```
 
 where `α` is the learning rate, `γ` the discount rate, and `r_t` the reward received after
-taking `a_t` in `s_t` (see [Reward convention](../README.md#reward-convention)).
+taking `a_t` in `s_t` (see [Reward convention](q_learning.md#reward-convention)).
 
 Because the next action `a_{t+1}` was chosen by the agent's own policy, random moves included,
 SARSA learns `q_π`: the value of following that policy.
