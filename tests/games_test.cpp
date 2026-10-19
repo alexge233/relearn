@@ -1021,7 +1021,9 @@ TEST_CASE("cart-pole: q_learning on a discretised state learns to balance longer
         }
     }
     INFO("average steps: first 1000 episodes " << first << ", last 1000 " << last);
-    REQUIRE(first < 100);
+    // across seeds 1 ... 10 the first 1000 episodes averaged 17 ... 110 steps,
+    // and the last 1000 averaged 232 ... 339, at least 2.7 times as many
+    REQUIRE(last > 2 * first);
     REQUIRE(last > 150);
 }
 
