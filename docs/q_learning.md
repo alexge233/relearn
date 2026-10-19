@@ -33,8 +33,10 @@ plus the discounted value of the **best** action of the next state.
 Because it always uses the best action, whatever action the agent actually took next,
 Q-Learning learns the values of the *optimal* policy, even whilst the agent explores: this is why it is called *off-policy*.
 
-In a deterministic system you can use any learning rate, even `α = 1`, since the same action in the same state
-always has the same outcome.
+In a deterministic system you can use any constant learning rate above 0 and up to 1, even `α = 1`, since the same
+action in the same state always has the same outcome.
+Do bear in mind that a rate which *decays* still needs the first condition below, even in a deterministic system:
+the values of the next states keep changing as they are learnt, and a rate that decays too fast stops learning first.
 In a non-deterministic system (e.g., when taking the same action in the same state does not always lead to the
 same next state, or earn the same reward) the values only converge if every state/action pair keeps being visited,
 and the learning rates used on its visits satisfy:
