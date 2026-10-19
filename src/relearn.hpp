@@ -101,9 +101,9 @@ public:
     state_trait trait() const;
 private:
     // state reward
-    value_type __reward__;
+    value_type reward_;
     // state descriptor (actual object/value)
-    state_trait __trait__;
+    state_trait trait_;
 #if USING_BOOST_SERIALIZATION
     friend boost::serialization::access;
     // @warning - template parameter `state_trait` must be serializable
@@ -156,7 +156,7 @@ public:
     action_trait trait() const;
 private:
     // action descriptor - object/value wrapped
-    action_trait __trait__;
+    action_trait trait_;
 #if USING_BOOST_SERIALIZATION
     friend class boost::serialization::access;
     // @warning - template parameter `action_trait` must be serializable
@@ -278,7 +278,7 @@ protected:
     std::unordered_map<state_key,
                        action_values,
                        hasher<state_key>
-                       > __policies__;
+                       > policies_;
 private:
     /// @return the actions stored for @param s_t, or nullptr if the state is unknown
     const action_values * find_actions(const state_class & s_t) const;
@@ -410,7 +410,7 @@ private:
                                            transition,
                                            hasher<state_class>
                                           >;
-    observation __memory__;
+    observation memory_;
 };
 
 /********************************************************************************
@@ -448,58 +448,58 @@ std::size_t hasher<state<state_trait,value_type>
 template <class state_trait,
           typename value_type>
 state<state_trait,value_type>::state(state_trait trait)
-: __reward__(0), 
-  __trait__(trait)
+: reward_(0), 
+  trait_(trait)
 {}
 
 template <class state_trait,
           typename value_type>
 state<state_trait,value_type>::state(value_type reward, 
 			   state_trait trait)
-: __reward__(reward), 
-  __trait__(trait)
+: reward_(reward), 
+  trait_(trait)
 {}
 
 template <class state_trait,
           typename value_type>
 value_type state<state_trait,value_type>::reward() const
 {
-    return __reward__;
+    return reward_;
 }
 
 template <class state_trait,
           typename value_type>
 void state<state_trait,value_type>::set_reward(value_type reward)
 {
-    __reward__ = reward;
+    reward_ = reward;
 }
 
 template <class state_trait,
           typename value_type>
 bool state<state_trait,value_type>::operator==(const state & arg) const
 {
-    return (this->__trait__ == arg.__trait__);
+    return (this->trait_ == arg.trait_);
 }
 
 template <class state_trait,
           typename value_type>
 bool state<state_trait,value_type>::operator<(const state & arg) const
 {
-    return (this->__trait__ < arg.__trait__);
+    return (this->trait_ < arg.trait_);
 }
 
 template <class state_trait,
           typename value_type>
 std::size_t state<state_trait,value_type>::hash() const
 {
-    return std::hash<state_trait>{}(__trait__);
+    return std::hash<state_trait>{}(trait_);
 }
 
 template <class state_trait,
           typename value_type>
 state_trait state<state_trait,value_type>::trait() const
 {
-    return __trait__;
+    return trait_;
 }
 
 #if USING_BOOST_SERIALIZATION
@@ -509,38 +509,38 @@ template <typename archive>
 void state<state_trait,value_type>::serialize(archive & ar, 
 					                          const unsigned int version)
 {
-    ar & __trait__;
-    ar & __reward__;
+    ar & trait_;
+    ar & reward_;
 }
 #endif
 
 template <class action_trait>
 action<action_trait>::action(action_trait trait)
-: __trait__(trait)
+: trait_(trait)
 {}
 
 template <class action_trait>
 std::size_t action<action_trait>::hash() const
 {
-   return std::hash<action_trait>{}(__trait__); 
+   return std::hash<action_trait>{}(trait_); 
 }
 
 template <class action_trait>
 bool action<action_trait>::operator==(const action<action_trait> & arg) const
 {
-    return (this->__trait__ == arg.__trait__);
+    return (this->trait_ == arg.trait_);
 }
 
 template <class action_trait>
 bool action<action_trait>::operator<(const action<action_trait> & arg) const
 {
-    return (this->__trait__ < arg.__trait__);
+    return (this->trait_ < arg.trait_);
 }
 
 template <class action_trait>
 action_trait action<action_trait>::trait() const
 {
-    return __trait__;
+    return trait_;
 }
 
 #if USING_BOOST_SERIALIZATION
@@ -549,7 +549,7 @@ template <typename archive>
 void action<action_trait>::serialize(archive & ar, 
 									 const unsigned int version)
 {
-    ar & __trait__;
+    ar & trait_;
 }
 #endif
 
@@ -579,8 +579,8 @@ template <class state_class,
 const typename policy<state_class,action_class,value_type>::action_values *
             policy<state_class,action_class,value_type>::find_actions(const state_class & s_t) const
 {
-    auto it = __policies__.find(state_key(s_t));
-    return it != __policies__.end() ? &(it->second) : nullptr;
+    auto it = policies_.find(state_key(s_t));
+    return it != policies_.end() ? &(it->second) : nullptr;
 }
 
 template <class state_class,
@@ -621,7 +621,7 @@ void policy<state_class,action_class,value_type>::update(const state_class & s_t
                                                          const action_class & a_t, 
                                                          value_type q)
 {
-    __policies__[state_key(s_t)][action_key(a_t)] = q;
+    policies_[state_key(s_t)][action_key(a_t)] = q;
 }
 
 template <class state_class,
@@ -678,7 +678,7 @@ template <typename archive>
 void policy<state_class,action_class,value_type>::serialize(archive & ar, 
                                                             const unsigned int version)
 {
-    ar & __policies__;
+    ar & policies_;
 }
 
 template <class state_class>
@@ -702,16 +702,16 @@ template <class state_class,
 void policy<state_class,action_class,value_type>::operator+=(const policy & arg)
 {
 #if USING_BOOST_SERIALIZATION
-    for (const auto & s_t : arg.__policies__) {
+    for (const auto & s_t : arg.policies_) {
         for (const auto & a_t : s_t.second) {
-            __policies__[static_cast<state_class>(s_t.first)]
+            policies_[static_cast<state_class>(s_t.first)]
                         [static_cast<action_class>(a_t.first)] = a_t.second;
         }
     }
 #else
-    for (const auto & s_t : arg.__policies__) {
+    for (const auto & s_t : arg.policies_) {
         for (const auto & a_t : s_t.second) {
-            __policies__[s_t.first][a_t.first] = a_t.second;
+            policies_[s_t.first][a_t.first] = a_t.second;
         }
     }
 #endif
@@ -786,7 +786,7 @@ typename q_probabilistic<state_class,action_class,markov_chain,value_type>::trip
                                       policy<state_class,action_class,value_type> & policy_map) 
 {
     auto step = episode[index];
-    const auto & stats = __memory__[step.state][step.action];
+    const auto & stats = memory_[step.state][step.action];
     if (stats.visits == 0) {
         return std::make_tuple(step.state, step.action, step.state.reward());
     }
@@ -817,7 +817,7 @@ void q_probabilistic<state_class,action_class,markov_chain,value_type
                                                                : episode.size() - 1;
     // record what was observed: visits, rewards and next states of each (s_t, a_t)
     for (std::size_t i = 0; i < learnt; i++) {
-        auto & stats = __memory__[episode[i].state][episode[i].action];
+        auto & stats = memory_[episode[i].state][episode[i].action];
         stats.visits += 1;
         // running mean rather than a sum: a float sum stops growing at 2^24 visits
         value_type r = episode[i].state.reward();

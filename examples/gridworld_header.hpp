@@ -123,17 +123,29 @@ struct world
      *         (0 up, 1 right, 2 down, 3 left), or nullptr if it is a wall or
      *         outside the world
      */
-    const grid * move(const grid & from, unsigned int dir) const
+    const grid * move(const grid & from,
+                      unsigned int dir) const
     {
+        // take one step in the direction of the move
         int x = static_cast<int>(from.x);
         int y = static_cast<int>(from.y);
         switch (dir) {
-            case 0 : y--; break;
-            case 1 : x++; break;
-            case 2 : y++; break;
-            case 3 : x--; break;
-            default: return nullptr;
+            case 0 :
+                y--;
+                break;
+            case 1 :
+                x++;
+                break;
+            case 2 :
+                y++;
+                break;
+            case 3 :
+                x--;
+                break;
+            default :
+                return nullptr;
         }
+        // a wall, or a block outside the world, cannot be moved into
         const grid * next = at(x, y);
         return (next && !next->occupied) ? next : nullptr;
     }

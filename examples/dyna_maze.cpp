@@ -15,9 +15,11 @@
  */
 #include "games/dyna_maze.hpp"
 #include <algorithm>
-#include <cstdio>
 #include <cstdlib>
+#include <iomanip>
+#include <iostream>
 
+// set shortcuts to the game and to its relearn types
 using game_type = games::dyna_maze;
 using types     = games::types<game_type>;
 
@@ -31,43 +33,60 @@ int main()
     relearn::q_learning<types::state, types::action> learner;
     learner.alpha = 0.5;
     learner.gamma = 0.95;
-    std::printf("maze (shortest path 14 moves):\n");
-    for (const auto & row : maze.draw()) std::printf("    %s\n", row.c_str());
-    std::printf("moves per episode:");
-    for (unsigned int i = 1; i <= 50; i++) {
-        auto r = games::play(maze,
-                             [&](const game_type::state_type & s, const std::vector<unsigned int> & legal) {
-                                 return games::epsilon_greedy<game_type>(memory, s, legal, 0.1, prng);
-                             }, 10000);
-        learner(r.episode, memory, r.terminated);
-        if (i <= 5 || i % 5 == 0) std::printf(" %zu", r.steps);
+    std::cout << "maze (shortest path 14 moves):" << std::endl;
+    for (const auto & row : maze.draw()) {
+        std::cout << "    " << row << std::endl;
     }
-    auto greedy = games::play(maze,
-                              [&](const game_type::state_type & s, const std::vector<unsigned int> & legal) {
-                                  return games::greedy<game_type>(memory, s, legal, prng);
-                              }, 100);
-    std::printf("\ngreedy policy after 50 episodes: %zu moves\n", greedy.steps);
+
+    // the ε-greedy agent, with ε = 0.1
+    auto agent = [&](const game_type::state_type & s,
+                     const std::vector<unsigned int> & legal) {
+        return games::epsilon_greedy<game_type>(memory, s, legal, 0.1, prng);
+    };
+    // play 50 episodes, printing the moves taken in the first 5 and then every 5th
+    std::cout << "moves per episode:";
+    for (unsigned int i = 1; i <= 50; i++) {
+        auto r = games::play(maze, agent, 10000);
+        learner(r.episode, memory, r.terminated);
+        if (i <= 5 || i % 5 == 0) {
+            std::cout << " " << r.steps;
+        }
+    }
+    // then follow the learnt policy greedily
+    auto greedy_agent = [&](const game_type::state_type & s,
+                            const std::vector<unsigned int> & legal) {
+        return games::greedy<game_type>(memory, s, legal, prng);
+    };
+    auto greedy = games::play(maze, greedy_agent, 100);
+    std::cout << std::endl << "greedy policy after 50 episodes: " << greedy.steps << " moves" << std::endl;
 
     // 2. the blocking maze changes after 10000 moves
-    const unsigned long change = 10000, total = 20000;
+    const unsigned long change = 10000;
+    const unsigned long total  = 20000;
     game_type blocking(game_type::blocking, change);
     types::policy memory_b;
-    std::printf("\nblocking maze, cumulative reward every 1000 moves (the wall moves at %lu):\n   ", change);
+    std::cout << std::endl << "blocking maze, cumulative reward every 1000 moves (the wall moves at "
+              << change << "):" << std::endl << "   ";
+
+    // the ε-greedy agent of the blocking maze, learning its own policy
+    auto agent_b = [&](const game_type::state_type & s,
+                       const std::vector<unsigned int> & legal) {
+        return games::epsilon_greedy<game_type>(memory_b, s, legal, 0.1, prng);
+    };
     double reward = 0;
     unsigned long next_report = 1000;
+    std::cout << std::fixed << std::setprecision(0);
     while (blocking.moves() < total) {
         // episodes are cut at 500 moves, and still learnt (see `terminated`)
-        auto r = games::play(blocking,
-                             [&](const game_type::state_type & s, const std::vector<unsigned int> & legal) {
-                                 return games::epsilon_greedy<game_type>(memory_b, s, legal, 0.1, prng);
-                             }, std::min<unsigned long>(500, total - blocking.moves()));
+        auto r = games::play(blocking, agent_b, std::min<unsigned long>(500, total - blocking.moves()));
         learner(r.episode, memory_b, r.terminated);
         reward += r.total_reward;
+        // print the cumulative reward each time another 1000 moves have been made
         while (blocking.moves() >= next_report && next_report <= total) {
-            std::printf(" %.0f", reward);
+            std::cout << " " << reward;
             next_report += 1000;
         }
     }
-    std::printf("\n");
+    std::cout << std::endl;
     return greedy.terminated ? EXIT_SUCCESS : EXIT_FAILURE;
 }

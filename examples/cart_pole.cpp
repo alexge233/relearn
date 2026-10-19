@@ -12,15 +12,17 @@
  */
 #include "games/cart_pole.hpp"
 #include "games/discretised.hpp"
-#include <cstdio>
 #include <cstdlib>
+#include <iomanip>
+#include <iostream>
 
+// set shortcuts to the game, cut into boxes, and to its relearn types
 using game_type = games::discretised<games::cart_pole>;
 using types     = games::types<game_type>;
 
 int main()
 {
-    // position, velocity, angle (radians), angular velocity
+    // cut each variable into bins: position, velocity, angle (radians), angular velocity
     game_type game(games::cart_pole(1), {{-0.8, 0.8, 3}, {-0.5, 0.5, 3}, {-0.21, 0.21, 6}, {-0.87, 0.87, 3}});
     std::mt19937 prng(1);
     types::policy memory;
@@ -28,22 +30,33 @@ int main()
     learner.alpha = 0.1;
     learner.gamma = 0.99;
 
-    std::printf("average steps balanced (the limit is %zu), per 1000 episodes:\n   ", game.inner().step_limit());
-    double sum = 0, first = 0, last = 0;
+    // the ε-greedy agent, with ε = 0.05
+    auto agent = [&](const unsigned int & s,
+                     const std::vector<unsigned int> & legal) {
+        return games::epsilon_greedy<game_type>(memory, s, legal, 0.05, prng);
+    };
+
+    // play and learn, printing the average number of steps balanced every 1000 episodes
+    std::cout << "average steps balanced (the limit is " << game.inner().step_limit()
+              << "), per 1000 episodes:" << std::endl << "   ";
+    std::cout << std::fixed << std::setprecision(0);
+    double sum   = 0;
+    double first = 0;
+    double last  = 0;
     for (unsigned int i = 1; i <= 10000; i++) {
-        auto r = games::play(game,
-                             [&](const unsigned int & s, const std::vector<unsigned int> & legal) {
-                                 return games::epsilon_greedy<game_type>(memory, s, legal, 0.05, prng);
-                             }, game.inner().step_limit());
+        auto r = games::play(game, agent, game.inner().step_limit());
         learner(r.episode, memory, r.terminated);
         sum += r.steps;
         if (i % 1000 == 0) {
-            std::printf(" %.0f", sum / 1000);
-            if (i == 1000) first = sum / 1000;
+            std::cout << " " << sum / 1000;
+            if (i == 1000) {
+                first = sum / 1000;
+            }
             last = sum / 1000;
             sum = 0;
         }
     }
-    std::printf("\n");
+    std::cout << std::endl;
+    // the agent must balance at least twice as long at the end as at the start
     return last > 2 * first ? EXIT_SUCCESS : EXIT_FAILURE;
 }

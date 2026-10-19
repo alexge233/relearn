@@ -404,6 +404,12 @@ learner(r.episode, memory, r.terminated);     // a cut-short episode is not lear
 exact solutions (`tests/solvers.hpp`: value iteration, exact blackjack, breadth-first search) or the
 optimal results given by the book.
 
+# Contributing
+
+Contributions are welcome! Please read [CONTRIBUTING.md](CONTRIBUTING.md) first:
+it describes the code style, and how changes are tested.
+AI-generated contributions are welcome, as long as they have been reviewed and approved by a human.
+
 # TODO
 
 1. SARSA and Expected SARSA (compare with Q-learning on `cliff_walking`)

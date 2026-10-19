@@ -25,16 +25,25 @@
 
 namespace games
 {
-/// outcome of one step of a game
+/**
+ * @struct step_result
+ * @brief the outcome of one step of a game: the state reached, the reward, and whether the game ended
+ */
 template <class state_type>
 struct step_result
 {
-    state_type next;            // state after the step
-    double reward = 0;          // reward received for the step
-    bool terminated = false;    // the game ended (goal reached, game lost, ...)
+    /// the state after the step
+    state_type next;
+    /// the reward received for the step
+    double reward = 0;
+    /// true if the game ended (goal reached, game lost, ...)
+    bool terminated = false;
 };
 
-/// the relearn types used to learn a game
+/**
+ * @struct types
+ * @brief the relearn types used to learn a game: its states, actions, links, episodes and policy
+ */
 template <class game_type>
 struct types
 {
@@ -45,7 +54,10 @@ struct types
     using policy  = relearn::policy<state, action>;
 };
 
-/// one played episode
+/**
+ * @struct played
+ * @brief one played episode, ready for a learner
+ */
 template <class game_type>
 struct played
 {
@@ -53,9 +65,12 @@ struct played
     /// link holding the state reached: it is not a step taken, and only gives
     /// the learner the next state of the last real step
     typename types<game_type>::episode episode;
-    double total_reward = 0;                     // undiscounted sum of rewards
-    std::size_t steps = 0;                       // actions taken
-    bool terminated = false;                     // false: cut short by the step limit
+    /// the undiscounted sum of rewards
+    double total_reward = 0;
+    /// the number of actions taken
+    std::size_t steps = 0;
+    /// false if the episode was cut short by the step limit
+    bool terminated = false;
 };
 
 /**
@@ -65,20 +80,28 @@ struct played
  *        `learner(result.episode, policy, result.terminated)`, so that a cut-off
  *        is not learnt as the end of the game; the last step taken is still
  *        learnt, from the value of the state it reached
+ * @return the played episode
  */
-template <class game_type, class chooser>
-played<game_type> play(game_type & game, chooser && choose, std::size_t max_steps)
+template <class game_type,
+          class chooser>
+played<game_type> play(game_type & game,
+                       chooser && choose,
+                       std::size_t max_steps)
 {
     using state  = typename types<game_type>::state;
     using action = typename types<game_type>::action;
     played<game_type> result;
+    // start a new game
     auto s_t = game.reset();
     while (result.steps < max_steps) {
+        // choose an action and take it
         auto a_t = choose(s_t, game.actions(s_t));
         auto out = game.step(a_t);
+        // record (s_t, a_t) with the reward received after taking a_t
         result.episode.push_back({state(out.reward, s_t), action(a_t)});
         result.total_reward += out.reward;
         result.steps++;
+        // move on to the state reached
         s_t = out.next;
         if (out.terminated) {
             result.terminated = true;
@@ -97,9 +120,14 @@ played<game_type> play(game_type & game, chooser && choose, std::size_t max_step
 }
 
 /**
+ * @brief the greedy choice: the legal action with the highest Q-value
+ * @param memory is the learnt policy
+ * @param s_t is the current state
+ * @param legal are the legal actions in @param s_t
+ * @param prng breaks ties between actions of equal value
  * @return the legal action with the highest Q-value in @param s_t.
- * Actions never tried count as 0 (they are not stored in the policy yet),
- * and ties are broken at random so that equal values are all explored.
+ * @note actions never tried count as 0 (they are not stored in the policy yet),
+ *       and ties are broken at random so that equal values are all explored.
  */
 template <class game_type>
 typename game_type::action_type greedy(const typename types<game_type>::policy & memory,
@@ -109,23 +137,34 @@ typename game_type::action_type greedy(const typename types<game_type>::policy &
 {
     using state  = typename types<game_type>::state;
     using action = typename types<game_type>::action;
+    // the actions sharing the highest value found so far
     std::vector<typename game_type::action_type> best;
     double best_value = 0;
     for (const auto & a : legal) {
         double q = memory.value(state(s_t), action(a));
         if (best.empty() || q > best_value) {
+            // a new highest value: it is the only best action so far
             best.assign(1, a);
             best_value = q;
         }
         else if (q == best_value) {
+            // a tie with the highest value
             best.push_back(a);
         }
     }
+    // pick one of the best actions at random
     std::uniform_int_distribution<std::size_t> pick(0, best.size() - 1);
     return best[pick(prng)];
 }
 
-/// with probability @param epsilon a random legal action, otherwise the greedy one
+/**
+ * @brief the ε-greedy choice: explore with probability @param epsilon, otherwise be greedy
+ * @param memory is the learnt policy
+ * @param s_t is the current state
+ * @param legal are the legal actions in @param s_t
+ * @param prng draws the random choices
+ * @return a random legal action with probability @param epsilon, otherwise the greedy one
+ */
 template <class game_type>
 typename game_type::action_type epsilon_greedy(const typename types<game_type>::policy & memory,
                                                const typename game_type::state_type & s_t,
@@ -135,13 +174,23 @@ typename game_type::action_type epsilon_greedy(const typename types<game_type>::
 {
     std::bernoulli_distribution explore(epsilon);
     if (explore(prng)) {
+        // explore: any legal action, chosen at random
         std::uniform_int_distribution<std::size_t> pick(0, legal.size() - 1);
         return legal[pick(prng)];
     }
+    // exploit: the best known action
     return greedy<game_type>(memory, s_t, legal, prng);
 }
 
-/// @return the average undiscounted return of the greedy policy over @param episodes games
+/**
+ * @brief measure the greedy policy
+ * @param game is the game to play
+ * @param memory is the learnt policy
+ * @param episodes is the number of games to play
+ * @param max_steps cuts each game short
+ * @param prng breaks ties between actions of equal value
+ * @return the average undiscounted return of the greedy policy over @param episodes games
+ */
 template <class game_type>
 double evaluate(game_type & game,
                 const typename types<game_type>::policy & memory,
@@ -149,14 +198,15 @@ double evaluate(game_type & game,
                 std::size_t max_steps,
                 std::mt19937 & prng)
 {
+    // the greedy agent: always takes the best known action
+    auto agent = [&](const typename game_type::state_type & s,
+                     const std::vector<typename game_type::action_type> & legal) {
+        return greedy<game_type>(memory, s, legal, prng);
+    };
+    // play the games and average their returns
     double sum = 0;
     for (std::size_t i = 0; i < episodes; i++) {
-        sum += play(game,
-                    [&](const typename game_type::state_type & s,
-                        const std::vector<typename game_type::action_type> & legal) {
-                        return greedy<game_type>(memory, s, legal, prng);
-                    },
-                    max_steps).total_reward;
+        sum += play(game, agent, max_steps).total_reward;
     }
     return sum / static_cast<double>(episodes);
 }

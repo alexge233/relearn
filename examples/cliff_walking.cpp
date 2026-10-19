@@ -9,32 +9,45 @@
  * @see games/cliff_walking.hpp for the rules
  */
 #include "games/cliff_walking.hpp"
-#include <cstdio>
 #include <cstdlib>
+#include <iomanip>
+#include <iostream>
 #include <string>
 
+// set shortcuts to the game and to its relearn types
 using game_type = games::cliff_walking;
 using types     = games::types<game_type>;
 
-/// draw the grid with the cells visited by the greedy policy
-void draw(const types::policy & memory, std::mt19937 & prng)
+/**
+ * @brief draw the grid, marking with `*` the cells the greedy policy visits
+ * @param memory is the learnt policy
+ * @param prng breaks ties between actions of equal value
+ */
+void draw(const types::policy & memory,
+          std::mt19937 & prng)
 {
+    // an empty grid, with the cliff along the bottom row
     std::vector<std::string> rows(game_type::height, std::string(game_type::width, '.'));
     for (int x = 1; x < game_type::width - 1; x++) {
         rows[game_type::height - 1][x] = 'C';
     }
+    // follow the greedy policy from the start, marking each cell visited
     game_type game;
     auto s = game.reset();
     for (int step = 0; step < 100; step++) {
         rows[s.y][s.x] = '*';
-        auto out = game.step(games::greedy<game_type>(memory, s, game.actions(s), prng));
+        auto move = games::greedy<game_type>(memory, s, game.actions(s), prng);
+        auto out  = game.step(move);
         s = out.next;
-        if (out.terminated) break;
+        if (out.terminated) {
+            break;
+        }
     }
+    // mark the start and the goal, then print the grid
     rows[game_type::start().y][game_type::start().x] = 'S';
     rows[game_type::goal().y][game_type::goal().x]   = 'G';
     for (const auto & row : rows) {
-        std::printf("    %s\n", row.c_str());
+        std::cout << "    " << row << std::endl;
     }
 }
 
@@ -44,26 +57,37 @@ int main()
     const double epsilon = 0.1;
     game_type game;
     std::mt19937 prng(1);
+    // the policy we learn, and the Q-learning algorithm that learns it
     types::policy memory;
     relearn::q_learning<types::state, types::action> learner;
     learner.alpha = 0.5;
     learner.gamma = 1.0;
 
+    // the ε-greedy agent: explores with probability ε, otherwise takes the best known move
+    auto agent = [&](const game_type::state_type & s,
+                     const std::vector<unsigned int> & legal) {
+        return games::epsilon_greedy<game_type>(memory, s, legal, epsilon, prng);
+    };
+
+    // play and learn, printing the average return every 300 episodes
     double sum = 0;
+    std::cout << std::fixed << std::setprecision(1);
     for (unsigned int i = 1; i <= episodes; i++) {
-        auto r = games::play(game,
-                             [&](const game_type::state_type & s, const std::vector<unsigned int> & legal) {
-                                 return games::epsilon_greedy<game_type>(memory, s, legal, epsilon, prng);
-                             }, 1000);
+        auto r = games::play(game, agent, 1000);
         learner(r.episode, memory, r.terminated);
         sum += r.total_reward;
         if (i % 300 == 0) {
-            std::printf("episodes %4u-%4u: average return while exploring %7.1f\n", i - 299, i, sum / 300);
+            std::cout << "episodes " << std::setw(4) << i - 299 << "-" << std::setw(4) << i
+                      << ": average return while exploring " << std::setw(7) << sum / 300 << std::endl;
             sum = 0;
         }
     }
+
+    // now play greedily: the learnt path should be the 13 moves along the cliff edge
     double greedy = games::evaluate(game, memory, 1, 100, prng);
-    std::printf("\ngreedy policy: return %.0f (the shortest path is 13 moves, -13)\n", greedy);
+    std::cout << std::endl << std::setprecision(0)
+              << "greedy policy: return " << greedy
+              << " (the shortest path is 13 moves, -13)" << std::endl;
     draw(memory, prng);
     return greedy == -13 ? EXIT_SUCCESS : EXIT_FAILURE;
 }
