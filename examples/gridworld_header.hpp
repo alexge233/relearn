@@ -8,6 +8,9 @@
 #include <chrono>
 #include <fstream>
 #include <string>
+#include <vector>
+#include <algorithm>
+#include <cstdlib>
 #include "../src/relearn.hpp"
 /**
  * This header contains the basic structures and operations
@@ -20,10 +23,13 @@
  *
  * 2. Actions: The agent can choose from up to 4 actions to move around.
  *
- * 3. Rewards: The agent receives +1 reward when it is in 
- *    the center square (the one that shows R 1.0), 
- *    and -1 reward in a the boundary states (R -1.0 is shown for these). 
- *    The state with +1.0 reward is the goal state.
+ * 3. Rewards: The agent receives +1 reward when it moves into
+ *    the goal block (R 1.0), and -1 when it moves into a fire block (R -1.0).
+ *    Both end the episode.
+ *
+ * Episodes follow relearn's reward convention: the link (s_t, a_t) carries
+ * the reward received *after* taking a_t in s_t, i.e. the reward of the block
+ * the agent moves into.
  */
 
 
@@ -98,15 +104,63 @@ template <> struct hash<direction>
 struct world
 {
     std::unordered_set<grid> blocks;
+
+    /// @return the block at (@param x, @param y), or nullptr if there is none
+    const grid * at(int x, int y) const
+    {
+        if (x < 0 || y < 0) {
+            return nullptr;
+        }
+        grid key;
+        key.x = static_cast<unsigned int>(x);
+        key.y = static_cast<unsigned int>(y);
+        auto it = blocks.find(key);
+        return it != blocks.end() ? &(*it) : nullptr;
+    }
+
+    /**
+     * @return the block reached by moving from @param from in direction @param dir
+     *         (0 up, 1 right, 2 down, 3 left), or nullptr if it is a wall or
+     *         outside the world
+     */
+    const grid * move(const grid & from, unsigned int dir) const
+    {
+        int x = static_cast<int>(from.x);
+        int y = static_cast<int>(from.y);
+        switch (dir) {
+            case 0 : y--; break;
+            case 1 : x++; break;
+            case 2 : y++; break;
+            case 3 : x--; break;
+            default: return nullptr;
+        }
+        const grid * next = at(x, y);
+        return (next && !next->occupied) ? next : nullptr;
+    }
 };
+
+/// @return true if @param block ends an episode (the goal or a fire block)
+inline bool terminal(const grid & block)
+{
+    return block.R == 1.0 || block.R == -1.0;
+}
+
+// the world file: CMake passes its absolute path, so the examples run from any directory
+#ifndef GRIDWORLD_FILE
+#define GRIDWORLD_FILE "../examples/gridworld.txt"
+#endif
 
 /// load the gridworld from the text file
 /// boundaries are `occupied` e.g., can't move into them
 /// fire/danger blocks are marked with a reward -1
 world populate()
 {
-    std::ifstream infile("../examples/gridworld.txt");
-    assert(infile.good()); // Fails if the file cannot be found
+    std::ifstream infile(GRIDWORLD_FILE);
+    if (!infile.good()) {
+        // not an `assert`: asserts are compiled out in Release builds
+        std::cerr << "cannot open " << GRIDWORLD_FILE << std::endl;
+        std::exit(EXIT_FAILURE);
+    }
     world environment = {};
     std::string line;
     while (std::getline(infile, line))
@@ -121,6 +175,10 @@ world populate()
         }
         else break;
     }
+    if (environment.blocks.empty()) {
+        std::cerr << "no blocks found in " << GRIDWORLD_FILE << std::endl;
+        std::exit(EXIT_FAILURE);
+    }
     return environment;
 }
 
@@ -128,37 +186,20 @@ world populate()
 struct rand_direction
 {
     std::pair<direction,grid> operator()(std::mt19937 & prng, 
-                                         world gridworld, 
-                                         grid current)
+                                         const world & gridworld, 
+                                         const grid & current) const
     {
-        assert(!gridworld.blocks.empty()); // Fails if world is empty
-        std::uniform_int_distribution<unsigned int> dist(0, 3);
-        unsigned int x = current.x;
-        unsigned int y = current.y;
-        // randomly decide on next grid - we map numbers to a direction
-        unsigned int d = dist(prng);
-        switch (d) {
-            case 0 : y--;
-                     break;
-            case 1 : x++;
-                     break;
-            case 2 : y++;
-                     break;
-            case 3 : x--;
-                     break;
+        // try the 4 directions in random order, and take the first free block
+        std::vector<unsigned int> dirs = {0, 1, 2, 3};
+        std::shuffle(dirs.begin(), dirs.end(), prng);
+        for (unsigned int d : dirs) {
+            if (const grid * next = gridworld.move(current, d)) {
+                return std::make_pair(direction{d}, *next);
+            }
         }
-        auto it = std::find_if(gridworld.blocks.begin(),
-                               gridworld.blocks.end(),
-                               [&](const auto b) {
-                                   return b.x == x && b.y == y;
-                               });
-        if (it == gridworld.blocks.end()) {
-            return rand_direction()(prng, gridworld, current);
-        }
-        if (it->occupied) {
-            return rand_direction()(prng, gridworld, current);
-        }
-        return std::make_pair(direction{d}, *it);
+        std::cerr << "block " << current.x << "," << current.y 
+                  << " is surrounded by walls" << std::endl;
+        std::exit(EXIT_FAILURE);
     }
 };
 #endif

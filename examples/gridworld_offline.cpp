@@ -35,84 +35,62 @@ std::deque<relearn::link<S,A>> explore(const world & w,
                                        std::mt19937 & gen,
                                        grid start)
 {
-    // explore until we discover a negative or positive reward!
-    bool stop = false;
     // the markov_chain/episode we populate
     std::deque<relearn::link<S,A>> episode;
 
-    // S_t (state now) is initially the root state
     std::cout << "starting exploration from: " << start.x 
               << "," << start.y << std::endl;
     grid curr = start;
-    auto state_now = state(curr.R, curr);
 
-    // explore while Reward isn't positive or negative
-    // and keep populating the episode with states and actions
-    while (!stop) 
+    // explore until a positive or negative reward ends the episode
+    while (!terminal(curr)) 
     {
         // randomly decide on next grid - we map numbers to a direction
         auto result = rand_direction()(gen, w, curr);
-        // find the reward at the current coordinates
+        // record (s_t, a_t) with the reward of the block we moved into
+        episode.emplace_back(relearn::link<S,A>{S(result.second.R, curr), A(result.first)});
         curr = result.second;
-        // create the action using direction as trait
-        auto action_now = action(result.first);
-        // add the state to the episode
-        episode.emplace_back(relearn::link<state,action>{state_now, action_now});
-        // update current state to next state
-        state_now = state(curr.R, curr);
-        if (curr.R == -1 || curr.R == 1) {
-            stop = true;
-        }
-        // print on screen
         std::cout << "coord: " << curr.x << "," 
                   << curr.y << " = " << curr.R << std::endl;
     }
-    // Add the terminal state last
-    // note: we don't have an empty action - we could use pointers instead...
-    auto action_empty = action(direction({100}));
-    episode.emplace_back(relearn::link<state,action>{state_now, action_empty});
     return episode;
 }
 
-/// Stay On-Policy and execute the action dictated
+/**
+ * Stay On-Policy and execute the action dictated
+ * @return true if the goal was reached
+ */
 template <typename S, typename A>
-void on_policy(const world & w, 
-               relearn::policy<S,A> & policy_map,
+bool on_policy(const world & w, 
+               const relearn::policy<S,A> & policy_map,
                grid start)
 {
+    // a policy that goes round in circles is stopped
+    const unsigned int max_steps = 100;
     grid curr = start;
     std::cout << "starting from: " << curr.x << "," 
               << curr.y << " = " << curr.R << std::endl;
-    auto state_t = S(curr.R, curr);
-    for (;;) {
-        // get the best policy for this state from the episode
-        if (auto action = policy_map.best_action(state_t))
-        {    
-            // how to infer the next state
-            switch (action->trait().dir) {
-                case 0 : curr.y--;
-                         break;
-                case 1 : curr.x++;
-                         break;
-                case 2 : curr.y++;
-                         break;
-                case 3 : curr.x--;
-                         break;
-            }
-            auto it = w.blocks.find(curr);
-            if (it != w.blocks.end()) {
-                curr = *it;
-                // calculate our next state
-                auto state_n = S(curr.R, curr);
-                std::cout << "coord: " << curr.x << "," 
-                          << curr.y << " = " << curr.R << std::endl;
-                state_t = state_n;
-                if (curr.R == -1.0 || curr.R == 1.0) {
-                    break;
-                }
-            }
+    for (unsigned int step = 0; step < max_steps; step++) {
+        // get the best policy for this state
+        auto action = policy_map.best_action(S(curr));
+        if (!action) {
+            std::cout << "no policy for " << curr.x << "," << curr.y << std::endl;
+            return false;
+        }
+        const grid * next = w.move(curr, action->trait().dir);
+        if (!next) {
+            std::cout << "policy leads into a wall at " << curr.x << "," << curr.y << std::endl;
+            return false;
+        }
+        curr = *next;
+        std::cout << "coord: " << curr.x << "," 
+                  << curr.y << " = " << curr.R << std::endl;
+        if (terminal(curr)) {
+            return curr.R == 1.0;
         }
     }
+    std::cout << "policy did not reach the goal in " << max_steps << " steps" << std::endl;
+    return false;
 }
 
 /**
@@ -157,15 +135,16 @@ int main()
     }
 
     // use Q-learning algorithm to update the episode's policies
+    // each pass over an episode moves the reward only one step back towards
+    // the start, and random episodes can be long: replay them many times
     auto learner = relearn::q_learning<state,action>{0.9, 0.9};
-    for (int k = 0; k < 10; k++) {
-        for (auto episode : episodes) {
+    for (int k = 0; k < 200; k++) {
+        for (const auto & episode : episodes) {
             learner(episode, policies);
         }
     }
 
     // run on-policy and follow max Q policy action
     std::cout << "on-policy algorithm" << std::endl;
-    on_policy(w, policies, start);
-    return 0;
+    return on_policy<state,action>(w, policies, start) ? EXIT_SUCCESS : EXIT_FAILURE;
 }

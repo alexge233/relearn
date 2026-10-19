@@ -36,6 +36,9 @@ set(EXAMPLES ${EXAMPLES} examples)
 add_executable(ex_gridworld_offline ${EXAMPLES}/gridworld_offline.cpp)
 add_executable(ex_gridworld_online  ${EXAMPLES}/gridworld_online.cpp)
 add_executable(ex_blackjack         ${EXAMPLES}/blackjack.cpp)
+# absolute path of the gridworld map, so the examples run from any directory
+target_compile_definitions(ex_gridworld_offline PRIVATE GRIDWORLD_FILE="${PROJECT_SOURCE_DIR}/examples/gridworld.txt")
+target_compile_definitions(ex_gridworld_online  PRIVATE GRIDWORLD_FILE="${PROJECT_SOURCE_DIR}/examples/gridworld.txt")
 target_link_libraries(ex_blackjack  ${Boost_LIBRARIES})
 # TODO: add an example for serialization of policy, state, action
 #       which uses the definition: 
