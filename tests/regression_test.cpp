@@ -8,9 +8,10 @@
 
 /**
  * Regression tests for bugs fixed in the core library.
- * Each test case documents the bug it guards against.
+ * Each test case documents the bug it guards against, so that it never comes back.
  */
 
+/// verifies that `link::operator<` orders links consistently, so that sets and maps keep them all
 TEST_CASE("link ordering is a strict weak ordering", "[regression]")
 {
     using state  = relearn::state<std::string>;
@@ -34,6 +35,7 @@ TEST_CASE("link ordering is a strict weak ordering", "[regression]")
     REQUIRE(links.size() == 3);
 }
 
+/// verifies that a state whose reward is a `float` can be compared and hashed
 TEST_CASE("state supports a non-default value_type", "[regression]")
 {
     // previously `operator==`/`operator<` took `state<T>` (i.e. `state<T,double>`)
@@ -47,6 +49,7 @@ TEST_CASE("state supports a non-default value_type", "[regression]")
     REQUIRE(relearn::hasher<state>{}(s_y) == s_y.hash());
 }
 
+/// verifies that a learner can train a policy that stores its values as `float`
 TEST_CASE("q_learning works with a float policy", "[regression]")
 {
     // previously learners always took `policy<S,A>` (double), ignoring `value_type`
@@ -59,20 +62,23 @@ TEST_CASE("q_learning works with a float policy", "[regression]")
         {state(1.f, "goal"), action("stop")}
     };
     relearn::q_learning<state,action,std::deque<link>,float> learner;
-    learner.alpha = 1.f;    // deterministic episode: values are exact
+    // deterministic episode: with α = 1 the values are exact
+    learner.alpha = 1.f;
     learner(episode, memory);
     learner(episode, memory);
     REQUIRE(memory.value(state("goal"), action("stop")) == Approx(1.f));
     REQUIRE(memory.value(state("start"), action("go")) > 0.f);
 }
 
+/// verifies that `policy::operator+=` merges two policies, the right-hand one winning on duplicates
 TEST_CASE("policy concatenation", "[regression]")
 {
     // previously `operator+=` indexed the maps with the whole key/value pair
     // and failed to compile
     using state  = relearn::state<std::string>;
     using action = relearn::action<unsigned int>;
-    relearn::policy<state,action> lhs, rhs;
+    relearn::policy<state,action> lhs;
+    relearn::policy<state,action> rhs;
     lhs.update(state("hello"), action(1), 0.5);
     rhs.update(state("hello"), action(1), 2.0);
     rhs.update(state("world"), action(2), 1.0);
@@ -82,6 +88,7 @@ TEST_CASE("policy concatenation", "[regression]")
     REQUIRE(lhs.value(state("world"), action(2)) == 1.0);
 }
 
+/// verifies that `q_probabilistic` weighs each next state by how often it was observed
 TEST_CASE("q_probabilistic uses transition frequencies", "[regression]")
 {
     using state  = relearn::state<std::string>;
@@ -90,8 +97,10 @@ TEST_CASE("q_probabilistic uses transition frequencies", "[regression]")
     relearn::policy<state,action> memory;
     relearn::q_probabilistic<state,action> learner;
     // (s0, a) leads to s1 (final reward +1) or s2 (final reward -1)
-    std::deque<link> to_s1 = {{state("s0"), action("a")}, {state(1, "s1"), action("x")}};
-    std::deque<link> to_s2 = {{state("s0"), action("a")}, {state(-1, "s2"), action("x")}};
+    std::deque<link> to_s1 = {{state("s0"), action("a")},
+                              {state(1, "s1"), action("x")}};
+    std::deque<link> to_s2 = {{state("s0"), action("a")},
+                              {state(-1, "s2"), action("x")}};
 
     learner(to_s1, memory);
     learner(to_s1, memory);
@@ -105,16 +114,26 @@ TEST_CASE("q_probabilistic uses transition frequencies", "[regression]")
     REQUIRE(memory.value(state("s0"), action("a")) == Approx(0.9 * 0.5));
 }
 
+/// verifies that asking a policy about unknown states or actions never inserts them
 TEST_CASE("policy queries do not modify the policy", "[regression]")
 {
     // previously every query used `operator[]`, so asking about an unknown
     // state (or action) silently inserted an empty entry into the policy
     using state  = relearn::state<std::string>;
     using action = relearn::action<unsigned int>;
-    // inheriting gives access to the stored policies (see class `policy`)
+
+    /**
+     * @struct inspect
+     * @brief a policy that can count its stored states
+     * @note inheriting gives access to the stored policies (see class `policy`)
+     */
     struct inspect : relearn::policy<state,action>
     {
-        std::size_t states() const { return policies_.size(); }
+        /// @return how many states the policy stores
+        std::size_t states() const
+        {
+            return policies_.size();
+        }
     };
     inspect memory;
     memory.update(state("known"), action(1), 0.5);
@@ -135,6 +154,7 @@ TEST_CASE("policy queries do not modify the policy", "[regression]")
     REQUIRE(view.best_value(state("known")) == 0.5);
 }
 
+/// verifies that `terminated = false` learns the last link only as the next state of the one before
 TEST_CASE("episodes cut short are not learnt as the end of the game", "[regression]")
 {
     // an episode stopped by a step limit has not ended: its last link has no
@@ -147,13 +167,15 @@ TEST_CASE("episodes cut short are not learnt as the end of the game", "[regressi
 
     SECTION("q_learning") {
         relearn::policy<state,action> memory;
-        memory.update(state("s1"), action("b"), 1.0);   // what s1 is already worth
+        // what s1 is already worth
+        memory.update(state("s1"), action("b"), 1.0);
         relearn::q_learning<state,action> learner;
         learner.alpha = 1;
         learner.gamma = 0.9;
         learner(episode, memory, false);
-        REQUIRE(memory.value(state("s0"), action("a")) == Approx(0.9));  // 0 + 0.9 * Q(s1)
-        REQUIRE(memory.value(state("s1"), action("b")) == Approx(1.0));  // unchanged
+        // Q(s0,a) = 0 + 0.9 * Q(s1,b), and Q(s1,b) is unchanged
+        REQUIRE(memory.value(state("s0"), action("a")) == Approx(0.9));
+        REQUIRE(memory.value(state("s1"), action("b")) == Approx(1.0));
         // the same episode, when it really ended, learns its last reward
         learner(episode, memory, true);
         REQUIRE(memory.value(state("s1"), action("b")) == Approx(5.0));
@@ -170,6 +192,7 @@ TEST_CASE("episodes cut short are not learnt as the end of the game", "[regressi
     }
 }
 
+/// verifies that the learners accept any episode container offering `size()` and `operator[]`
 TEST_CASE("learners only need size() and [] from the episode container", "[regression]")
 {
     // the episode type is a template parameter: a container that offers only
@@ -177,14 +200,35 @@ TEST_CASE("learners only need size() and [] from the episode container", "[regre
     using state  = relearn::state<std::string>;
     using action = relearn::action<std::string>;
     using link   = relearn::link<state,action>;
+
+    /**
+     * @struct minimal_chain
+     * @brief the smallest episode container the learners accept
+     */
     struct minimal_chain
     {
         std::vector<link> links;
-        std::size_t size() const { return links.size(); }
-        link & operator[](std::size_t i) { return links[i]; }
-        const link & operator[](std::size_t i) const { return links[i]; }
+
+        /// @return the number of links
+        std::size_t size() const
+        {
+            return links.size();
+        }
+
+        /// @return the link at @param i
+        link & operator[](std::size_t i)
+        {
+            return links[i];
+        }
+
+        /// @return the link at @param i
+        const link & operator[](std::size_t i) const
+        {
+            return links[i];
+        }
     };
-    minimal_chain episode{{{state(0, "s0"), action("a")}, {state(1, "s1"), action("b")}}};
+    minimal_chain episode{{{state(0, "s0"), action("a")},
+                           {state(1, "s1"), action("b")}}};
     relearn::policy<state,action> memory;
     relearn::q_learning<state,action,minimal_chain> q;
     q.alpha = 1;
