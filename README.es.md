@@ -112,8 +112,22 @@ __nota__: la serialización es opcional, y necesita Boost (ver [activar la seria
 
 # Compilación
 
-¡No hay nada que compilar! Es una biblioteca *header-only*, solo necesitas el header **relearn.hpp**.
+¡No hay nada que compilar! Es una biblioteca *header-only*, solo necesitas la carpeta `src` e incluir el header **relearn.hpp**.
 **Sin embargo**, puedes compilar los ejemplos para ver cómo se usa la biblioteca.
+
+`relearn.hpp` simplemente incluye las partes de la biblioteca, que están en `src/relearn/`, un header para cada una:
+
+| header | qué contiene |
+|---|---|
+| `relearn/core.hpp` | `state`, `action`, el `link` de un episodio, y la `policy` |
+| `relearn/schedules.hpp` | `polynomial_decay`, `exponential_decay`, `linear_decay`, y el `visit_counter` |
+| `relearn/q_learning.hpp` | `q_learning` y `q_probabilistic` |
+| `relearn/sarsa.hpp` | `sarsa` y `expected_sarsa` |
+| `relearn/double_q_learning.hpp` | `double_q_learning` |
+| `relearn/dyna.hpp` | `dyna_q` |
+
+Cada uno incluye todo lo que necesita, así que si solo usas un algoritmo de aprendizaje (p. ej., en una placa pequeña, donde
+cuenta cada byte y cada segundo de compilación) puedes incluir solo ese, `#include "relearn/q_learning.hpp"`.
 
 Para eso, simplemente:
 
@@ -368,16 +382,15 @@ Las contribuciones generadas con IA son bienvenidas, siempre que una persona las
 
 # Pendiente
 
-1. dividir `relearn.hpp` en un header por algoritmo (seguirá siendo *header-only*, con `relearn.hpp` incluyéndolos todos)
-2. control Monte Carlo: con inicios exploratorios (exploring starts), on-policy, y off-policy con muestreo por importancia (`blackjack`)
-3. predicción TD(0), y TD de n pasos y SARSA de n pasos (`random_walk`)
-4. trazas de elegibilidad: TD(λ), SARSA(λ) y Q(λ) de Watkins
-5. REINFORCE, REINFORCE con línea base, y Actor-Critic, que aprenden la propia política (un nuevo juego, el pasillo corto)
-6. el algoritmo continuo R-Learning, para tareas que no terminan nunca (un nuevo juego, la cola de control de acceso)
-7. UCB y bandidos de gradiente (`bandit`)
-8. Monte Carlo Tree Search (`tic_tac_toe`)
-9. prioritized sweeping (`dyna_maze`), y policy iteration y value iteration en la biblioteca
-10. ver jugar a los agentes: un modo `--watch` para los ejemplos, con una sola función de dibujo para dos vistas
+1. control Monte Carlo: con inicios exploratorios (exploring starts), on-policy, y off-policy con muestreo por importancia (`blackjack`)
+2. predicción TD(0), y TD de n pasos y SARSA de n pasos (`random_walk`)
+3. trazas de elegibilidad: TD(λ), SARSA(λ) y Q(λ) de Watkins
+4. REINFORCE, REINFORCE con línea base, y Actor-Critic, que aprenden la propia política (un nuevo juego, el pasillo corto)
+5. el algoritmo continuo R-Learning, para tareas que no terminan nunca (un nuevo juego, la cola de control de acceso)
+6. UCB y bandidos de gradiente (`bandit`)
+7. Monte Carlo Tree Search (`tic_tac_toe`)
+8. prioritized sweeping (`dyna_maze`), y policy iteration y value iteration en la biblioteca
+9. ver jugar a los agentes: un modo `--watch` para los ejemplos, con una sola función de dibujo para dos vistas
    - en la terminal, con el clásico arte ASCII de siempre
    - en una ventana, con pixel art retro: 2D, dibujado a baja resolución y ampliado con píxeles nítidos,
      con sprites y una paleta de 16 colores definidos en el código (sin archivos de recursos), una fuente pixelada,
