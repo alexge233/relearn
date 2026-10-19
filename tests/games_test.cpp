@@ -12,6 +12,10 @@
 #include "../examples/games/random_walk.hpp"
 #include "../examples/games/maximization_bias.hpp"
 #include "../examples/games/gamblers_problem.hpp"
+#include "../examples/games/dyna_maze.hpp"
+#include "../examples/games/tic_tac_toe.hpp"
+#include <map>
+#include <queue>
 #include "solvers.hpp"
 #include <cmath>
 #define CATCH_CONFIG_MAIN
@@ -609,4 +613,164 @@ TEST_CASE("gambler's problem: q_probabilistic learns near-optimal stakes", "[gam
     }
     REQUIRE(mean_gap < 0.02);
     REQUIRE(worst_gap < 0.05);
+}
+
+// ------------------------------------------------------------------ dyna maze
+
+namespace
+{
+/// length of the shortest path from the start to the goal, by breadth-first search
+int shortest_path(const games::dyna_maze & maze)
+{
+    std::map<std::pair<int, int>, int> distance;
+    std::queue<games::position> frontier;
+    frontier.push(maze.start());
+    distance[{maze.start().x, maze.start().y}] = 0;
+    while (!frontier.empty()) {
+        auto p = frontier.front();
+        frontier.pop();
+        if (p == games::dyna_maze::goal()) return distance[{p.x, p.y}];
+        for (unsigned int a = 0; a < 4; a++) {
+            auto n = games::moved(p, a, games::dyna_maze::width, games::dyna_maze::height);
+            if (maze.wall(n)) n = p;
+            if (!distance.count({n.x, n.y})) {
+                distance[{n.x, n.y}] = distance[{p.x, p.y}] + 1;
+                frontier.push(n);
+            }
+        }
+    }
+    return -1;
+}
+} // namespace
+
+TEST_CASE("dyna maze: layouts", "[games][dyna_maze]")
+{
+    using maze = games::dyna_maze;
+    // the shortest path through the maze of Figure 8.2 takes 14 moves
+    REQUIRE(shortest_path(maze(maze::maze)) == 14);
+    // blocking: the short way (right) closes, the new way (left) is longer
+    maze blocking(maze::blocking, 5);
+    REQUIRE(!blocking.changed());
+    REQUIRE(shortest_path(blocking) == 10);
+    blocking.reset();
+    for (int i = 0; i < 5; i++) blocking.step(games::left);
+    REQUIRE(blocking.changed());
+    REQUIRE(shortest_path(blocking) == 16);
+    // shortcut: a shorter way opens on the right
+    maze shortcut(maze::shortcut, 0);
+    REQUIRE(shortcut.changed());
+    REQUIRE(shortest_path(shortcut) == 10);
+    REQUIRE(shortest_path(maze(maze::shortcut, 1000)) == 16);
+    // walls keep the agent in place; the goal is worth +1 and ends the episode
+    maze m;
+    m.place({1, 2});
+    REQUIRE(m.step(games::right).next == (games::position{1, 2}));
+    m.place({8, 1});
+    auto out = m.step(games::up);
+    REQUIRE(out.terminated);
+    REQUIRE(out.reward == 1);
+}
+
+TEST_CASE("dyna maze: q_learning finds one of the two shortest routes", "[games][dyna_maze]")
+{
+    // the maze has a 14-move and a 16-move route; telling them apart takes plain
+    // Q-learning many episodes of exploration (Dyna-Q's planning does it faster)
+    using game_type = games::dyna_maze;
+    game_type maze;
+    std::mt19937 prng(1);
+    games::types<game_type>::policy memory;
+    relearn::q_learning<games::types<game_type>::state, games::types<game_type>::action> learner;
+    learner.alpha = 0.5;
+    learner.gamma = 0.95;
+    train(maze, learner, memory, 1000, 0.1, 10000, prng);
+    auto greedy = games::play(maze,
+                              [&](const game_type::state_type & s, const std::vector<unsigned int> & legal) {
+                                  return games::greedy<game_type>(memory, s, legal, prng);
+                              }, 100);
+    REQUIRE(greedy.terminated);
+    REQUIRE(greedy.steps <= 16u);
+}
+
+// ---------------------------------------------------------------- tic-tac-toe
+
+TEST_CASE("tic-tac-toe: rules", "[games][tic_tac_toe]")
+{
+    games::board b;
+    REQUIRE(b.winner() == 0);
+    REQUIRE(b.empty().size() == 9u);
+    b.cells = {1, 1, 1, 2, 2, 0, 0, 0, 0};
+    REQUIRE(b.winner() == 1);
+    b.cells = {2, 1, 1, 1, 2, 0, 1, 0, 2};
+    REQUIRE(b.winner() == 2);                 // diagonal
+    b.cells = {1, 2, 1, 1, 2, 2, 2, 1, 1};
+    REQUIRE(b.winner() == 0);
+    REQUIRE(b.full());
+
+    games::tic_tac_toe perfect(games::tic_tac_toe::perfect);
+    REQUIRE(perfect.minimax(games::board(), 1) == 0);   // perfect play is a draw
+
+    // a random X never beats the perfect O, and the opponent only plays empty cells
+    games::tic_tac_toe random_o(games::tic_tac_toe::random, 3);
+    std::mt19937 prng(4);
+    for (int i = 0; i < 500; i++) {
+        for (auto * game : {&perfect, &random_o}) {
+            auto s = game->reset();
+            for (;;) {
+                auto moves = game->actions(s);
+                std::uniform_int_distribution<std::size_t> any(0, moves.size() - 1);
+                auto before = s;
+                auto out = game->step(moves[any(prng)]);
+                int placed = 0;
+                for (int c = 0; c < 9; c++) {
+                    if (before.cells[c] != 0) REQUIRE(out.next.cells[c] == before.cells[c]);
+                    placed += before.cells[c] == 0 && out.next.cells[c] != 0;
+                }
+                REQUIRE((placed == 1 || placed == 2));
+                if (out.terminated) {
+                    if (game == &perfect) REQUIRE(out.reward <= 0);
+                    break;
+                }
+                s = out.next;
+            }
+        }
+    }
+}
+
+TEST_CASE("tic-tac-toe: q_learning beats a random opponent and draws a perfect one", "[games][tic_tac_toe]")
+{
+    using game_type = games::tic_tac_toe;
+    using types = games::types<game_type>;
+    auto results = [](game_type & game, const types::policy & memory, int games_played, std::mt19937 & prng) {
+        std::vector<int> wdl(3, 0);
+        for (int i = 0; i < games_played; i++) {
+            auto r = games::play(game, [&](const game_type::state_type & s, const std::vector<unsigned int> & legal) {
+                return games::greedy<game_type>(memory, s, legal, prng);
+            }, 9);
+            wdl[r.total_reward > 0 ? 0 : (r.total_reward == 0 ? 1 : 2)]++;
+        }
+        return wdl;
+    };
+    std::mt19937 prng(2);
+    {
+        game_type game(game_type::random, 1);
+        types::policy memory;
+        relearn::q_learning<types::state, types::action> learner;
+        learner.alpha = 0.3;
+        learner.gamma = 1.0;
+        train(game, learner, memory, 20000, 0.1, 9, prng);
+        game_type test(game_type::random, 7);
+        auto wdl = results(test, memory, 10000, prng);
+        REQUIRE(wdl[0] >= 9000);      // wins
+        REQUIRE(wdl[2] <= 200);       // losses
+    }
+    {
+        game_type game(game_type::perfect);
+        types::policy memory;
+        relearn::q_learning<types::state, types::action> learner;
+        learner.alpha = 0.3;
+        learner.gamma = 1.0;
+        train(game, learner, memory, 20000, 0.1, 9, prng);
+        auto wdl = results(game, memory, 1, prng);    // the perfect opponent is deterministic
+        REQUIRE(wdl[1] == 1);         // a draw: the best possible result
+    }
 }
