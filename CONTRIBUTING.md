@@ -1,8 +1,8 @@
 # Contributing to relearn
 
-Thank you for helping! relearn is used for teaching as much as for building agents,
-so code is written to be **read**: by the maintainer, who reviews every change by hand,
-and by students meeting reinforcement learning for the first time.
+Thank you for helping! relearn is used for teaching as much as it is for building agents,
+so the code is written to be **read**: by me, since I review every change by hand,
+and by students who are meeting reinforcement learning for the first time.
 
 ## Ground rules
 
@@ -10,11 +10,46 @@ and by students meeting reinforcement learning for the first time.
   It must build with nothing but a C++14 compiler, so that it runs on embedded boards,
   drones and robots. Optional features (such as Boost serialization) stay behind a macro.
 - **Examples and games may use third-party libraries**, but only in their own optional
-  CMake project, off by default. The default build must stay dependency-free.
+  CMake project, which is off by default. The default build must stay dependency-free.
 - **Every change comes with a test**, and every learning test is checked against a known
   answer (an exact solution, or a result from the book), across several random seeds.
-- **Keep pull requests small** enough to review in one sitting.
+- **Keep pull requests small**, so that each one can be reviewed in one sitting.
 - **AI-generated contributions are welcome**, as long as they have been reviewed and approved by a human.
+
+## Where things are
+
+```
+.
+├── src
+|   ├── relearn.hpp           the library, and all you need to use it
+|   └── serialize.tpl         Boost serialization (only with USING_BOOST_SERIALIZATION)
+├── docs                      one document per algorithm: formulas, pseudocode and usage
+├── examples
+|   ├── gridworld_*           the original gridworld examples
+|   ├── *.cpp                 one program per game, each one learns and checks its result
+|   └── games
+|       ├── game.hpp          play, play_online, greedy and ε-Greedy, shared by all the games
+|       └── *.hpp             one header per game, with its rules
+└── tests
+    ├── *_test.cpp            Catch2 tests, one file per topic
+    └── solvers.hpp           exact solutions (value iteration, exact blackjack, breadth-first search) to test against
+```
+
+Do bear in mind that `examples/games` is not part of the library: the games only *use* `relearn.hpp`,
+just like your own code would.
+
+## How a change gets in
+
+```mermaid
+flowchart LR
+    t[write the test] --> c[write the code]
+    c --> b[build and run ctest]
+    b --> e[run the examples you changed]
+    e --> p[open a pull request]
+    p --> ci[CI: check and check-serialization]
+    ci --> r[review by hand]
+    r --> m[merge]
+```
 
 ## Code style
 
@@ -55,9 +90,9 @@ The style below is the one used in `src/relearn.hpp` and the gridworld examples.
 ### Names
 
 - `snake_case` for everything: types, functions, variables and constants.
-- Private and protected data members end with an underscore: `trait_`, `policies_`.
+- Private and protected data members end with an underscore, e.g., `trait_` and `policies_`.
 - Never use a name containing a double underscore (`__name__`), or starting with an
-  underscore and a capital letter: the C++ standard reserves them for the compiler.
+  underscore and a capital letter, since the C++ standard reserves them for the compiler.
 - Template parameters describe what they are (`state_trait`, `action_class`),
   or are single capitals in short examples (`S`, `A`).
 
@@ -68,7 +103,7 @@ The style below is the one used in `src/relearn.hpp` and the gridworld examples.
 - Every function has a `///` line or a `/** */` block, using `@param`, `@return`,
   `@warning`, `@see` and `@note` where they help.
 - Inside functions, a short plain-English `//` comment before each step says **what the
-  step does and why**, so a student can follow the algorithm without the book open.
+  step does and why**, so that a student can follow the algorithm without the book open.
 - When code implements a formula, write the formula in the comment, in the notation of
   Sutton & Barto, and cite the section.
 
@@ -79,11 +114,22 @@ The style below is the one used in `src/relearn.hpp` and the gridworld examples.
 - Print with `std::cout` and `std::endl`, using `<iomanip>` for number formatting.
 - Use `auto` when the type is obvious from the right-hand side, and `using` aliases for
   long types.
-- Headers use include guards named after the path: `RELEARN_GAMES_GRID_HPP`.
+- Headers use include guards named after the path, e.g., `RELEARN_GAMES_GRID_HPP`.
 - Example programs return `EXIT_SUCCESS` only if the agent learnt what it should,
   so that CI notices when an example stops working.
 
+### Docs
+
+- Each algorithm has its own document in `docs/`, in the same layout: what it is, the formulas,
+  a diagram, the pseudocode, how to use it in relearn, an example with its results, and references.
+- Formulas go in ```` ```math ```` blocks, and diagrams in ```` ```mermaid ```` blocks (GitHub draws both),
+  or as ASCII art when it is a grid or a chart.
+- Every number in a document comes from a program or a test you can run, so say which one.
+- British spelling please (learnt, whilst, colour, behaviour), and no em dashes or en dashes.
+
 ## Building and testing
+
+Simply do the following:
 
 ```bash
 mkdir build && cd build
@@ -92,5 +138,5 @@ make
 ctest --output-on-failure
 ```
 
-Run the example programs you changed as well: each one exits with a failure code when
+Then run the example programs you changed as well, since each one exits with a failure code when
 its agent does not learn.

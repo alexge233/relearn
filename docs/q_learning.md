@@ -33,6 +33,25 @@ plus the discounted value of the **best** action of the next state.
 Because it always uses the best action, whatever action the agent actually took next,
 Q-Learning learns the values of the *optimal* policy, even whilst the agent explores: this is why it is called *off-policy*.
 
+The diagram below shows one update (Sutton and Barto call these *backup diagrams*):
+an open circle is a state, a filled dot is an action, and the thick arrow is the value Q-Learning learns from.
+Whichever move the agent then makes in `s_{t+1}`, Q-Learning learns from the best one, here `right`,
+so its target is `r_t + γ 0.9`:
+
+```mermaid
+flowchart TB
+    s(("sₜ")) -- "aₜ" --> a(( ))
+    a -- "rₜ" --> n(("sₜ₊₁"))
+    n -- "up, Q = 0.2" --> b1(( ))
+    n == "right, Q = 0.9<br/>(the best)" ==> b2(( ))
+    n -- "down, Q = 0.4" --> b3(( ))
+    classDef action fill:#555,stroke:#555
+    class a,b1,b2,b3 action
+```
+
+The same next state appears in [sarsa.md](sarsa.md) and [double_q_learning.md](double_q_learning.md),
+so you can compare which value each algorithm learns from.
+
 In a deterministic system you can use any constant learning rate above 0 and up to 1, even `α = 1`, since the same
 action in the same state always has the same outcome.
 Do bear in mind that a rate which *decays* still needs the first condition below, even in a deterministic system:
@@ -126,6 +145,25 @@ Q(s_t,a_t) = \bar{r}(s_t,a_t) + \gamma \sum_{s_{t+1}} P(s_{t+1} \mid s_t,a_t) \m
 
 This simply states that the value is the *expected reward* of taking `a_t` in `s_t`, plus the discounted value
 of the best action of every next state, weighted by how likely that next state is.
+For example, if `a_t` was taken 10 times in `s_t`, and led 7 times to `s'` and 3 times to `s''`:
+
+```mermaid
+flowchart TB
+    s(("sₜ")) -- "aₜ" --> a(( ))
+    a -- "P = 7/10" --> n1(("s'"))
+    a -- "P = 3/10" --> n2(("s''"))
+    n1 -- "up, Q = 0.2" --> b1(( ))
+    n1 == "right, Q = 0.9<br/>(the best)" ==> b2(( ))
+    n2 == "up, Q = 0.2<br/>(the best)" ==> b3(( ))
+    n2 -- "down, Q = -0.3" --> b4(( ))
+    classDef action fill:#555,stroke:#555
+    class a,b1,b2,b3,b4 action
+```
+
+```math
+Q(s_t,a_t) = \bar{r}(s_t,a_t) + \gamma \left( 0.7 \times 0.9 + 0.3 \times 0.2 \right) = \bar{r}(s_t,a_t) + \gamma \, 0.69
+```
+
 An episode that ends after `(s_t, a_t)` has no next state, and adds nothing to the sum.
 No learning rate is needed: the estimates become exact as more episodes are observed.
 
