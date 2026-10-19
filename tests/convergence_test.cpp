@@ -352,8 +352,8 @@ TEST_CASE("double_q_learning converges to the true Q on stochastic MDPs", "[conv
 {
     // each estimate gets about half of the updates, so each counts its own: α = 1/n for
     // the n-th update of a pair in that estimate. On MDP B, across seeds 1 ... 10, the worst
-    // error was 0.125 with α = 1/k per episode, 0.0075 with one count shared by both
-    // estimates, and 0.0023 with a count per estimate (0.0034 on MDP A)
+    // error was 0.125 with α = 1/k per episode, and 0.0023 with a count per estimate
+    // (0.0034 on MDP A)
     const int n = 200000;
     SECTION("MDP A: stochastic final reward") {
         auto memory = train_double_q(mdp_a{}, n, 6);

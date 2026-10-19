@@ -740,6 +740,10 @@ struct expected_sarsa
  *
  * Q1(s_t,a_t) = Q1(s_t,a_t) + α * (r_t - Q1(s_t, a_t))
  *
+ * The best next action is picked among every action known in s_{t+1}: stored in either
+ * estimate, or taken there in the episode, counting 0 for those not stored in the estimate
+ * being updated (each update fills in only one estimate).
+ *
  * The two estimates are kept in `first` (Q1) and `second` (Q2). The agent acts on
  * both: `policy_map` receives their average, (Q1 + Q2) / 2, for each pair learnt,
  * so being greedy on `policy_map` is being greedy on Q1 + Q2, as in the book.
@@ -1513,12 +1517,25 @@ typename double_q_learning<state_class,action_class,markov_chain,value_type>::tr
     value_type target = r;
     if (index < episode.size() - 1) {
         auto next = episode[index + 1];
-        // the estimate we update picks the best next action...
-        auto best = updated.best_action(next.state);
-        // ...and the other estimate says what it is worth
-        if (best) {
-            target += gamma * other.value(next.state, *best);
+        // the actions known in s_{t+1}: stored in either estimate, or taken there in this
+        // episode. Each update fills in only one estimate, so either may lack some of them
+        auto known = first.actions(next.state);
+        for (const auto & item : second.actions(next.state)) {
+            known.emplace(item.first, item.second);
         }
+        known.emplace(next.action, value_type(0));
+        // the estimate we update picks the best next action (0 for actions it has not stored)...
+        const action_class * best = nullptr;
+        value_type best_value = 0;
+        for (const auto & item : known) {
+            auto value = updated.value(next.state, item.first);
+            if (!best || value > best_value) {
+                best = &item.first;
+                best_value = value;
+            }
+        }
+        // ...and the other estimate says what it is worth
+        target += gamma * other.value(next.state, *best);
     }
     updated.update(step.state, step.action, q + rate * (target - q));
     // the agent acts on both estimates: give it their average

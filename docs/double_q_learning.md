@@ -88,6 +88,10 @@ It is used like the other learners: `learner(episode, policy, terminated)`, with
 and with `games::play` or `games::play_online`.
 
 - The two estimates are kept inside the learner, in `learner.first` (`Q1`) and `learner.second` (`Q2`).
+- To pick the best next action, the estimate being updated looks at every action known in the
+  next state: stored in either estimate, or taken there in the episode, counting 0 for those it
+  has not stored itself. Each update fills in only one estimate, so early on each one knows only
+  part of the actions.
 - The `policy` you pass receives their **average**, `(Q1 + Q2) / 2`, for every pair learnt.
   Being greedy on it is being greedy on `Q1 + Q2`, as in the pseudocode, and its values keep
   the usual scale.
@@ -96,8 +100,7 @@ and with `games::play` or `games::play_online`.
 - With a per-visit learning rate (see [schedules.md](schedules.md)), each estimate counts its
   own updates, in `learner.first_visits` and `learner.second_visits`. With `α = 1/n`, each estimate
   is then the plain average of its own targets. On the convergence test's MDP B (worst error over
-  10 runs): `α = 1/k` per episode gave 0.125, `α = 1/n` with one count shared by both estimates 0.0075,
-  and `α = 1/n` with a count per estimate 0.0023.
+  10 runs), `α = 1/k` per episode gave 0.125, and `α = 1/n` with a count per estimate 0.0023.
 
 ## Example 6.7: the maximization bias
 
@@ -107,20 +110,21 @@ The share of episodes going left from `A`, where the best possible is 5%:
 
 | episodes | Q-learning | Double Q-learning |
 |---|---|---|
-| 1-25 | 41.8% | 47.4% |
-| 26-50 | 48.4% | 26.2% |
-| 76-100 | 52.5% | 10.8% |
-| 151-175 | 33.8% | 7.6% |
-| 276-300 | 15.9% | 6.3% |
+| 1-25 | 41.8% | 46.0% |
+| 26-50 | 48.4% | 21.5% |
+| 76-100 | 52.5% | 10.6% |
+| 151-175 | 33.8% | 7.7% |
+| 276-300 | 15.9% | 6.4% |
 
 Q-learning's overestimate makes `left` look good for hundreds of episodes.
 Double Q-learning settles close to the 5% of the best ε-greedy agent within about 100 episodes.
 In the first episodes it goes left as often as Q-learning: both estimates still know nothing.
 
 `tests/double_q_learning_test.cpp` checks this over 1000 runs: in episodes 201 to 300,
-across 6 groups of 1000 runs, Double Q-learning went left 6.4% to 7.3% of the time,
+across 6 groups of 1000 runs, Double Q-learning went left 6.7% to 7.2% of the time,
 and Q-learning 18.4% to 20.5%.
-It also checks single updates worked out by hand (one estimate picks, the other values),
+It also checks single updates worked out by hand (one estimate picks, the other values,
+including when the estimate being updated knows nothing of the next state yet),
 that the coin chooses each estimate about half the time, and, in `tests/convergence_test.cpp`,
 that Double Q-learning converges to the exact values of two small random MDPs.
 

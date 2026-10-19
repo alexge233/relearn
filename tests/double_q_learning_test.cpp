@@ -142,6 +142,71 @@ TEST_CASE("double_q_learning: one estimate picks the next action, the other valu
     REQUIRE(updated_second);
 }
 
+/// verifies that the next action is chosen among every action known there, even when the
+/// estimate being updated has not stored it yet (each update fills in only one estimate)
+TEST_CASE("double_q_learning: an estimate that knows nothing of the next state still bootstraps", "[double_q][regression]")
+{
+    // only Q2 knows s1: Q2(s1, c) = 4. With α = 1, γ = 0.5, r = 1:
+    // - updating Q1: c is the only action known (Q1 values it 0), Q2 values it 4: 1 + 0.5 * 4 = 3
+    // - updating Q2: Q2 picks c, Q1 values it 0: 1 + 0.5 * 0 = 1
+    bool updated_first  = false;
+    bool updated_second = false;
+    for (unsigned int seed = 0; seed < 20; seed++) {
+        learner_type learner(1.0, 0.5, seed);
+        learner.second.update(state("s1"), action("c"), 4);
+        policy memory;
+        learner(episode {{state(1, "s0"), action("a")},
+                         {state(0, "s1"), action("c")}}, memory, false);
+        double q1 = learner.first.value(state("s0"), action("a"));
+        double q2 = learner.second.value(state("s0"), action("a"));
+        if (q1 != 0) {
+            REQUIRE(q1 == Approx(3));
+            updated_first = true;
+        }
+        else {
+            REQUIRE(q2 == Approx(1));
+            updated_second = true;
+        }
+    }
+    REQUIRE(updated_first);
+    REQUIRE(updated_second);
+}
+
+/// verifies that an action the updating estimate has not stored counts as 0, so a stored
+/// negative value does not win over it
+TEST_CASE("double_q_learning: actions not stored in an estimate count as 0 when picking", "[double_q][regression]")
+{
+    // Q1 knows only b in s1, worth -2; Q2 knows b = 5 and c = 4. With α = 1, γ = 0.5, r = 3:
+    // - updating Q1: Q1 values b at -2 and c at 0, so it picks c, worth 4 to Q2: 3 + 0.5 * 4 = 5
+    //   (picking b, the only action Q1 has stored, would give 3 + 0.5 * 5 = 5.5)
+    // - updating Q2: Q2 picks b, worth -2 to Q1: 3 + 0.5 * -2 = 2
+    bool updated_first  = false;
+    bool updated_second = false;
+    for (unsigned int seed = 0; seed < 20; seed++) {
+        learner_type learner(1.0, 0.5, seed);
+        learner.first.update(state("s1"), action("b"), -2);
+        learner.second.update(state("s1"), action("b"), 5);
+        learner.second.update(state("s1"), action("c"), 4);
+        policy memory;
+        learner(episode {{state(3, "s0"), action("a")},
+                         {state(0, "s1"), action("b")}}, memory, false);
+        double q1 = learner.first.value(state("s0"), action("a"));
+        double q2 = learner.second.value(state("s0"), action("a"));
+        // exactly one estimate is updated
+        if (q1 != 0) {
+            REQUIRE(q1 == Approx(5));
+            REQUIRE(q2 == Approx(0));
+            updated_first = true;
+        }
+        else {
+            REQUIRE(q2 == Approx(2));
+            updated_second = true;
+        }
+    }
+    REQUIRE(updated_first);
+    REQUIRE(updated_second);
+}
+
 /// verifies that the last step of a finished episode moves towards its reward only
 TEST_CASE("double_q_learning: the last step of a finished episode learns its reward", "[double_q]")
 {
@@ -199,7 +264,7 @@ TEST_CASE("double_q_learning: each estimate counts its own updates", "[double_q]
 TEST_CASE("maximization bias: double_q_learning goes left about as rarely as it should", "[double_q][max_bias]")
 {
     // across 6 groups of 1000 runs, in episodes 201 ... 300 the share going left was
-    // 6.4% ... 7.3% for Double Q-learning, and 18.4% ... 20.5% for Q-learning
+    // 6.7% ... 7.2% for Double Q-learning, and 18.4% ... 20.5% for Q-learning
     double q       = late_share_left<relearn::q_learning<games::types<games::maximization_bias>::state,
                                                          games::types<games::maximization_bias>::action>>(1000);
     double double_q = late_share_left<relearn::double_q_learning<games::types<games::maximization_bias>::state,
