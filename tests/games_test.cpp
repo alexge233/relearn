@@ -8,6 +8,10 @@
 #include "../examples/games/cliff_walking.hpp"
 #include "../examples/games/windy_gridworld.hpp"
 #include "../examples/games/frozen_lake.hpp"
+#include "../examples/games/bandit.hpp"
+#include "../examples/games/random_walk.hpp"
+#include "../examples/games/maximization_bias.hpp"
+#include "../examples/games/gamblers_problem.hpp"
 #include "solvers.hpp"
 #include <cmath>
 #define CATCH_CONFIG_MAIN
@@ -397,4 +401,212 @@ TEST_CASE("frozen lake: q_probabilistic learns the optimal policy", "[games][fro
     double best = exact.optimal_values()[0];
     double learnt = exact.policy_values(policy)[0];
     REQUIRE(learnt == Approx(best).margin(0.005));
+}
+
+// --------------------------------------------------------------------- bandit
+
+TEST_CASE("bandit: q_probabilistic keeps the exact average reward of each arm", "[games][bandit]")
+{
+    using game_type = games::bandit;
+    using types = games::types<game_type>;
+    game_type game(10, 3);
+    types::policy memory;
+    relearn::q_probabilistic<types::state, types::action> learner(1.0);
+    std::vector<double> sum(10, 0), count(10, 0);
+    std::mt19937 prng(4);
+    for (int i = 0; i < 2000; i++) {
+        auto r = games::play(game, [&](const unsigned int &, const std::vector<unsigned int> & arms) {
+            std::uniform_int_distribution<std::size_t> any(0, arms.size() - 1);
+            return arms[any(prng)];
+        }, 1);
+        REQUIRE(r.terminated);
+        REQUIRE(r.steps == 1u);
+        sum[r.episode[0].action.trait()] += r.total_reward;
+        count[r.episode[0].action.trait()] += 1;
+        learner(r.episode, memory, r.terminated);
+    }
+    for (unsigned int a = 0; a < 10; a++) {
+        REQUIRE(memory.value(types::state(0), types::action(a)) == Approx(sum[a] / count[a]));
+        // and the sample average is close to the arm's true mean
+        REQUIRE(sum[a] / count[a] == Approx(game.mean(a)).margin(0.3));
+    }
+}
+
+TEST_CASE("bandit: epsilon-greedy finds the best arm", "[games][bandit]")
+{
+    using game_type = games::bandit;
+    using types = games::types<game_type>;
+    int found = 0;
+    double regret = 0;
+    const int runs = 200;
+    for (int run = 0; run < runs; run++) {
+        game_type game(10, static_cast<unsigned int>(run));
+        std::mt19937 prng(static_cast<unsigned int>(run) + 1000);
+        types::policy memory;
+        relearn::q_probabilistic<types::state, types::action> learner(1.0);
+        train(game, learner, memory, 1000, 0.1, 1, prng);
+        auto arm = games::greedy<game_type>(memory, 0, game.actions(0), prng);
+        found += arm == game.best_arm();
+        regret += game.mean(game.best_arm()) - game.mean(arm);
+    }
+    REQUIRE(found >= 0.75 * runs);
+    REQUIRE(regret / runs < 0.06);
+}
+
+// ---------------------------------------------------------------- random walk
+
+TEST_CASE("random walk: rules", "[games][random_walk]")
+{
+    games::random_walk walk(5, 0, 1, 2);
+    int right = 0;
+    for (int i = 0; i < 2000; i++) {
+        auto s = walk.reset();
+        REQUIRE(s == 3u);
+        auto out = walk.step(0);
+        REQUIRE((out.next == 2u || out.next == 4u));
+        right += out.next == 4u;
+    }
+    REQUIRE(right == Approx(1000).epsilon(0.1));
+    REQUIRE(walk.true_value(1) == Approx(1.0 / 6));
+    REQUIRE(walk.true_value(5) == Approx(5.0 / 6));
+    games::random_walk long_walk(19, -1, 1);
+    REQUIRE(long_walk.true_value(10) == Approx(0.0));
+}
+
+TEST_CASE("random walk: q_probabilistic predicts the true values", "[games][random_walk]")
+{
+    using game_type = games::random_walk;
+    using types = games::types<game_type>;
+    for (unsigned int n : {5u, 19u}) {
+        game_type walk(n, n == 5 ? 0 : -1, 1, 1);
+        std::mt19937 prng(2);
+        types::policy memory;
+        relearn::q_probabilistic<types::state, types::action> learner(1.0);
+        train(walk, learner, memory, 10000, 0, 100000, prng);
+        for (unsigned int s = 1; s <= n; s++) {
+            INFO("states " << n << " state " << s);
+            REQUIRE(memory.value(types::state(s), types::action(0)) ==
+                    Approx(walk.true_value(s)).margin(n == 5 ? 0.02 : 0.05));
+        }
+    }
+}
+
+// ---------------------------------------------------------- maximization bias
+
+TEST_CASE("maximization bias: rules", "[games][max_bias]")
+{
+    using game_type = games::maximization_bias;
+    game_type game(10, 1);
+    REQUIRE(game.reset() == game_type::A);
+    auto out = game.step(game_type::right);
+    REQUIRE(out.terminated);
+    REQUIRE(out.reward == 0);
+    double sum = 0;
+    const int n = 20000;
+    for (int i = 0; i < n; i++) {
+        game.reset();
+        out = game.step(game_type::left);
+        REQUIRE(out.next == game_type::B);
+        REQUIRE(!out.terminated);
+        REQUIRE(game.actions(out.next).size() == 10u);
+        out = game.step(static_cast<unsigned int>(i % 10));
+        REQUIRE(out.terminated);
+        sum += out.reward;
+    }
+    REQUIRE(sum / n == Approx(-0.1).margin(0.03));
+}
+
+TEST_CASE("maximization bias: q_learning goes left far more often than it should", "[games][max_bias]")
+{
+    // going left is worse on average, so the best epsilon-greedy agent goes left
+    // 5% of the time (epsilon / 2); Q-learning's max over B's noisy values makes
+    // it go left much more often during its first episodes (Sutton & Barto, Figure 6.5)
+    using game_type = games::maximization_bias;
+    using types = games::types<game_type>;
+    const int runs = 1000, episodes = 100;
+    double left = 0;
+    for (int run = 0; run < runs; run++) {
+        game_type game(10, static_cast<unsigned int>(run));
+        std::mt19937 prng(static_cast<unsigned int>(run) + 5000);
+        types::policy memory;
+        relearn::q_learning<types::state, types::action> learner;
+        learner.alpha = 0.1;
+        learner.gamma = 1.0;
+        for (int i = 0; i < episodes; i++) {
+            auto r = games::play(game, [&](const unsigned int & s, const std::vector<unsigned int> & legal) {
+                return games::epsilon_greedy<game_type>(memory, s, legal, 0.1, prng);
+            }, 10);
+            left += r.steps == 2;
+            learner(r.episode, memory, r.terminated);
+        }
+    }
+    REQUIRE(left / (runs * episodes) > 0.25);
+}
+
+// ----------------------------------------------------------- gambler's problem
+
+namespace
+{
+/// exact model of the gambler's problem, written from Sutton & Barto's rules
+solvers::tabular gambler_model(double p_heads)
+{
+    solvers::tabular m;
+    m.states = 101;
+    m.actions = 51;
+    m.gamma = 1;
+    m.model = [p_heads](int s, int stake) {
+        std::vector<solvers::outcome> out;
+        if (s <= 0 || s >= 100 || stake < 1 || stake > std::min(s, 100 - s)) return out;
+        out.push_back({p_heads, s + stake, s + stake >= 100 ? 1.0 : 0.0, s + stake >= 100});
+        out.push_back({1 - p_heads, s - stake, 0.0, s - stake == 0});
+        return out;
+    };
+    return m;
+}
+} // namespace
+
+TEST_CASE("gambler's problem: the exact values", "[games][gambler]")
+{
+    // with p = 0.4: V(25) = p^2, V(50) = p, V(75) = p + (1 - p) p
+    auto v = gambler_model(0.4).optimal_values();
+    REQUIRE(v[25] == Approx(0.16));
+    REQUIRE(v[50] == Approx(0.4));
+    REQUIRE(v[75] == Approx(0.64));
+    games::gamblers_problem game(0.4, 50, 100, 1);
+    REQUIRE(game.reset() == 50u);
+    REQUIRE(game.actions(50).size() == 50u);
+    REQUIRE(game.actions(99).size() == 1u);
+    int wins = 0;
+    for (int i = 0; i < 10000; i++) {
+        game.reset();
+        auto out = game.step(50);                 // all in: won with probability p
+        REQUIRE(out.terminated);
+        wins += out.reward == 1;
+    }
+    REQUIRE(wins == Approx(4000).epsilon(0.05));
+}
+
+TEST_CASE("gambler's problem: q_probabilistic learns near-optimal stakes", "[games][gambler]")
+{
+    using game_type = games::gamblers_problem;
+    using types = games::types<game_type>;
+    game_type game(0.4, 0, 100, 1);       // random starting capital: every state is visited
+    std::mt19937 prng(3);
+    types::policy memory;
+    relearn::q_probabilistic<types::state, types::action> learner(1.0);
+    train(game, learner, memory, 100000, 0.1, 1000, prng);
+    auto exact = gambler_model(0.4);
+    auto best = exact.optimal_values();
+    std::vector<int> policy(101, 1);
+    for (unsigned int s = 1; s < 100; s++) {
+        policy[s] = static_cast<int>(games::greedy<game_type>(memory, s, game.actions(s), prng));
+    }
+    auto learnt = exact.policy_values(policy);
+    double mean_gap = 0, worst_gap = 0;
+    for (int s = 1; s < 100; s++) {
+        mean_gap += (best[s] - learnt[s]) / 99;
+        worst_gap = std::max(worst_gap, best[s] - learnt[s]);
+    }
+    REQUIRE(mean_gap < 0.02);
+    REQUIRE(worst_gap < 0.05);
 }
