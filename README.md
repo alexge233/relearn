@@ -57,6 +57,10 @@ with a dummy action (as the gridworld example does) instead of on the last decis
 the final one, this scales the Q-values by γ and leaves the policy unchanged, but in general delaying rewards
 changes both the values and the policy. Appending a link with zero reward changes nothing.
 
+An episode cut short before the game ended (for example by a step limit) is not finished: pass
+`false` as the learner's third argument, `learner(episode, policy, false)`. Its last link is then
+not learnt as the end of the game, and only provides the next state for the link before it.
+
 ## Implementation in C++
 
 The template class `policy` allows the use of your own `state` and `action` classes,
