@@ -35,11 +35,16 @@ find_package(Boost 1.55 COMPONENTS serialization system)
 set(EXAMPLES ${EXAMPLES} examples)
 add_executable(ex_gridworld_offline ${EXAMPLES}/gridworld_offline.cpp)
 add_executable(ex_gridworld_online  ${EXAMPLES}/gridworld_online.cpp)
-add_executable(ex_blackjack         ${EXAMPLES}/blackjack.cpp)
+# the games (see examples/games/): one example program each
+set(GAMES bandit blackjack cart_pole cliff_walking dyna_maze frozen_lake
+          gamblers_problem maximization_bias mountain_car random_walk
+          tic_tac_toe windy_gridworld)
+foreach(game ${GAMES})
+    add_executable(ex_${game} ${EXAMPLES}/${game}.cpp)
+endforeach()
 # absolute path of the gridworld map, so the examples run from any directory
 target_compile_definitions(ex_gridworld_offline PRIVATE GRIDWORLD_FILE="${PROJECT_SOURCE_DIR}/examples/gridworld.txt")
 target_compile_definitions(ex_gridworld_online  PRIVATE GRIDWORLD_FILE="${PROJECT_SOURCE_DIR}/examples/gridworld.txt")
-target_link_libraries(ex_blackjack  ${Boost_LIBRARIES})
 # TODO: add an example for serialization of policy, state, action
 #       which uses the definition: 
 
@@ -81,6 +86,8 @@ if (BUILD_TESTS)
     add_test(regression_test test_regression)
     add_executable(test_convergence tests/convergence_test.cpp)
     add_test(convergence_test test_convergence)
+    add_executable(test_games tests/games_test.cpp)
+    add_test(games_test test_games)
 
     # if building tests & testing serialization
     if (USING_BOOST_SERIALIZATION)
