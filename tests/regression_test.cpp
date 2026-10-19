@@ -104,3 +104,33 @@ TEST_CASE("q_probabilistic uses transition frequencies", "[regression]")
     //         = 0 + 0.9 * (0.75 * 1 + 0.25 * -1)
     REQUIRE(memory.value(state("s0"), action("a")) == Approx(0.9 * 0.5));
 }
+
+TEST_CASE("policy queries do not modify the policy", "[regression]")
+{
+    // previously every query used `operator[]`, so asking about an unknown
+    // state (or action) silently inserted an empty entry into the policy
+    using state  = relearn::state<std::string>;
+    using action = relearn::action<unsigned int>;
+    // inheriting gives access to the stored policies (see class `policy`)
+    struct inspect : relearn::policy<state,action>
+    {
+        std::size_t states() const { return __policies__.size(); }
+    };
+    inspect memory;
+    memory.update(state("known"), action(1), 0.5);
+
+    // all queries work on a const policy
+    const inspect & view = memory;
+    REQUIRE(view.value(state("ghost"), action(1)) == 0);
+    REQUIRE(std::isnan(view.best_value(state("ghost"))));
+    REQUIRE(!view.best_action(state("ghost")));
+    REQUIRE(!view.best(state("ghost")).first);
+    REQUIRE(view.actions(state("ghost")).empty());
+    // unknown action of a known state
+    REQUIRE(view.value(state("known"), action(2)) == 0);
+
+    // nothing was inserted
+    REQUIRE(view.states() == 1);
+    REQUIRE(view.actions(state("known")).size() == 1);
+    REQUIRE(view.best_value(state("known")) == 0.5);
+}

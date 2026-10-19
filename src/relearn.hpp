@@ -229,27 +229,27 @@ public:
     using action_map = std::unordered_map<action_class,
                                           value_type,
                                           hasher<action_class>>;
-    /// @return actions experienced for this state
-    action_map actions(state_class s_t);
+    /// @return actions experienced for this state (empty if the state is unknown)
+    action_map actions(const state_class & s_t) const;
     /// @brief update a policy value
-    void update(state_class s_t, 
-				action_class a_t, 
-				value_type q_value);
-    /// @return value of policy
-    value_type value(state_class s_t, 
-					 action_class a_t);
-    /// @return max/best policy for @param state
-    value_type best_value(state_class s_t);
+    void update(const state_class & s_t, 
+                const action_class & a_t, 
+                value_type q_value);
+    /// @return value of policy, or 0 if the state/action pair is unknown
+    value_type value(const state_class & s_t, 
+                     const action_class & a_t) const;
+    /// @return max/best policy value for @param state, or NaN if the state is unknown
+    value_type best_value(const state_class & s_t) const;
     /** 
-	 * @return best policy for @param state - 
+     * @return best policy for @param state - 
      * @warning if none are found, returns nullptr
      */
-    std::unique_ptr<action_class> best_action(state_class s_t);
+    std::unique_ptr<action_class> best_action(const state_class & s_t) const;
     /**
      * @return a pair of action/value if one exists or a
-     * pair of <nullptr,0> if one doesn't exist
+     * pair of <nullptr,NaN> if one doesn't exist
      */
-    std::pair<std::unique_ptr<action_class>,value_type> best(state_class s_t);
+    std::pair<std::unique_ptr<action_class>,value_type> best(const state_class & s_t) const;
     /**
      * @brief concatenate policies, using @param arg
      * @warning the policy Q-values of @param arg take precedence `this` policies,
@@ -264,21 +264,26 @@ protected:
     template <typename archive>
     void serialize(archive & ar, const unsigned int version);
     // actual policies use the `_serial` wrapper from `serialize.tpl`
-    std::unordered_map<state_serial<state_class>,
-                       std::unordered_map<action_serial<action_class>,
-                                          value_type,
-                                          hasher<action_serial<action_class>>>,
-                       hasher<state_serial<state_class>>
-                       > __policies__;
+    using state_key  = state_serial<state_class>;
+    using action_key = action_serial<action_class>;
 #else
-    // policies maps is: [state][action][state_next] => Q-value
-    std::unordered_map<state_class, 
-                       std::unordered_map<action_class,
-                                          value_type,
-                                          hasher<action_class>>,
-                       hasher<state_class>
-                       > __policies__;
+    using state_key  = state_class;
+    using action_key = action_class;
 #endif
+    // Q-values of the actions experienced in one state
+    using action_values = std::unordered_map<action_key,
+                                             value_type,
+                                             hasher<action_key>>;
+    // policies maps is: [state][action] => Q-value
+    std::unordered_map<state_key,
+                       action_values,
+                       hasher<state_key>
+                       > __policies__;
+private:
+    /// @return the actions stored for @param s_t, or nullptr if the state is unknown
+    const action_values * find_actions(const state_class & s_t) const;
+    /// @return the stored (action, value) with the highest value, or nullptr if none
+    const typename action_values::value_type * best_entry(const state_class & s_t) const;
 };
 
 /*******************************************************************************
@@ -557,75 +562,97 @@ bool link<state_class,action_class>::operator==(const link<state_class,
 template <class state_class,
           class action_class,
           typename value_type>
-typename policy<state_class,action_class,value_type>::action_map 
-            policy<state_class,action_class,value_type>::actions(state_class s_t)
+const typename policy<state_class,action_class,value_type>::action_values *
+            policy<state_class,action_class,value_type>::find_actions(const state_class & s_t) const
 {
-#if USING_BOOST_SERIALIZATION
-    std::unordered_map<action_class, value_type, hasher<action_class>> retval;
-    for (const auto & item : __policies__[s_t]) {
-        retval[static_cast<action_class>(item.first)] = item.second;
+    auto it = __policies__.find(state_key(s_t));
+    return it != __policies__.end() ? &(it->second) : nullptr;
+}
+
+template <class state_class,
+          class action_class,
+          typename value_type>
+const typename policy<state_class,action_class,value_type>::action_values::value_type *
+            policy<state_class,action_class,value_type>::best_entry(const state_class & s_t) const
+{
+    const auto * stored = find_actions(s_t);
+    if (!stored || stored->empty()) {
+        return nullptr;
+    }
+    auto it = std::max_element(stored->begin(), 
+                               stored->end(),
+              [](const auto &lhs, const auto &rhs) { return lhs.second < rhs.second; });
+    return &(*it);
+}
+
+template <class state_class,
+          class action_class,
+          typename value_type>
+typename policy<state_class,action_class,value_type>::action_map 
+            policy<state_class,action_class,value_type>::actions(const state_class & s_t) const
+{
+    action_map retval;
+    if (const auto * stored = find_actions(s_t)) {
+        for (const auto & item : *stored) {
+            retval[static_cast<action_class>(item.first)] = item.second;
+        }
     }
     return retval;
-#else
-    return __policies__[s_t];
-#endif
 }
 
 template <class state_class,
           class action_class,
           typename value_type>
-void policy<state_class,action_class,value_type>::update(state_class s_t, 
-                                                         action_class a_t, 
+void policy<state_class,action_class,value_type>::update(const state_class & s_t, 
+                                                         const action_class & a_t, 
                                                          value_type q)
 {
-    __policies__[s_t][a_t] = q;
+    __policies__[state_key(s_t)][action_key(a_t)] = q;
 }
 
 template <class state_class,
           class action_class,
           typename value_type>
-value_type policy<state_class,action_class,value_type>::value(state_class s_t, 
-                                                              action_class a_t)
+value_type policy<state_class,action_class,value_type>::value(const state_class & s_t, 
+                                                              const action_class & a_t) const
 {
-    return __policies__[s_t][a_t];
+    if (const auto * stored = find_actions(s_t)) {
+        auto it = stored->find(action_key(a_t));
+        if (it != stored->end()) {
+            return it->second;
+        }
+    }
+    return value_type(0);
 }
 
 template <class state_class,
           class action_class,
           typename value_type>
-value_type policy<state_class,action_class,value_type>::best_value(state_class s_t)
+value_type policy<state_class,action_class,value_type>::best_value(const state_class & s_t) const
 {
-    auto it = std::max_element(__policies__[s_t].begin(), 
-                               __policies__[s_t].end(),
-              [&](const auto &lhs, const auto &rhs) { return lhs.second < rhs.second; });
-    return it != __policies__[s_t].end() ? it->second : 
-                                           std::numeric_limits<value_type>::quiet_NaN();
+    const auto * entry = best_entry(s_t);
+    return entry ? entry->second : std::numeric_limits<value_type>::quiet_NaN();
 }
 
 template <class state_class,
           class action_class,
           typename value_type>
 std::unique_ptr<action_class> 
-		policy<state_class,action_class,value_type>::best_action(state_class s_t)
+		policy<state_class,action_class,value_type>::best_action(const state_class & s_t) const
 {
-    auto it = std::max_element(__policies__[s_t].begin(), 
-                               __policies__[s_t].end(),
-              [&](const auto &lhs, const auto &rhs) { return lhs.second < rhs.second; });
-    return it != __policies__[s_t].end() ?
-           std::move(std::make_unique<action_class>(it->first)) : nullptr;
+    const auto * entry = best_entry(s_t);
+    return entry ? std::make_unique<action_class>(entry->first) : nullptr;
 }
 
 template <class state_class,
           class action_class,
           typename value_type>
 std::pair<std::unique_ptr<action_class>,value_type>
-    policy<state_class,action_class,value_type>::best(state_class s_t)
+    policy<state_class,action_class,value_type>::best(const state_class & s_t) const
 {
-    auto it = std::max_element(__policies__[s_t].begin(), 
-                               __policies__[s_t].end(),
-              [&](const auto &lhs, const auto &rhs) { return lhs.second < rhs.second; });
-    return it != __policies__[s_t].end() ?
-           std::make_pair(std::make_unique<action_class>(it->first), it->second) :
+    const auto * entry = best_entry(s_t);
+    return entry ?
+           std::make_pair(std::make_unique<action_class>(entry->first), entry->second) :
            std::make_pair(nullptr, std::numeric_limits<value_type>::quiet_NaN());
 }
 
