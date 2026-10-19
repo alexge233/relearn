@@ -59,6 +59,7 @@ TEST_CASE("q_learning works with a float policy", "[regression]")
         {state(1.f, "goal"), action("stop")}
     };
     relearn::q_learning<state,action,std::deque<link>,float> learner;
+    learner.alpha = 1.f;    // deterministic episode: values are exact
     learner(episode, memory);
     learner(episode, memory);
     REQUIRE(memory.value(state("goal"), action("stop")) == Approx(1.f));
@@ -88,17 +89,18 @@ TEST_CASE("q_probabilistic uses transition frequencies", "[regression]")
     using link   = relearn::link<state,action>;
     relearn::policy<state,action> memory;
     relearn::q_probabilistic<state,action> learner;
-    // (s0, a) leads to s1 or s2, both are rewarded terminal states
+    // (s0, a) leads to s1 (final reward +1) or s2 (final reward -1)
     std::deque<link> to_s1 = {{state("s0"), action("a")}, {state(1, "s1"), action("x")}};
-    std::deque<link> to_s2 = {{state("s0"), action("a")}, {state(1, "s2"), action("x")}};
+    std::deque<link> to_s2 = {{state("s0"), action("a")}, {state(-1, "s2"), action("x")}};
 
     learner(to_s1, memory);
     learner(to_s1, memory);
     learner(to_s2, memory);
     learner(to_s1, memory);
-    // observed transitions: s1 three times, s2 once => P(s1) = 3/4
+    // observed transitions: s1 three times, s2 once => P(s1) = 3/4, P(s2) = 1/4
     // previously the count was always 1 (`=+ 1`) and the probability used
     // integer division over distinct successors, so this was 1/2 => 0
-    // Q(s0,a) = P * R(s0) + gamma * P * maxQ(s1) = 0.75 * 0 + 0.9 * 0.75 * 1
-    REQUIRE(memory.value(state("s0"), action("a")) == Approx(0.9 * 0.75));
+    // Q(s0,a) = r(s0) + gamma * (P(s1) * maxQ(s1) + P(s2) * maxQ(s2))
+    //         = 0 + 0.9 * (0.75 * 1 + 0.25 * -1)
+    REQUIRE(memory.value(state("s0"), action("a")) == Approx(0.9 * 0.5));
 }

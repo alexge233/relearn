@@ -41,6 +41,22 @@ Therefore, the update rule for probabilistic systems is:
 
 ![Q(s_t,a_t) = E(r_{s_{t+1}}) + gamma * Σ maxQ(s_{t+1},a_t)P(s_t,a_t)(s_{t+1})](https://github.com/alexge233/relearn/blob/master/images/q_probabilistic.png?raw=true)
 
+### Reward convention
+
+In an episode, each link `(s_t, a_t)` carries in `s_t.reward()` the reward received *after* taking `a_t` in `s_t`.
+This is the `r_t` above, which Sutton & Barto (2nd ed.) write as `R_{t+1}`: the same reward, a different index.
+The last link of an episode is the final decision, and its state holds the final reward.
+With this convention both learners converge to the expected discounted return
+
+    Q(s,a) = E[ r_t + γ r_{t+1} + γ² r_{t+2} + ... | s_t = s, a_t = a ]
+
+which `tests/convergence_test.cpp` verifies against a Monte Carlo estimate on small stochastic MDPs.
+Put each reward on the link of the decision that earned it. Placing a reward on a *later* link delays it
+by one step and changes the values: for example, putting the final reward on an extra terminal-state link
+with a dummy action (as the gridworld example does) instead of on the last decision. When the only reward is
+the final one, this scales the Q-values by γ and leaves the policy unchanged, but in general delaying rewards
+changes both the values and the policy. Appending a link with zero reward changes nothing.
+
 ## Implementation in C++
 
 The template class `policy` allows the use of your own `state` and `action` classes,

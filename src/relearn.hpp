@@ -287,11 +287,21 @@ protected:
  * @param gamma is the discount rate
  * @param alpha is the learning rate
  *
+ * Episode convention: each link (s_t, a_t) carries in `s_t.reward()` the reward
+ * r_t received *after* taking a_t in s_t (Sutton & Barto write it R_{t+1}).
+ * The last link is the final decision of the episode.
+ *
  * Q(s_t,a_t) = Q(s_t,a_t) + α * (r_t + γ * max(Q(s_{t+1}, a)) - Q(s_t, a_t))
  *
- * or:
+ * and for the last link, which has no next state:
  *
- * Q[s,a] = (1 - α) Q[s_t,a_t] + α(r+ γ * max( Q[s_t,a_t]))
+ * Q(s_t,a_t) = Q(s_t,a_t) + α * (r_t - Q(s_t, a_t))
+ *
+ * In stochastic environments the Q-values converge to the expected discounted
+ * return when, for every (s,a) pair, the learning rates used on its visits
+ * satisfy Σ α = ∞ and Σ α² < ∞, e.g., α = 1/n with n the visits of that pair.
+ * `alpha` is shared by all pairs, so a global schedule such as α = 1/k for
+ * episode k only meets this if every pair keeps being visited regularly.
  */
 template <class state_class, 
           class action_class,
@@ -321,21 +331,19 @@ struct q_learning
  * @brief Q-Learning updates policy values using various episodes (`markov_chain`)
  * @param gamma is the discount rate
  *
- * Algorithm uses transition probabilities (e.g., from s_t → s_t+1) mapped by `r`
- * The probability of a transition `r` is `P(s_t,a_t) = Σ P(s_t,a_t)(s_t,s_t+1)`
- * relies on classical probability on the frequency of the transition with respect
- * to the total observations of `P(s_t,a_t)` regardless of transition (the sum).
- * Thus our **expected reward** is `E(r)` is the value of the reward of that
- * transition probability. We do not reward the transition, but the ending state s_t+1
- * thus R = R(s_t+1) and we assume the Reward to be **Stationary** (e.g., non-changing).
- * The Policy Value V(s_t) = Max Q(s_t,a_t), therefore our update rule in combination
- * with the expected reward, is:
+ * Episode convention: same as `q_learning`, `s_t.reward()` is the reward r_t
+ * received after taking a_t in s_t.
  *
- * Q(s_t,a_t) ← E(R(s_t+1)) + γ  Σ maxQ(s_t+1,a_t) P(s_t,a_t)(s_t+1)`
+ * The algorithm remembers, for every observed (s_t, a_t), how many times it was
+ * taken, the mean reward received, and how often each next state s_{t+1} followed.
+ * From these it estimates the transition probability P(s_{t+1} | s_t, a_t) and
+ * the expected reward E[r_t | s_t, a_t], and sets:
  *
- * or verbalised: the Expected reward of the transitional state (the state we expect to end to)
- * plus the discoun multiplied by the cumulative probability of the transition (s_t → s_t+1) 
- * times the max Q value of the next state Q(s_t+1,a_t).
+ * Q(s_t,a_t) = E[r_t | s_t,a_t] + γ * Σ P(s_{t+1} | s_t,a_t) * max Q(s_{t+1}, a)
+ *
+ * where the sum runs over all observed next states (an episode ending after
+ * (s_t, a_t) contributes 0). No learning rate is needed: the estimates converge
+ * as more episodes are observed.
  */
 template <class state_class, 
           class action_class,
@@ -366,12 +374,19 @@ private:
                                            std::size_t,
                                            hasher<state_class>
                                           >;
-    // frequency of transition map from a_t to (s_t+1)
+    // what has been observed after taking a_t in s_t
+    struct statistics
+    {
+        std::size_t visits = 0;     // times (s_t, a_t) was taken
+        value_type reward_mean = 0; // running mean of the rewards r_t received
+        frequency next;             // how often each s_{t+1} followed
+    };
+    // statistics of each action a_t taken in a state
     using transition  = std::unordered_map<action_class,
-                                           frequency,
+                                           statistics,
                                            hasher<action_class>
                                           >;
-    // frequency of observation of transition (s_t,a_t) → (s_t+1)
+    // statistics of each observed (s_t, a_t)
     using observation = std::unordered_map<state_class,
                                            transition,
                                            hasher<state_class>
@@ -682,7 +697,11 @@ typename q_learning<state_class,action_class,markov_chain,value_type>::triplet
                                q + alpha * (r + (gamma * q_next) - q));
     }
     else {
-        return std::make_tuple(step.state, step.action, step.state.reward());
+        // last decision of the episode: no next state to bootstrap from,
+        // but the reward may be stochastic, so average it with the learning rate
+        auto q = policy_map.value(step.state, step.action);
+        auto r = step.state.reward();
+        return std::make_tuple(step.state, step.action, q + alpha * (r - q));
     }
 }
 
@@ -723,29 +742,21 @@ typename q_probabilistic<state_class,action_class,markov_chain,value_type>::trip
                                       policy<state_class,action_class,value_type> & policy_map) 
 {
     auto step = episode[index];
-    if (index < episode.size() - 1)  {
-        auto next   = episode[index + 1];
-        auto q_next = policy_map.best_value(next.state);
-        auto r      = step.state.reward();
-        if (std::isnan(q_next)) q_next = 0.;
-        // transition probability (frequency of transition / total observations)
-        const auto & transitions = __memory__[step.state][step.action];
-        std::size_t total = 0;
-        for (const auto & item : transitions) {
-            total += item.second;
-        }
-        auto found = transitions.find(next.state);
-        value_type prob = (total > 0 && found != transitions.end()) ?
-                          static_cast<value_type>(found->second) /
-                          static_cast<value_type>(total) : 0;
-        // expected reward
-        value_type r_expected = prob * r;
-        return std::make_tuple(step.state, step.action, 
-                               r_expected + (gamma * (q_next * prob)));
-    }
-    else {
+    const auto & stats = __memory__[step.state][step.action];
+    if (stats.visits == 0) {
         return std::make_tuple(step.state, step.action, step.state.reward());
     }
+    const auto visits = static_cast<value_type>(stats.visits);
+    // expected reward E[r | s_t, a_t]
+    value_type q = stats.reward_mean;
+    // plus the discounted value of every observed next state, weighted by
+    // P(s_{t+1} | s_t, a_t); episodes that ended after (s_t, a_t) contribute 0
+    for (const auto & item : stats.next) {
+        auto q_next = policy_map.best_value(item.first);
+        if (std::isnan(q_next)) q_next = 0.;
+        q += gamma * (static_cast<value_type>(item.second) / visits) * q_next;
+    }
+    return std::make_tuple(step.state, step.action, q);
 }
 
 template <class state_class, 
@@ -756,9 +767,16 @@ void q_probabilistic<state_class,action_class,markov_chain,value_type
                     >::operator()(markov_chain episode, 
                  			      policy<state_class,action_class,value_type> & policy_map)
 {
+    // record what was observed: visits, rewards and next states of each (s_t, a_t)
     for (unsigned int i = 0; i < episode.size(); i++) {
-        if (i == episode.size() - 1) continue;
-        __memory__[episode[i].state][episode[i].action][episode[i + 1].state] += 1;
+        auto & stats = __memory__[episode[i].state][episode[i].action];
+        stats.visits += 1;
+        // running mean rather than a sum: a float sum stops growing at 2^24 visits
+        value_type r = episode[i].state.reward();
+        stats.reward_mean += (r - stats.reward_mean) / static_cast<value_type>(stats.visits);
+        if (i + 1 < episode.size()) {
+            stats.next[episode[i + 1].state] += 1;
+        }
     }
     for (unsigned int i = 0; i < episode.size(); i++) {
         auto triplet = q_value(episode, i, policy_map);
