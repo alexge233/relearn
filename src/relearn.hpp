@@ -684,11 +684,15 @@ struct expected_sarsa
     std::function<value_type(std::size_t)> learning_rate;
     /// the number of updates of each state/action pair (counted only when `learning_rate` is set)
     visit_counter<state_class,action_class> visits;
-    /// ctor with a learning rate @param rate (`alpha`) and a discount rate @param discount (`gamma`), both 0.9 by default
-    expected_sarsa(value_type rate = 0.9,
-                   value_type discount = 0.9);
     /// the policy π(a | s) the agent follows - if not set, the greedy policy is used
     std::function<distribution(const state_class &)> probabilities;
+    /**
+     * @brief ctor with a learning rate @param rate (`alpha`), a discount rate @param discount
+     *        (`gamma`), both 0.9 by default, and the policy @param pi (`probabilities`), not set by default
+     */
+    expected_sarsa(value_type rate = 0.9,
+                   value_type discount = 0.9,
+                   std::function<distribution(const state_class &)> pi = nullptr);
 
     /**
      * @return the expected value of @param s_t under the policy π:
@@ -1045,9 +1049,11 @@ template <class state_class,
           typename value_type>
 expected_sarsa<state_class,action_class,markov_chain,value_type
               >::expected_sarsa(value_type rate,
-                                value_type discount)
+                                value_type discount,
+                                std::function<distribution(const state_class &)> pi)
 : alpha(rate),
-  gamma(discount)
+  gamma(discount),
+  probabilities(pi)
 {}
 
 template <class state_class, 

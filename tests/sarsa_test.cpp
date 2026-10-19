@@ -501,7 +501,8 @@ TEST_CASE("sarsa with a constant epsilon learns q of the epsilon-greedy policy",
 }
 
 /// verifies that when exploration fades out (ε = 1/k), SARSA and Expected SARSA learn
-/// the optimal values of the actions they come to take (Section 6.4: GLIE)
+/// the optimal values of the actions they come to take (Section 6.4). In the corridor every
+/// pair is one exploratory move away from the agent's path, so ε = 1/k keeps visiting them all
 TEST_CASE("sarsa and expected_sarsa with a fading epsilon learn q* of the best actions", "[sarsa][expected_sarsa][schedules][convergence]")
 {
     const double gamma = 0.9;

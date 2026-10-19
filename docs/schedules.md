@@ -126,10 +126,17 @@ With a constant `ε`, the agent explores forever.
   not `q*`.
 
 To learn `q*`, an on-policy learner must explore less and less, but never stop for good.
-Sutton and Barto (Section 6.4) state it as: every state/action pair keeps being visited,
-and the policy becomes greedy in the limit (often called *GLIE*).
-With ε-greedy, `ε = 1/k` in episode `k` does both: `ε → 0`, and since `Σ 1/k = ∞`
-the agent never stops exploring altogether.
+Sutton and Barto (Section 6.4) state it as: every state/action pair keeps being visited
+(infinitely often), and the policy becomes greedy in the limit (often called *GLIE*).
+
+`ε = 1/k` in episode `k` makes the policy greedy in the limit, and since `Σ 1/k = ∞`
+the agent never stops exploring altogether. But that alone does not guarantee that *every* pair
+keeps being visited: a pair that the agent only reaches by exploring twice in a row is visited with
+a probability of about `1/k²`, and `Σ 1/k²` is finite, so it may stop being visited.
+An exploration rate per state does guarantee it: `ε(s) = c / n(s)`, where `n(s)` is the number of
+visits of state `s` (Singh, Jaakkola, Littman and Szepesvári, 2000 [2]).
+In practice `ε = 1/k` per episode is common, and works well when every pair is one exploratory move
+away from the states the agent visits anyway, as in the corridor below.
 
 `exponential_decay` with `minimum = 0` does not: `Σ λ^k` is finite, so after a while the agent
 practically stops exploring, and pairs it has not tried enough are never learnt.
@@ -185,7 +192,8 @@ with SARSA and `α = 1/n^0.6` per pair, for 20000 episodes (worst errors over 10
 
 With a constant `ε`, SARSA learns that exploring has a cost: from the first cell, moving right is
 worth -4.31 under the ε-greedy policy, against -4.06 for the best policy.
-With `ε = 1/k`, it learns the best values of the moves it comes to take.
+With `ε = 1/k`, it learns the best values of the moves it comes to take. In the corridor, every
+pair is one exploratory move away from the path the agent takes, so `ε = 1/k` keeps visiting all of them.
 The moves it takes less and less often learn slowly (errors up to 1.2 after 20000 episodes):
 that is the price of exploring less.
 
@@ -202,3 +210,5 @@ that is the price of exploring less.
 1. Sutton, R.S. and Barto, A.G., 2018. [Reinforcement Learning: An Introduction](http://incompleteideas.net/book/the-book-2nd.html), 2nd edition. Cambridge, MA: MIT Press.
    Section 2.4 (sample averages), Section 2.5 and equation 2.7 (conditions on the learning rate),
    Section 6.4 (SARSA's convergence), Exercise 6.10 (random wind).
+2. Singh, S., Jaakkola, T., Littman, M.L. and Szepesvári, C., 2000. Convergence results for single-step
+   on-policy reinforcement-learning algorithms. *Machine Learning*, 38(3), pp. 287-308.

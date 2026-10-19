@@ -160,3 +160,16 @@ TEST_CASE("q_learning can still be brace-initialised with alpha and gamma", "[sc
     REQUIRE(learner.gamma == Approx(0.5));
     REQUIRE(!learner.learning_rate);
 }
+
+/// verifies that expected_sarsa can be given its policy π when it is constructed
+TEST_CASE("expected_sarsa can be constructed with alpha, gamma and pi", "[schedules]")
+{
+    auto pi = [](const state &) {
+        return relearn::expected_sarsa<state,action>::distribution {{action("a"), 1.0}};
+    };
+    auto learner = relearn::expected_sarsa<state,action>{0.25, 0.5, pi};
+    REQUIRE(learner.alpha == Approx(0.25));
+    REQUIRE(learner.gamma == Approx(0.5));
+    REQUIRE(learner.probabilities);
+    REQUIRE(learner.probabilities(state("s")).size() == 1u);
+}
