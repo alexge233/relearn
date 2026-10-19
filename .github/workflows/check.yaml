@@ -8,17 +8,24 @@ jobs:
   check:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
 
       - name: install boost
-        run: sudo apt install libboost-all-dev
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libboost-serialization-dev libboost-system-dev
 
       - name: build
         run: |
           mkdir build
           cd build
-          cmake ..
+          cmake .. -DBUILD_TESTS=ON
           make
+
+      - name: run tests
+        run: |
+          cd build
+          ctest --output-on-failure
 
       - name: run example 1
         run: |
@@ -37,3 +44,25 @@ jobs:
       #    cd build 
       #    ./ex_blackjack
       #    cd ..
+
+  check-serialization:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: install boost
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libboost-serialization-dev libboost-system-dev
+
+      - name: build with boost serialization
+        run: |
+          mkdir build
+          cd build
+          cmake .. -DBUILD_TESTS=ON -DUSING_BOOST_SERIALIZATION=ON
+          make
+
+      - name: run tests
+        run: |
+          cd build
+          ctest --output-on-failure

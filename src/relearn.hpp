@@ -21,6 +21,10 @@
 #include <algorithm>
 #include <memory>
 #include <cassert>
+#include <cmath>
+#include <limits>
+#include <tuple>
+#include <utility>
 #if USING_BOOST_SERIALIZATION
 #include "serialize.tpl"
 #endif
@@ -86,9 +90,9 @@ public:
     /// late reward setting
     void set_reward(value_type reward);
     /// @brief state equality - uses `state_trait::operator==`
-    bool operator==(const state<state_trait> & arg) const;
+    bool operator==(const state & arg) const;
     /// @brief comparison / osrting operator - uses `state_trait::operator<`
-    bool operator<(const state<state_trait> & arg) const;
+    bool operator<(const state & arg) const;
     /// @return unique hash
     std::size_t hash() const;
     /// @return reward: 0 for normal, -1 for negative, +1 for positive
@@ -109,10 +113,11 @@ protected:
     state() = default;
 #endif
 };
-template <class state_trait> 
-struct hasher<state<state_trait>>
+template <class state_trait,
+          typename value_type>
+struct hasher<state<state_trait,value_type>>
 {
-    std::size_t operator()(const state<state_trait> & arg) const;
+    std::size_t operator()(const state<state_trait,value_type> & arg) const;
 };
 #if USING_BOOST_SERIALIZATION
 template <class state_class> 
@@ -304,11 +309,11 @@ struct q_learning
     /// @brief the update rule of Q-learning
     triplet q_value(markov_chain &episode,
                     unsigned int index,
-                    policy<state_class,action_class> &policy_map);
+                    policy<state_class,action_class,value_type> & policy_map);
 
     /// @brief do the updating for an episode - @param policy_map will be modified
     void operator()(markov_chain episode, 
-                    policy<state_class,action_class> & policy_map);
+                    policy<state_class,action_class,value_type> & policy_map);
 };
 
 /**
@@ -351,10 +356,10 @@ struct q_probabilistic
     /// @brief the update rule of Q-learning
     triplet q_value(markov_chain &episode,
                     unsigned int index,
-                    policy<state_class,action_class> & policy_map);
+                    policy<state_class,action_class,value_type> & policy_map);
     /// @brief do the updating for an episode - @param policy_map will be modified
     void operator()(markov_chain episode, 
-                    policy<state_class,action_class> & policy_map);
+                    policy<state_class,action_class,value_type> & policy_map);
 private:
     // map of state, frequency (s_t_+1)
     using frequency   = std::unordered_map<state_class,
@@ -398,9 +403,10 @@ std::size_t hasher<action<action_trait
     return arg.hash();
 } 
 
-template <class state_trait>
-std::size_t hasher<state<state_trait>
-				  >::operator()(const state<state_trait> &arg) const
+template <class state_trait,
+          typename value_type>
+std::size_t hasher<state<state_trait,value_type>
+                  >::operator()(const state<state_trait,value_type> &arg) const
 {
     return arg.hash();
 } 
@@ -436,14 +442,14 @@ void state<state_trait,value_type>::set_reward(value_type reward)
 
 template <class state_trait,
           typename value_type>
-bool state<state_trait,value_type>::operator==(const state<state_trait> & arg) const
+bool state<state_trait,value_type>::operator==(const state & arg) const
 {
     return (this->__trait__ == arg.__trait__);
 }
 
 template <class state_trait,
           typename value_type>
-bool state<state_trait,value_type>::operator<(const state<state_trait> & arg) const
+bool state<state_trait,value_type>::operator<(const state & arg) const
 {
     return (this->__trait__ < arg.__trait__);
 }
@@ -518,8 +524,10 @@ template <class state_class,
 bool link<state_class,action_class>::operator<(const link<state_class,
                                                action_class> & arg) const
 {
-    return (this->action < arg.action) &&
-           (this->state  < arg.state);
+    // lexicographic: compare states first, then actions
+    if (this->state < arg.state) return true;
+    if (arg.state < this->state) return false;
+    return (this->action < arg.action);
 }
 
 template <class state_class, 
@@ -647,7 +655,7 @@ void policy<state_class,action_class,value_type>::operator+=(const policy & arg)
 #else
     for (const auto & s_t : arg.__policies__) {
         for (const auto & a_t : s_t.second) {
-            __policies__[s_t][a_t] = a_t.second;
+            __policies__[s_t.first][a_t.first] = a_t.second;
         }
     }
 #endif
@@ -661,7 +669,7 @@ typename q_learning<state_class,action_class,markov_chain,value_type>::triplet
             q_learning<state_class,action_class,markov_chain,value_type
 					  >::q_value(markov_chain & episode, 
 					   			 unsigned int index,
-								 policy<state_class,action_class> & policy_map) 
+								 policy<state_class,action_class,value_type> & policy_map) 
 {
     auto step = episode[index];
     if (index < episode.size() - 1)  {
@@ -684,7 +692,7 @@ template <class state_class,
           typename value_type>
 void q_learning<state_class,action_class,markov_chain,value_type
                 >::operator()(markov_chain episode, 
-                 			  policy<state_class,action_class> & policy_map)
+                 			  policy<state_class,action_class,value_type> & policy_map)
 {
     // @NOTE - maybe replace index with an STL iterator?
     for (unsigned int i = 0; i < episode.size(); i++) {
@@ -712,7 +720,7 @@ typename q_probabilistic<state_class,action_class,markov_chain,value_type>::trip
             q_probabilistic<state_class,action_class,markov_chain,value_type
 					       >::q_value(markov_chain & episode, 
                                       unsigned int index,
-                                      policy<state_class,action_class> & policy_map) 
+                                      policy<state_class,action_class,value_type> & policy_map) 
 {
     auto step = episode[index];
     if (index < episode.size() - 1)  {
@@ -721,8 +729,15 @@ typename q_probabilistic<state_class,action_class,markov_chain,value_type>::trip
         auto r      = step.state.reward();
         if (std::isnan(q_next)) q_next = 0.;
         // transition probability (frequency of transition / total observations)
-        value_type prob = (__memory__[step.state][step.action][next.state]) /
-                          (__memory__[step.state][step.action].size());
+        const auto & transitions = __memory__[step.state][step.action];
+        std::size_t total = 0;
+        for (const auto & item : transitions) {
+            total += item.second;
+        }
+        auto found = transitions.find(next.state);
+        value_type prob = (total > 0 && found != transitions.end()) ?
+                          static_cast<value_type>(found->second) /
+                          static_cast<value_type>(total) : 0;
         // expected reward
         value_type r_expected = prob * r;
         return std::make_tuple(step.state, step.action, 
@@ -739,11 +754,11 @@ template <class state_class,
           typename value_type>
 void q_probabilistic<state_class,action_class,markov_chain,value_type
                     >::operator()(markov_chain episode, 
-                 			      policy<state_class,action_class> & policy_map)
+                 			      policy<state_class,action_class,value_type> & policy_map)
 {
     for (unsigned int i = 0; i < episode.size(); i++) {
         if (i == episode.size() - 1) continue;
-        __memory__[episode[i].state][episode[i].action][episode[i + 1].state] =+ 1;
+        __memory__[episode[i].state][episode[i].action][episode[i + 1].state] += 1;
     }
     for (unsigned int i = 0; i < episode.size(); i++) {
         auto triplet = q_value(episode, i, policy_map);
