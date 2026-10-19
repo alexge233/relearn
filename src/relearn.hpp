@@ -756,7 +756,7 @@ void q_learning<state_class,action_class,markov_chain,value_type
                               bool terminated)
 {
     // a cut-short episode does not learn its last link: it has no outcome yet
-    const std::size_t learnt = (terminated || episode.empty()) ? episode.size() 
+    const std::size_t learnt = (terminated || episode.size() == 0) ? episode.size() 
                                                                : episode.size() - 1;
     for (std::size_t i = 0; i < learnt; i++) {
         auto triplet = q_value(episode, i, policy_map);
@@ -813,7 +813,7 @@ void q_probabilistic<state_class,action_class,markov_chain,value_type
                                   bool terminated)
 {
     // a cut-short episode does not learn its last link: it has no outcome yet
-    const std::size_t learnt = (terminated || episode.empty()) ? episode.size() 
+    const std::size_t learnt = (terminated || episode.size() == 0) ? episode.size() 
                                                                : episode.size() - 1;
     // record what was observed: visits, rewards and next states of each (s_t, a_t)
     for (std::size_t i = 0; i < learnt; i++) {

@@ -169,3 +169,29 @@ TEST_CASE("episodes cut short are not learnt as the end of the game", "[regressi
         REQUIRE(memory.value(state("s1"), action("b")) == Approx(5.0));
     }
 }
+
+TEST_CASE("learners only need size() and [] from the episode container", "[regression]")
+{
+    // the episode type is a template parameter: a container that offers only
+    // size() and operator[] (no empty(), no iterators) must still work
+    using state  = relearn::state<std::string>;
+    using action = relearn::action<std::string>;
+    using link   = relearn::link<state,action>;
+    struct minimal_chain
+    {
+        std::vector<link> links;
+        std::size_t size() const { return links.size(); }
+        link & operator[](std::size_t i) { return links[i]; }
+        const link & operator[](std::size_t i) const { return links[i]; }
+    };
+    minimal_chain episode{{{state(0, "s0"), action("a")}, {state(1, "s1"), action("b")}}};
+    relearn::policy<state,action> memory;
+    relearn::q_learning<state,action,minimal_chain> q;
+    q.alpha = 1;
+    q(episode, memory);
+    q(episode, memory, false);
+    relearn::q_probabilistic<state,action,minimal_chain> p(0.9);
+    p(episode, memory);
+    p(episode, memory, false);
+    REQUIRE(memory.value(state("s1"), action("b")) == Approx(1.0));
+}
