@@ -49,7 +49,10 @@ struct types
 template <class game_type>
 struct played
 {
-    typename types<game_type>::episode episode;  // the links, ready for a learner
+    /// the links, ready for a learner. An episode cut short ends with one extra
+    /// link holding the state reached: it is not a step taken, and only gives
+    /// the learner the next state of the last real step
+    typename types<game_type>::episode episode;
     double total_reward = 0;                     // undiscounted sum of rewards
     std::size_t steps = 0;                       // actions taken
     bool terminated = false;                     // false: cut short by the step limit
@@ -60,7 +63,8 @@ struct played
  * @param choose is called as `choose(state, legal_actions)` and returns an action
  * @param max_steps cuts the episode short. Pass `terminated` on to the learner,
  *        `learner(result.episode, policy, result.terminated)`, so that a cut-off
- *        is not learnt as the end of the game
+ *        is not learnt as the end of the game; the last step taken is still
+ *        learnt, from the value of the state it reached
  */
 template <class game_type, class chooser>
 played<game_type> play(game_type & game, chooser && choose, std::size_t max_steps)
@@ -79,6 +83,14 @@ played<game_type> play(game_type & game, chooser && choose, std::size_t max_step
         if (out.terminated) {
             result.terminated = true;
             break;
+        }
+    }
+    if (!result.terminated && result.steps > 0) {
+        // cut short: add the state reached, so that the last step taken can be
+        // learnt from it (a cut-short episode's last link is never learnt itself)
+        auto legal = game.actions(s_t);
+        if (!legal.empty()) {
+            result.episode.push_back({state(0, s_t), action(legal.front())});
         }
     }
     return result;

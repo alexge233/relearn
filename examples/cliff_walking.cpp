@@ -40,7 +40,7 @@ void draw(const types::policy & memory, std::mt19937 & prng)
 
 int main()
 {
-    const unsigned int episodes = 1000;
+    const unsigned int episodes = 3000;
     const double epsilon = 0.1;
     game_type game;
     std::mt19937 prng(1);
@@ -57,8 +57,8 @@ int main()
                              }, 1000);
         learner(r.episode, memory, r.terminated);
         sum += r.total_reward;
-        if (i % 100 == 0) {
-            std::printf("episodes %4u-%4u: average return while exploring %7.1f\n", i - 99, i, sum / 100);
+        if (i % 300 == 0) {
+            std::printf("episodes %4u-%4u: average return while exploring %7.1f\n", i - 299, i, sum / 300);
             sum = 0;
         }
     }

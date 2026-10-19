@@ -198,7 +198,7 @@ TEST_CASE("cliff walking: q_learning learns the shortest path", "[games][cliff]"
     relearn::q_learning<games::types<game_type>::state, games::types<game_type>::action> learner;
     learner.alpha = 0.5;
     learner.gamma = 1.0;
-    train(game, learner, memory, 1000, 0.1, 1000, prng);
+    train(game, learner, memory, 3000, 0.1, 1000, prng);
     auto greedy = games::play(game,
                               [&](const game_type::state_type & s, const std::vector<unsigned int> & legal) {
                                   return games::greedy<game_type>(memory, s, legal, prng);
@@ -922,4 +922,57 @@ TEST_CASE("discretised: bins and cells", "[games][discretised]")
     REQUIRE(game.cell({-1.2, -0.07}) == 0u);
     REQUIRE(game.cell({-1.2, 0.07}) == 1u);
     REQUIRE(game.cell({0.6, 0.07}) == 5u);
+}
+
+// ------------------------------------------------------------ games::play
+
+namespace
+{
+/// a corridor that never ends: each step moves one cell on and is worth 2
+struct endless_corridor
+{
+    using state_type  = unsigned int;
+    using action_type = unsigned int;
+    state_type at = 0;
+    state_type reset() { at = 0; return at; }
+    games::step_result<state_type> step(const action_type &)
+    {
+        games::step_result<state_type> out;
+        out.next = ++at;
+        out.reward = 2;
+        return out;
+    }
+    std::vector<action_type> actions(const state_type &) const { return {0}; }
+};
+} // namespace
+
+TEST_CASE("play: an episode cut short still learns its last step", "[games][play]")
+{
+    // the last step taken before the cut-off is learnt from its reward and the
+    // value of the state it reached: one step, cut short, Q(0) = 2 + 0.5 * Q(1)
+    using types = games::types<endless_corridor>;
+    endless_corridor game;
+    auto r = games::play(game, [](const unsigned int &, const std::vector<unsigned int> &) { return 0u; }, 1);
+    REQUIRE(!r.terminated);
+    REQUIRE(r.steps == 1u);
+    REQUIRE(r.total_reward == 2);
+
+    SECTION("q_learning") {
+        types::policy memory;
+        memory.update(types::state(1), types::action(0), 3.0);     // what state 1 is worth
+        relearn::q_learning<types::state, types::action> learner;
+        learner.alpha = 1;
+        learner.gamma = 0.5;
+        learner(r.episode, memory, r.terminated);
+        REQUIRE(memory.value(types::state(0), types::action(0)) == Approx(3.5));
+        REQUIRE(memory.value(types::state(1), types::action(0)) == Approx(3.0));   // not learnt
+    }
+    SECTION("q_probabilistic") {
+        types::policy memory;
+        memory.update(types::state(1), types::action(0), 3.0);
+        relearn::q_probabilistic<types::state, types::action> learner(0.5);
+        learner(r.episode, memory, r.terminated);
+        REQUIRE(memory.value(types::state(0), types::action(0)) == Approx(3.5));
+        REQUIRE(memory.value(types::state(1), types::action(0)) == Approx(3.0));
+    }
 }
