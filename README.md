@@ -6,7 +6,7 @@ A Reinforcement Learning *header-only* template library for C++14.
 Minimal and simple to use, for a variety of scenarios.
 It is based on Sutton and Barto's book [1] and implements *some* of the functionality described in it.
 
-The library currently implements four learners:
+The library currently implements five learners:
 
 - `q_learning`: Q-learning, which updates from each step it is shown, with a learning rate α.
 - `q_probabilistic`: Q-learning for non-deterministic systems, which learns the expected reward and the
@@ -15,8 +15,10 @@ The library currently implements four learners:
   (see [docs/sarsa.md](docs/sarsa.md)).
 - `expected_sarsa`: Expected SARSA, which learns like SARSA, but from the value the next state is
   expected to have under the agent's policy, so it learns more steadily (see [docs/sarsa.md](docs/sarsa.md)).
+- `double_q_learning`: Double Q-learning, which keeps two estimates, so that the one that picks the best
+  next action is not the one that values it: it is not fooled by noisy values (see [docs/double_q_learning.md](docs/double_q_learning.md)).
 
-The learning rate of `q_learning`, `sarsa` and `expected_sarsa` can decay as each state/action pair
+The learning rate of `q_learning`, `sarsa`, `expected_sarsa` and `double_q_learning` can decay as each state/action pair
 is updated, and the exploration rate can fade as the agent learns, using the schedules
 `polynomial_decay`, `exponential_decay` and `linear_decay` (see [docs/schedules.md](docs/schedules.md)).
 
@@ -407,7 +409,7 @@ auto r = games::play_online(game, agent, learner, memory, 1000);
 | `cliff_walking` | S&B 6.6 | `q_learning`, `sarsa`, `expected_sarsa` | On-policy vs off-policy: Q-learning learns the path along the cliff edge, SARSA a safer one, and both SARSAs earn more while exploring |
 | `windy_gridworld` | S&B 6.5, Ex. 6.10 | both | Steady wind: the 15-move path. Random wind: `q_probabilistic`, and `q_learning` with a learning rate that decays per pair, find the best policy; `q_learning` with α = 0.5 does not |
 | `random_walk` | S&B 6.2, 7.1 | `q_probabilistic` | Prediction: learnt values next to the exact ones |
-| `maximization_bias` | S&B 6.7 | `q_learning` | Q-learning's overestimation (for Double Q-learning) |
+| `maximization_bias` | S&B 6.7 | `q_learning`, `double_q_learning` | Q-learning's overestimation, which Double Q-learning removes (Figure 6.5) |
 | `gamblers_problem` | S&B 4.3 | `q_probabilistic` | Values that match the exact solution |
 | `dyna_maze` | S&B 8.1–8.3 | `q_learning` | Learning a maze; mazes that change (for Dyna-Q, Dyna-Q+) |
 | `tic_tac_toe` | S&B 1.5 | `q_learning` | Against a random or a perfect (minimax) opponent |
@@ -427,10 +429,17 @@ AI-generated contributions are welcome, as long as they have been reviewed and a
 
 # TODO
 
-1. Double Q-learning (`maximization_bias`)
-2. Dyna-Q and Dyna-Q+ (`dyna_maze`)
-3. the R-Learning continuous algorithm
-4. eligibility traces
+1. Dyna-Q and Dyna-Q+ (`dyna_maze`)
+2. the R-Learning continuous algorithm
+3. eligibility traces
+4. watch the agents play: a `--watch` mode for the examples, with the same drawing hook for two views
+   - in the terminal, as ASCII art
+   - in a window, as retro pixel art: 2D, drawn at a low resolution and scaled up with sharp pixels,
+     sprites and a 16-colour palette defined in the code (no asset files), a pixel font, optional
+     chiptune sounds generated in code, and the learning shown in the same style (a pixel learning
+     curve, Q-values as tile colours, a status line)
+   - the window uses [raylib](https://www.raylib.com) (zlib licence, Linux and macOS), in an optional
+     CMake sub-project that is off by default: `relearn.hpp` and the default build keep no dependencies
 
 # References
 
