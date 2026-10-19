@@ -101,7 +101,7 @@ Eso sí, tu compilador **tiene que ser compatible con C++14**, así que necesita
 - GCC 5 o superior
 - Clang 3.4 o superior
 
-Son las primeras versiones con compatibilidad completa con C++14, y la CI compila con GCC en Ubuntu.
+Son las primeras versiones con compatibilidad completa con C++14. La CI compila con GCC en Ubuntu, y con Apple Clang en macOS.
 
 __nota__: ¡no lo he probado en Windows!
 
