@@ -60,6 +60,15 @@ struct mdp_a
     /// the exact value of Q(s1,b)
     double q_s1 = 0.4;
 
+    /// @return the policy π, for Expected SARSA: the only action of state @param s, with probability 1
+    relearn::expected_sarsa<state,action>::distribution pi(const state & s) const
+    {
+        if (s.trait() == "s0") {
+            return {{action("a"), 1.0}};
+        }
+        return {{action("b"), 1.0}};
+    }
+
     /// @return one sampled episode, using @param prng for the random outcome
     episode operator()(std::mt19937 & prng) const
     {
@@ -90,6 +99,18 @@ struct mdp_b
     double q_s1 = 0.8;
     /// the exact value of Q(s2,y)
     double q_s2 = -1.0;
+
+    /// @return the policy π, for Expected SARSA: the only action of state @param s, with probability 1
+    relearn::expected_sarsa<state,action>::distribution pi(const state & s) const
+    {
+        if (s.trait() == "s0") {
+            return {{action("a"), 1.0}};
+        }
+        if (s.trait() == "s1") {
+            return {{action("x"), 1.0}};
+        }
+        return {{action("y"), 1.0}};
+    }
 
     /// @return one sampled episode, using @param prng for the random outcomes
     episode operator()(std::mt19937 & prng) const
@@ -186,6 +207,36 @@ relearn::policy<state,action> train_q_probabilistic(const mdp & sample,
     return memory;
 }
 
+/**
+ * @brief train a TD learner (`sarsa` or `expected_sarsa`) with a decaying learning rate α = 1/k
+ * @param learner is the learner to train
+ * @param sample draws one episode of the MDP
+ * @param episodes is the number of episodes to train on
+ * @param seed seeds the random outcomes of the MDP
+ * @return the learnt policy
+ *
+ * Each state of these MDPs has a single action, so the policy followed is the
+ * only policy there is: its values q_π are the optimal values q*, and SARSA,
+ * Expected SARSA and Q-learning must all reach the same exact Q.
+ */
+template <class learner_type,
+          class mdp>
+relearn::policy<state,action> train_td(learner_type & learner,
+                                       const mdp & sample,
+                                       int episodes,
+                                       unsigned int seed)
+{
+    std::mt19937 prng(seed);
+    relearn::policy<state,action> memory;
+    learner.gamma = discount;
+    for (int k = 1; k <= episodes; k++) {
+        // the same decaying learning rate as for Q-learning above
+        learner.alpha = 1.0 / k;
+        learner(sample(prng), memory);
+    }
+    return memory;
+}
+
 /// verifies that `q_learning` with a decaying α reaches the exact Q of both MDPs
 TEST_CASE("q_learning converges to the true Q on stochastic MDPs", "[convergence]")
 {
@@ -216,6 +267,57 @@ TEST_CASE("q_probabilistic converges to the true Q on stochastic MDPs", "[conver
     }
     SECTION("MDP B: stochastic transition, intermediate reward") {
         auto memory = train_q_probabilistic(mdp_b{}, n);
+        REQUIRE(memory.value(state("s1"), action("x")) == Approx(mdp_b{}.q_s1).margin(0.02));
+        REQUIRE(memory.value(state("s2"), action("y")) == Approx(mdp_b{}.q_s2).margin(0.02));
+        REQUIRE(memory.value(state("s0"), action("a")) == Approx(mdp_b{}.q_s0).margin(0.02));
+    }
+}
+
+/// verifies that `sarsa` with a decaying α reaches the exact Q of both MDPs (Sutton & Barto, Section 6.4)
+TEST_CASE("sarsa converges to the true Q on stochastic MDPs", "[convergence][sarsa]")
+{
+    // the same number of episodes as Q-learning: α = 1/k decays fast for s2.
+    // With a single action per state, the action taken next, the expected one and
+    // the best one are the same, so SARSA, Expected SARSA and Q-learning make the
+    // same updates here: these tests check that each reaches the exact values.
+    // What tells them apart is tested in sarsa_test.cpp.
+    // Across seeds 1 ... 10 the worst errors were 0.0034 (A) and 0.0155 (B)
+    const int n = 200000;
+    SECTION("MDP A: stochastic final reward") {
+        relearn::sarsa<state,action> learner;
+        auto memory = train_td(learner, mdp_a{}, n, 4);
+        REQUIRE(memory.value(state("s1"), action("b")) == Approx(mdp_a{}.q_s1).margin(0.02));
+        REQUIRE(memory.value(state("s0"), action("a")) == Approx(mdp_a{}.q_s0).margin(0.02));
+    }
+    SECTION("MDP B: stochastic transition, intermediate reward") {
+        relearn::sarsa<state,action> learner;
+        auto memory = train_td(learner, mdp_b{}, n, 4);
+        REQUIRE(memory.value(state("s1"), action("x")) == Approx(mdp_b{}.q_s1).margin(0.02));
+        REQUIRE(memory.value(state("s2"), action("y")) == Approx(mdp_b{}.q_s2).margin(0.02));
+        REQUIRE(memory.value(state("s0"), action("a")) == Approx(mdp_b{}.q_s0).margin(0.02));
+    }
+}
+
+/// verifies that `expected_sarsa`, given the policy π, reaches the exact Q of both MDPs (Sutton & Barto, Section 6.6)
+TEST_CASE("expected_sarsa converges to the true Q on stochastic MDPs", "[convergence][expected_sarsa]")
+{
+    // as for SARSA: across seeds 1 ... 10 the worst errors were 0.0034 (A) and 0.0155 (B)
+    const int n = 200000;
+    SECTION("MDP A: stochastic final reward") {
+        relearn::expected_sarsa<state,action> learner;
+        learner.probabilities = [](const state & s) {
+            return mdp_a{}.pi(s);
+        };
+        auto memory = train_td(learner, mdp_a{}, n, 5);
+        REQUIRE(memory.value(state("s1"), action("b")) == Approx(mdp_a{}.q_s1).margin(0.02));
+        REQUIRE(memory.value(state("s0"), action("a")) == Approx(mdp_a{}.q_s0).margin(0.02));
+    }
+    SECTION("MDP B: stochastic transition, intermediate reward") {
+        relearn::expected_sarsa<state,action> learner;
+        learner.probabilities = [](const state & s) {
+            return mdp_b{}.pi(s);
+        };
+        auto memory = train_td(learner, mdp_b{}, n, 5);
         REQUIRE(memory.value(state("s1"), action("x")) == Approx(mdp_b{}.q_s1).margin(0.02));
         REQUIRE(memory.value(state("s2"), action("y")) == Approx(mdp_b{}.q_s2).margin(0.02));
         REQUIRE(memory.value(state("s0"), action("a")) == Approx(mdp_b{}.q_s0).margin(0.02));
