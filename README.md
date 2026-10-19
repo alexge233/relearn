@@ -190,11 +190,11 @@ Later versions of boost support smart pointers, so even if your descriptors are
 
 # Examples
 
-There is a folder `examples` which I'm populating with examples, starting from your typical *gridworld* problem, 
-and then moving on to a *blackjack* program.
-Currently there are two "Gridworld" examples:
+The folder `examples` holds two "Gridworld" examples:
 - an offline on-policy algorithm: `examples/gridworld_offline.cpp` built as `ex_gridworld_offline`
 - an online on-policy algorithm: `examples/gridworld_online.cpp` built as `ex_gridworld_online`
+
+and a collection of classic games, described in [Games](#games) below.
 
 ## basic usage
 
@@ -326,20 +326,52 @@ This of course, is also a problem with offline, where the solution may never be 
 Other more complex algorithms exist (e.g., e-greedy) where the agent may follow the policy,
 but randomly chose to ignore it, in order to try and discover a better solution.
 
-## Blackjack
+# Games
 
-A simplified attempt, where one player uses classic probabilities, the dealer (house) simply draws until 17,
-and the adaptive agent uses non-deterministic Q-learning in order to play as best as possible.
+The folder `examples/games` holds classic reinforcement learning problems, each in its own header,
+and `examples/<game>.cpp` learns each one (built as `ex_<game>`). Most come from Sutton & Barto [1];
+FrozenLake, cart-pole and mountain car follow Gymnasium's rules and physics, so agents can later be
+compared on both.
 
-The `state` is very simple: a `hand` which is described by the value (min value and max value, depending on the cards held).
-The agent ignores the dealer's hand since that would increase the state space,
-as well as the label or symbol of the cards held (feel free to change this, simply adapt the "hash" function of `hand`).
+Every game has the same shape, after Gymnasium's `reset()`/`step()` (see `examples/games/game.hpp`):
 
-This example takes a lot of time to run, as the agent maps the transitional probabilities,
-using the observations from playing multiple games.
+```cpp
+games::cliff_walking game;
+auto s = game.reset();                        // start an episode
+auto out = game.step(games::right);           // out.next, out.reward, out.terminated
+auto moves = game.actions(s);                 // the legal actions
+```
 
-The header file `examples/blackjack_header.hpp` contains the simple structures and methods needed to play blackjack,
-whereas the source file `examples/blackjack.cpp` has the high level logic behind it.
+and `games::play` records an episode in relearn's reward convention, ready for a learner:
+
+```cpp
+using types = games::types<games::cliff_walking>;
+types::policy memory;
+relearn::q_learning<types::state, types::action> learner;
+auto r = games::play(game, [&](const auto & s, const auto & legal) {
+    return games::epsilon_greedy<games::cliff_walking>(memory, s, legal, 0.1, prng);
+}, 1000);                                     // at most 1000 moves
+learner(r.episode, memory, r.terminated);     // a cut-short episode is not learnt as finished
+```
+
+| Game | Source | Learnt with | What it shows |
+|---|---|---|---|
+| `bandit` | S&B 2.3 | `q_probabilistic` | Exploration vs exploitation; greedy vs ε-greedy (Figure 2.2) |
+| `blackjack` | S&B 5.1 | `q_probabilistic` | A random game; the learnt strategy matches Figure 5.2 |
+| `cliff_walking` | S&B 6.6 | `q_learning` | The 13-move path along the cliff edge |
+| `windy_gridworld` | S&B 6.5, Ex. 6.10 | both | Steady wind: the 15-move path. Random wind: `q_probabilistic` finds the best policy, `q_learning` with a fixed learning rate does not |
+| `random_walk` | S&B 6.2, 7.1 | `q_probabilistic` | Prediction: learnt values next to the exact ones |
+| `maximization_bias` | S&B 6.7 | `q_learning` | Q-learning's overestimation (for Double Q-learning) |
+| `gamblers_problem` | S&B 4.3 | `q_probabilistic` | Values that match the exact solution |
+| `dyna_maze` | S&B 8.1–8.3 | `q_learning` | Learning a maze; mazes that change (for Dyna-Q, Dyna-Q+) |
+| `tic_tac_toe` | S&B 1.5 | `q_learning` | Against a random or a perfect (minimax) opponent |
+| `frozen_lake` | Gymnasium | `q_probabilistic` | Slippery ice; the learnt 4x4 policy is optimal |
+| `cart_pole` | Gymnasium | `q_learning` | A continuous state, cut into boxes (`games::discretised`) |
+| `mountain_car` | Gymnasium | `q_learning` | A continuous state; exploring by optimistic initial values |
+
+`tests/games_test.cpp` tests the rules of every game and that the learners reach the known answer:
+exact solutions (`tests/solvers.hpp`: value iteration, exact blackjack, breadth-first search) or the
+optimal results given by the book.
 
 # TODO
 

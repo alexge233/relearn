@@ -39,11 +39,16 @@ jobs:
           timeout 300 ./ex_gridworld_offline
           cd ..
 
-      #- name: run example 3: requires user input to stop
-      #  run: |
-      #    cd build 
-      #    ./ex_blackjack
-      #    cd ..
+      - name: run the games
+        run: |
+          cd build
+          for game in bandit blackjack cart_pole cliff_walking dyna_maze frozen_lake \
+                      gamblers_problem maximization_bias mountain_car random_walk \
+                      tic_tac_toe windy_gridworld; do
+            echo "::group::$game"
+            timeout 300 ./ex_$game
+            echo "::endgroup::"
+          done
 
   check-serialization:
     runs-on: ubuntu-latest
