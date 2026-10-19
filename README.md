@@ -432,6 +432,14 @@ AI-generated contributions are welcome, as long as they have been reviewed and a
 1. Dyna-Q and Dyna-Q+ (`dyna_maze`)
 2. the R-Learning continuous algorithm
 3. eligibility traces
+4. watch the agents play: a `--watch` mode for the examples, with the same drawing hook for two views
+   - in the terminal, as ASCII art
+   - in a window, as retro pixel art: 2D, drawn at a low resolution and scaled up with sharp pixels,
+     sprites and a 16-colour palette defined in the code (no asset files), a pixel font, optional
+     chiptune sounds generated in code, and the learning shown in the same style (a pixel learning
+     curve, Q-values as tile colours, a status line)
+   - the window uses [raylib](https://www.raylib.com) (zlib licence, Linux and macOS), in an optional
+     CMake sub-project that is off by default: `relearn.hpp` and the default build keep no dependencies
 
 # References
 
