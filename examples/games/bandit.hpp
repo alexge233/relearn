@@ -7,6 +7,8 @@
  * - Arm a pays a reward drawn from a normal distribution with mean q*(a) and
  *   variance 1. The means q*(a) are themselves drawn from a standard normal
  *   distribution when the bandit is created.
+ * - Optionally, every mean can be shifted by the same amount, e.g. +4 as in
+ *   Figure 2.5 (Section 2.8): the means are then drawn around +4 rather than 0.
  * - The task is the trade-off between exploring arms and exploiting the best
  *   one found so far.
  */
@@ -33,15 +35,17 @@ public:
      * @brief a new bandit
      * @param arms is the number of arms
      * @param seed seeds the generator of the means and of the rewards
+     * @param offset is added to every mean: 0 by default, +4 for Figure 2.5
      */
     explicit bandit(unsigned int arms = 10,
-                    unsigned int seed = 0)
+                    unsigned int seed = 0,
+                    double offset = 0)
     : prng_(seed)
     {
-        // the true mean of each arm, drawn from a standard normal distribution
+        // the true mean of each arm, drawn from a standard normal distribution, plus the offset
         std::normal_distribution<double> mean(0.0, 1.0);
         for (unsigned int a = 0; a < arms; a++) {
-            means_.push_back(mean(prng_));
+            means_.push_back(mean(prng_) + offset);
         }
     }
 
