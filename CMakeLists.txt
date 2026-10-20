@@ -38,7 +38,7 @@ add_executable(ex_gridworld_online  ${EXAMPLES}/gridworld_online.cpp)
 # the games (see examples/games/): one example program each
 set(GAMES access_control bandit bandit_ucb_gradient blackjack blackjack_monte_carlo cart_pole cliff_walking
           dyna_maze dyna_maze_prioritized dynamic_programming frozen_lake gamblers_problem maximization_bias
-          mountain_car random_walk tic_tac_toe windy_gridworld)
+          mountain_car random_walk short_corridor tic_tac_toe windy_gridworld)
 foreach(game ${GAMES})
     add_executable(ex_${game} ${EXAMPLES}/${game}.cpp)
 endforeach()
@@ -102,6 +102,8 @@ if (BUILD_TESTS)
     add_test(play_online_test test_play_online)
     add_executable(test_bandits tests/bandits_test.cpp)
     add_test(bandits_test test_bandits)
+    add_executable(test_policy_gradient tests/policy_gradient_test.cpp)
+    add_test(policy_gradient_test test_policy_gradient)
     add_executable(test_r_learning tests/r_learning_test.cpp)
     add_test(r_learning_test test_r_learning)
     add_executable(test_prioritized_sweeping tests/prioritized_sweeping_test.cpp)
@@ -111,7 +113,7 @@ if (BUILD_TESTS)
 
     # every part of the library compiles on its own (see tests/headers)
     foreach(part core schedules q_learning sarsa double_q_learning dyna monte_carlo bandits
-                 dynamic_programming prioritized_sweeping r_learning)
+                 dynamic_programming policy_gradient prioritized_sweeping r_learning)
         add_executable(test_header_${part} tests/headers/${part}.cpp)
         add_test(header_${part}_test test_header_${part})
     endforeach()
