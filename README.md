@@ -27,6 +27,14 @@ Currently the library implements the following algorithms, each one explained in
 - **TD(λ)** (`td_lambda`), **SARSA(λ)** (`sarsa_lambda`) and **Watkins's Q(λ)** (`watkins_q_lambda`), whose
   eligibility traces share every TD error with the moves that led to it, accumulating or replacing,
   see [docs/eligibility_traces.md](docs/eligibility_traces.md)
+- **R-Learning** (`r_learning`) and **differential Sarsa** (`differential_sarsa`), for tasks that never end:
+  they learn the average reward per step, and how much better than average each action is, after every step,
+  see [docs/r_learning.md](docs/r_learning.md)
+- **Prioritized sweeping** (`prioritized_sweeping`), which plans like Dyna-Q, but replays first the moves whose values
+  would change the most, working backwards from every change, see [docs/prioritized_sweeping.md](docs/prioritized_sweeping.md)
+- **Dynamic programming** (`dynamic_programming`, with a model `finite_mdp`): policy evaluation, policy iteration
+  and value iteration, which need no playing at all when the rules of the world are known exactly,
+  see [docs/dynamic_programming.md](docs/dynamic_programming.md)
 - **UCB** (`ucb`) and the **gradient bandit** (`gradient_bandit`), for the k-armed bandit: UCB explores the arms
   it is least sure about, whilst the gradient bandit learns a preference for each arm, and picks arms with their softmax,
   see [docs/bandits.md](docs/bandits.md)
@@ -135,6 +143,9 @@ There is nothing to build! This is a header-only library, you only need the `src
 | `relearn/monte_carlo.hpp` | `monte_carlo` and `off_policy_monte_carlo` |
 | `relearn/n_step.hpp` | `n_step_sarsa`, and `n_step_td` (TD(0) when n = 1) |
 | `relearn/eligibility_traces.hpp` | `sarsa_lambda`, `td_lambda` and `watkins_q_lambda`, and their `eligibility_traces` |
+| `relearn/r_learning.hpp` | `r_learning` and `differential_sarsa` |
+| `relearn/prioritized_sweeping.hpp` | `prioritized_sweeping` |
+| `relearn/dynamic_programming.hpp` | `finite_mdp` and `dynamic_programming` |
 | `relearn/bandits.hpp` | `ucb` and `gradient_bandit` |
 
 Each one includes whatever it needs, so if you only use one learner (e.g., on a small board, where every byte
@@ -386,16 +397,19 @@ The learners with eligibility traces learn a whole episode at a time, so use `ga
 | `random_walk_lambda` | S&B 12.1, 12.2 | `td_lambda` | An intermediate λ is best (Figure 12.6), and offline TD(λ) learns exactly what the λ-return does |
 | `maximization_bias` | S&B 6.7 | `q_learning`, `double_q_learning` | Q-Learning's overestimation, which Double Q-Learning removes (Figure 6.5) |
 | `gamblers_problem` | S&B 4.3 | `q_probabilistic` | Values that match the exact solution |
+| `dynamic_programming` | S&B 4.1, 4.3, 4.4 | `dynamic_programming` | The 4 x 4 gridworld (`small_gridworld`, Figure 4.1) and the gambler's problem (Figure 4.3) solved from their models, by policy evaluation, policy iteration and value iteration |
 | `dyna_maze` | S&B 8.1 to 8.3 | `dyna_q` | Planning learns a maze in far fewer episodes (Figure 8.2), and Dyna-Q+ copes with mazes that change (Figures 8.4, 8.5) |
 | `dyna_maze_n_step` | S&B 7.2, 8.1 | `n_step_sarsa` | The first episode teaches n-step SARSA its last n moves (Figure 7.4), so a larger n learns the maze faster |
 | `dyna_maze_lambda` | S&B 12.7, 12.10 | `sarsa_lambda`, `watkins_q_lambda` | With replacing traces, one episode is enough to find the goal again; accumulating traces get lost in the loops |
+| `access_control` | S&B 1st ed. 6.7, 2nd ed. 10.2 | `r_learning`, `differential_sarsa` | A task that never ends: accept or reject customers to earn the most per step, against the exact optimal policy (Figures 6.17, 10.5) |
+| `dyna_maze_prioritized` | S&B 8.4 | `prioritized_sweeping`, `dyna_q` | In mazes of increasing size, prioritized sweeping needs far fewer updates than Dyna-Q to find a good path (Example 8.4) |
 | `tic_tac_toe` | S&B 1.5 | `q_learning` | Against a random or a perfect (minimax) opponent |
 | `frozen_lake` | Gymnasium | `q_probabilistic` | Slippery ice, where the learnt 4x4 policy is optimal |
 | `cart_pole` | Gymnasium | `q_learning` | A continuous state, cut into boxes (`games::discretised`) |
 | `mountain_car` | Gymnasium | `q_learning` | A continuous state, explored by optimistic initial values |
 
 The `tests/games_test.cpp` tests the rules of every game, and that the learners reach the known answer:
-either exact solutions (`tests/solvers.hpp`: value iteration, exact blackjack, breadth-first search) or the
+either exact solutions (`tests/solvers.hpp`: value iteration, relative value iteration, exact blackjack, breadth-first search) or the
 optimal results given by the book.
 
 # Contributing
@@ -407,10 +421,8 @@ AI-generated contributions are welcome, as long as they have been reviewed and a
 # TODO
 
 1. REINFORCE, REINFORCE with a baseline, and Actor-Critic, which learn the policy itself (a new short corridor game)
-2. the R-Learning continuous algorithm, for tasks that never end (a new access-control queue game)
-3. Monte Carlo Tree Search (`tic_tac_toe`)
-4. prioritized sweeping (`dyna_maze`), and policy iteration and value iteration in the library
-5. watch the agents play: a `--watch` mode for the examples, with one drawing hook for two views
+2. Monte Carlo Tree Search (`tic_tac_toe`)
+3. watch the agents play: a `--watch` mode for the examples, with one drawing hook for two views
    - in the terminal, as good old ASCII art
    - in a window, as retro pixel art: 2D, drawn at a low resolution and scaled up with sharp pixels,
      with sprites and a 16-colour palette defined in the code (so no asset files), a pixel font, optional
@@ -422,5 +434,5 @@ AI-generated contributions are welcome, as long as they have been reviewed and a
 # References
 
 1. Sutton, R.S. and Barto, A.G., 2018. [Reinforcement Learning: An Introduction](http://incompleteideas.net/book/the-book-2nd.html), 2nd edition. Cambridge, MA: MIT Press.
-   Section, example and figure numbers above refer to this edition.
+   Section, example and figure numbers above refer to this edition, unless they say "1st ed.".
 2. [Gymnasium](https://gymnasium.farama.org), the maintained successor of OpenAI Gym.

@@ -36,9 +36,10 @@ set(EXAMPLES ${EXAMPLES} examples)
 add_executable(ex_gridworld_offline ${EXAMPLES}/gridworld_offline.cpp)
 add_executable(ex_gridworld_online  ${EXAMPLES}/gridworld_online.cpp)
 # the games (see examples/games/): one example program each
-set(GAMES bandit bandit_ucb_gradient blackjack blackjack_monte_carlo cart_pole cliff_walking dyna_maze
-          dyna_maze_lambda dyna_maze_n_step frozen_lake gamblers_problem maximization_bias mountain_car
-          random_walk random_walk_lambda random_walk_td tic_tac_toe windy_gridworld)
+set(GAMES access_control bandit bandit_ucb_gradient blackjack blackjack_monte_carlo cart_pole cliff_walking
+          dyna_maze dyna_maze_lambda dyna_maze_n_step dyna_maze_prioritized dynamic_programming frozen_lake
+          gamblers_problem maximization_bias mountain_car random_walk random_walk_lambda random_walk_td
+          tic_tac_toe windy_gridworld)
 foreach(game ${GAMES})
     add_executable(ex_${game} ${EXAMPLES}/${game}.cpp)
 endforeach()
@@ -102,12 +103,18 @@ if (BUILD_TESTS)
     add_test(n_step_test test_n_step)
     add_executable(test_eligibility_traces tests/eligibility_traces_test.cpp)
     add_test(eligibility_traces_test test_eligibility_traces)
+    add_executable(test_r_learning tests/r_learning_test.cpp)
+    add_test(r_learning_test test_r_learning)
+    add_executable(test_prioritized_sweeping tests/prioritized_sweeping_test.cpp)
+    add_test(prioritized_sweeping_test test_prioritized_sweeping)
+    add_executable(test_dynamic_programming tests/dynamic_programming_test.cpp)
+    add_test(dynamic_programming_test test_dynamic_programming)
 
     # every part of the library compiles on its own (see tests/headers)
     add_executable(test_bandits tests/bandits_test.cpp)
     add_test(bandits_test test_bandits)
     foreach(part core schedules q_learning sarsa double_q_learning dyna monte_carlo bandits
-                 eligibility_traces n_step)
+                 dynamic_programming eligibility_traces n_step prioritized_sweeping r_learning)
         add_executable(test_header_${part} tests/headers/${part}.cpp)
         add_test(header_${part}_test test_header_${part})
     endforeach()
