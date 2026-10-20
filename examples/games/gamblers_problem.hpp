@@ -11,6 +11,7 @@
  * - With no discount, the value of a capital is the probability of reaching
  *   the goal from it. Many stakes are equally good, so the optimal policy is
  *   not unique: compare values, not actions.
+ * - `model()` gives the rules as a model, p(s', r | s, a), for dynamic programming.
  */
 #include "game.hpp"
 #include <algorithm>
@@ -30,6 +31,9 @@ public:
     using state_type  = unsigned int;
     /// an action is the stake
     using action_type = unsigned int;
+    /// the rules as a model, for dynamic programming
+    using model_type  = relearn::finite_mdp<relearn::state<state_type>,
+                                            relearn::action<action_type>>;
 
     /**
      * @brief create the game
@@ -102,6 +106,40 @@ public:
             stakes.push_back(s);
         }
         return stakes;
+    }
+
+    /**
+     * @return the rules as a model, p(s', r | s, a): the capitals 0 ... goal (0 and the goal are
+     *         terminal), and each stake leads to a win with probability `p_heads`, or a loss
+     */
+    model_type model() const
+    {
+        model_type m;
+        for (state_type capital = 0; capital <= goal_; capital++) {
+            m.states.push_back(relearn::state<state_type>(capital));
+        }
+        // the stakes 1 ... min(capital, goal - capital): none at 0 and at the goal
+        const unsigned int goal = goal_;
+        m.actions = [goal](const relearn::state<state_type> & s) {
+            std::vector<relearn::action<action_type>> stakes;
+            const unsigned int capital = s.trait();
+            for (unsigned int stake = 1; stake <= std::min(capital, goal - capital); stake++) {
+                stakes.push_back(relearn::action<action_type>(stake));
+            }
+            return stakes;
+        };
+        // heads wins the stake (reaching the goal is worth +1), tails loses it
+        const double p = p_;
+        m.outcomes = [goal, p](const relearn::state<state_type> & s,
+                               const relearn::action<action_type> & a) {
+            const unsigned int capital = s.trait();
+            const unsigned int stake   = a.trait();
+            relearn::state<state_type> won(capital + stake);
+            relearn::state<state_type> lost(capital - stake);
+            return std::vector<model_type::outcome> {{won, capital + stake >= goal ? 1.0 : 0.0, p},
+                                                     {lost, 0.0, 1.0 - p}};
+        };
+        return m;
     }
 
 private:
