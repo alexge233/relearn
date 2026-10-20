@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <cstddef>
 #include <functional>
 #include <map>
 #include <tuple>
@@ -180,7 +181,203 @@ struct tabular
         }
         return v;
     }
+
+    /**
+     * @struct average
+     * @brief the optimal average reward per step of a task that never ends, its differential values and its policy
+     */
+    struct average
+    {
+        /// ρ*, the optimal average reward per step: halfway between `low` and `high`
+        double rho = 0;
+        /// a lower bound of ρ*: the smallest (T h)(s) - h(s) of the last sweep
+        double low = 0;
+        /// an upper bound of ρ*: the largest (T h)(s) - h(s) of the last sweep
+        double high = 0;
+        /// h(s), the differential value of every state, relative to state 0 (h(0) = 0)
+        std::vector<double> h;
+        /// the best action of every state, given h
+        std::vector<int> policy;
+        /// the sweeps done
+        int sweeps = 0;
+    };
+
+    /**
+     * @brief the optimal average reward of a task that never ends, by relative value iteration
+     *        (Puterman, 1994, Chapter 8): it needs `gamma` = 1 and no terminal outcome
+     * @param tolerance stops the sweeps once the bounds of ρ* are closer than this
+     * @param max_sweeps is the most sweeps over the states
+     * @return the optimal ρ* (with its bounds), the differential values h, and an optimal policy
+     *
+     * Each sweep works out, for every state, (T h)(s) = max_a Σ p(s',r | s,a) [r + h(s')],
+     * and then h(s) = (T h)(s) - (T h)(0). The smallest and the largest (T h)(s) - h(s) are
+     * a lower and an upper bound of ρ*; when every policy reaches one same set of states
+     * (unichain), and does not cycle (aperiodic), they close in on it. Do check `low` and `high`:
+     * if the sweeps run out first, ρ* is somewhere between them.
+     */
+    average optimal_average(double tolerance = 1e-12,
+                            int max_sweeps = 100000) const
+    {
+        average result;
+        const std::size_t count = static_cast<std::size_t>(states);
+        result.h.assign(count, 0.0);
+        result.policy.assign(count, -1);
+        std::vector<double> next(count, 0.0);
+        for (int sweep = 1; sweep <= max_sweeps; sweep++) {
+            result.sweeps = sweep;
+            for (std::size_t s = 0; s < count; s++) {
+                // (T h)(s) = max over the allowed actions of Σ p [r + h(s')]
+                double best = -1e300;
+                for (int a = 0; a < actions; a++) {
+                    double value = q(result.h, static_cast<int>(s), a);
+                    if (!std::isnan(value) && value > best) {
+                        best = value;
+                        result.policy[s] = a;
+                    }
+                }
+                next[s] = best;
+            }
+            // T h - h brackets ρ*: its smallest and largest values are the bounds
+            result.low  = 1e300;
+            result.high = -1e300;
+            for (std::size_t s = 0; s < count; s++) {
+                result.low  = std::min(result.low, next[s] - result.h[s]);
+                result.high = std::max(result.high, next[s] - result.h[s]);
+            }
+            // keep h relative to state 0, so that it stays finite
+            for (std::size_t s = 0; s < count; s++) {
+                result.h[s] = next[s] - next[0];
+            }
+            if (result.high - result.low < tolerance) {
+                break;
+            }
+        }
+        result.rho = (result.low + result.high) / 2;
+        return result;
+    }
+
+    /**
+     * @brief how often a policy visits each state in the long run, in a task that never ends
+     * @param policy is one action per state
+     * @return μ(s), the fraction of the steps spent in each state: the solution of
+     *         μ(s') = Σ_s μ(s) p(s' | s, policy(s)) with Σ_s μ(s) = 1, by Gaussian elimination
+     *
+     * It is unique when the policy reaches one same set of states from every state (unichain).
+     * Unlike iterating, solving the equations does not slow down when a state is reached only
+     * very rarely, e.g. a state the policy never leaves, which it reaches once in a long while.
+     */
+    std::vector<double> stationary(const std::vector<int> & policy) const
+    {
+        const std::size_t count = static_cast<std::size_t>(states);
+        // the equations, one row each: Σ_s μ(s) p(s' | s) - μ(s') = 0 for every s' but the last,
+        // and Σ_s μ(s) = 1 instead of the last one (which the others already imply)
+        std::vector<std::vector<double>> equations(count, std::vector<double>(count + 1, 0.0));
+        for (std::size_t s = 0; s < count; s++) {
+            equations[s][s] -= 1;
+            for (const auto & o : model(static_cast<int>(s), policy[s])) {
+                equations[static_cast<std::size_t>(o.next)][s] += o.probability;
+            }
+        }
+        for (std::size_t s = 0; s < count; s++) {
+            equations[count - 1][s] = 1;
+        }
+        equations[count - 1][count] = 1;
+        // Gaussian elimination, with partial pivoting
+        for (std::size_t column = 0; column < count; column++) {
+            // swap in the row with the largest coefficient in this column
+            std::size_t pivot = column;
+            for (std::size_t row = column + 1; row < count; row++) {
+                if (std::fabs(equations[row][column]) > std::fabs(equations[pivot][column])) {
+                    pivot = row;
+                }
+            }
+            std::swap(equations[column], equations[pivot]);
+            // remove this column from the rows below
+            for (std::size_t row = column + 1; row < count; row++) {
+                const double factor = equations[row][column] / equations[column][column];
+                for (std::size_t c = column; c <= count; c++) {
+                    equations[row][c] -= factor * equations[column][c];
+                }
+            }
+        }
+        // substitute back, from the last row up
+        std::vector<double> mu(count, 0.0);
+        for (std::size_t row = count; row-- > 0; ) {
+            double sum = equations[row][count];
+            for (std::size_t c = row + 1; c < count; c++) {
+                sum -= equations[row][c] * mu[c];
+            }
+            mu[row] = sum / equations[row][row];
+        }
+        return mu;
+    }
+
+    /**
+     * @brief the average reward per step of following a policy forever, in a task that never ends
+     * @param policy is one action per state
+     * @return ρ = Σ_s μ(s) Σ p(s',r | s, policy(s)) r, with μ the fraction of the steps spent in each state
+     */
+    double policy_average(const std::vector<int> & policy) const
+    {
+        auto mu = stationary(policy);
+        double rho = 0;
+        for (std::size_t s = 0; s < mu.size(); s++) {
+            for (const auto & o : model(static_cast<int>(s), policy[s])) {
+                rho += mu[s] * o.probability * o.reward;
+            }
+        }
+        return rho;
+    }
 };
+
+/**
+ * @brief the access-control queuing task (Sutton & Barto, 1st edition Example 6.7,
+ *        2nd edition Example 10.2), as a tabular model, written from its rules
+ * @param servers is the number of servers
+ * @param p is the probability that a busy server becomes free at each step
+ * @return the model: state = 4 * free servers + k, for the priority 2^k of the customer
+ *         at the head; action 0 rejects, 1 accepts (not allowed with no free server)
+ *
+ * Accepting takes a free server and pays the priority; then each of the b busy servers
+ * (including one just taken) becomes free with probability p, so that k of them do with the
+ * binomial probability C(b,k) p^k (1-p)^(b-k), and the next priority is 1, 2, 4 or 8 with
+ * probability 1/4 each.
+ */
+inline tabular access_control(int servers = 10,
+                              double p = 0.06)
+{
+    tabular mdp;
+    mdp.states  = 4 * (servers + 1);
+    mdp.actions = 2;
+    mdp.gamma   = 1;
+    mdp.model = [servers, p](int s, int a) {
+        std::vector<outcome> outcomes;
+        const int free = s / 4;
+        const int priority = 1 << (s % 4);
+        // with no free server, a customer cannot be accepted
+        if (a == 1 && free == 0) {
+            return outcomes;
+        }
+        // accepting takes a server and pays the priority
+        const int taken  = a == 1 ? 1 : 0;
+        const double reward = a == 1 ? priority : 0;
+        const int busy = servers - (free - taken);
+        // k of the busy servers become free, and the next customer has priority 2^j
+        for (int k = 0; k <= busy; k++) {
+            // C(busy, k) p^k (1 - p)^(busy - k)
+            double choose = 1;
+            for (int i = 1; i <= k; i++) {
+                choose = choose * (busy - k + i) / i;
+            }
+            const double p_k = choose * std::pow(p, k) * std::pow(1 - p, busy - k);
+            for (int j = 0; j < 4; j++) {
+                outcomes.push_back({p_k / 4, 4 * (free - taken + k) + j, reward, false});
+            }
+        }
+        return outcomes;
+    };
+    return mdp;
+}
 
 /**
  * @class blackjack
