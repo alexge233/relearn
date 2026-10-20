@@ -386,7 +386,7 @@ TEST_CASE("reinforce: the short corridor (Figure 13.1)", "[policy_gradient][rein
     // α = 2^-13 (the best step size of Figure 13.1), γ = 1, 50 runs of 1000 episodes, from
     // π(right) = 0.05, worth -82. The best policy is p = 0.5858, worth -11.657, and REINFORCE
     // comes to it from below. Over 10 seeds (the same numbers with libstdc++ and with libc++),
-    // the median run learnt p = 0.470 to 0.486, worth -12.29 to -12.12, and every run but one
+    // the median p learnt was 0.470 to 0.486, the median value -12.29 to -12.12, and every run but one
     // was worth more than -13.8. That one run (seed 10) had an unlucky 17th episode, 651 steps
     // mostly bumping left into the wall, whose large returns pushed p from 0.055 to 1 at once;
     // from there every episode is cut short at 1000 steps, and so never learnt
@@ -403,9 +403,9 @@ TEST_CASE("reinforce_with_baseline: the short corridor (Figure 13.2)", "[policy_
 {
     // α^θ = 2^-9 and α^w = 2^-6 with a baseline, against α = 2^-13 without (Figure 13.2),
     // γ = 1, the same 50 runs, from π(right) = 0.05. Over 10 seeds (the same numbers with
-    // libstdc++ and with libc++), after 200 episodes the median run learnt a policy worth
+    // libstdc++ and with libc++), after 200 episodes the median value of the policies learnt was
     // -11.92 to -11.73 with the baseline, and -21.59 to -20.65 without. After 1000 episodes
-    // with the baseline, the median run learnt p = 0.577 to 0.617, worth -11.84 to -11.73, and
+    // with the baseline, the median p was 0.577 to 0.617, the median value -11.84 to -11.73, and
     // at least 48 runs of 50 were worth more than -15 (the step size is large, so a few runs
     // wander off for a while)
     corridor_baseline baseline(std::pow(2.0, -9), std::pow(2.0, -6), 1.0, corridor_actions);

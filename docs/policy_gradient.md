@@ -343,12 +343,13 @@ The average total reward per episode, over the 100 runs, is:
      501 to 1000      -13.0           -12.1         -401.0
 ```
 
-and the policy learnt after 1000 episodes, in the median run, with its exact value:
+and the policy learnt after 1000 episodes in the median run (the run whose policy is worth the median value), with
+its exact value:
 
 | learnt with | π(right) | worth |
 |---|---|---|
 | REINFORCE | 0.479 | -12.192 |
-| REINFORCE with a baseline | 0.580 | -11.838 |
+| REINFORCE with a baseline | 0.524 | -11.838 |
 | Actor-Critic | 0.998 | -1260.680 |
 
 REINFORCE climbs slowly from -82 towards the best value of -11.657, as in Figure 13.1, and after 1000 episodes it is
@@ -358,7 +359,7 @@ critic cannot tell the cells apart, and it goes on to right almost always, as ex
 capped near -1000 per episode by the cut at 1000 steps; the real value of its policy is far lower).
 
 With the cells shown, Actor-Critic (`α^θ = 2^-4`, `α^w = 2^-3`, from `π(right) = 1/2` in every cell) learns
-`π(right) = 0.993, 0.004, 0.996` in the three cells after 1000 episodes, in the median run of 100: right, left, right,
+`π(right) = 0.990, 0.003, 0.997` in the three cells after 1000 episodes, in the median run of 100: right, left, right,
 worth -3.023, against the best -3.
 
 __note__: these numbers come from `ex_short_corridor`. They are the same with GCC's standard library and with Clang's
@@ -381,10 +382,11 @@ as in the book, the episodes from there would practically never end). The smalle
   Actor-Critic (`I = γ^t` included), learnt step by step and all at once, and episodes cut short
 - the short corridor, against the exact value of the policy learnt, over a seed sweep (10 seeds, the same numbers
   with libstdc++ and with libc++):
-  - REINFORCE (Figure 13.1, 50 runs of 1000 episodes): the median run learnt `p` = 0.470 to 0.486, worth -12.29 to
+  - REINFORCE (Figure 13.1, 50 runs of 1000 episodes): the median `p` learnt was 0.470 to 0.486, the median value -12.29 to
     -12.12, and every run but one (the note above) was worth more than -13.8
-  - REINFORCE with a baseline (Figure 13.2, the same 50 runs): after 200 episodes, the median run's policy was worth
-    -11.92 to -11.73, against -21.59 to -20.65 without a baseline; after 1000, `p` = 0.577 to 0.617, worth -11.84 to -11.73
+  - REINFORCE with a baseline (Figure 13.2, the same 50 runs): after 200 episodes, the median value of the policies
+    learnt was -11.92 to -11.73, against -21.59 to -20.65 without a baseline; after 1000, the median `p` was 0.577 to 0.617,
+    and the median value -11.84 to -11.73
   - Actor-Critic with the cells shown (20 runs): every run learnt a policy worth -3.039 to -3.014
   - Actor-Critic with the cells looking the same (5 runs): every run learnt `p` = 0.9981 to 0.9986
 

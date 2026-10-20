@@ -138,15 +138,21 @@ double median(std::vector<double> values)
     return values[values.size() / 2];
 }
 
-/// @return the median π(right) learnt in @param cell
-double median_right(const learnt & runs,
-                    unsigned int cell)
+/**
+ * @return the median run of @param runs: the run whose policy is worth the median value
+ *         (the upper one of the two middle values), so that its π(right) and its value
+ *         are printed together, as one policy
+ */
+std::size_t median_run(const learnt & runs)
 {
-    std::vector<double> p;
-    for (const auto & run : runs.right) {
-        p.push_back(run[cell]);
+    std::vector<std::size_t> order(runs.values.size());
+    for (std::size_t i = 0; i < order.size(); i++) {
+        order[i] = i;
     }
-    return median(p);
+    std::sort(order.begin(), order.end(), [&runs](std::size_t a, std::size_t b) {
+        return runs.values[a] < runs.values[b];
+    });
+    return order[order.size() / 2];
 }
 
 /// @return the mean reward of episodes @param first to @param last (counted from 1)
@@ -197,21 +203,23 @@ int main()
         {"Actor-Critic           ", &critic}
     };
     for (const auto & method : methods) {
-        std::cout << "    " << method.first << "  π(right) = " << std::setw(5) << median_right(*method.second, 0)
-                  << ", worth " << std::setw(9) << median(method.second->values) << std::endl;
+        const auto run = median_run(*method.second);
+        std::cout << "    " << method.first << "  π(right) = " << std::setw(5) << method.second->right[run][0]
+                  << ", worth " << std::setw(9) << method.second->values[run] << std::endl;
     }
 
     // 2. Actor-Critic again, with the cells shown
     auto shown = learn(critic_type(std::pow(2.0, -4), std::pow(2.0, -3), 1.0, left_right), true);
+    const auto middle = median_run(shown);
     std::cout << std::endl << "Actor-Critic with the cells shown, after 1000 episodes, in the median run:" << std::endl
-              << "    π(right) = " << median_right(shown, 0) << ", " << median_right(shown, 1)
-              << ", " << median_right(shown, 2) << " in the three cells, worth " << median(shown.values)
+              << "    π(right) = " << shown.right[middle][0] << ", " << shown.right[middle][1]
+              << ", " << shown.right[middle][2] << " in the three cells, worth " << shown.values[middle]
               << " (the best, right, left, right, is worth -3)" << std::endl;
 
     bool good = median(plain.values) > -12.7 &&
                 median(baseline.values) > -12.7 &&
                 mean_reward(baseline, 101, 200) > mean_reward(plain, 101, 200) &&
-                median_right(critic, 0) > 0.99 &&
+                critic.right[median_run(critic)][0] > 0.99 &&
                 median(shown.values) > -3.1;
     return good ? EXIT_SUCCESS : EXIT_FAILURE;
 }
