@@ -226,7 +226,9 @@ q(episode, policy);
 - An episode cut short (`terminated = false`) ends with the state reached and the action chosen next: it is not learnt
   as a step, and only gives the next state and action of the step before it, as for `sarsa`.
 - `learner.traces` keeps the traces of the last episode learnt, so you can have a look at them:
-  `learner.traces.trace(s, a)`, or every pair with `learner.traces.entries()`.
+  `learner.traces.trace(s, a)`, or every pair that still has a trace with `learner.traces.entries()`.
+  Do bear in mind that a trace which falls to exactly 0 (with `λ = 0`, or after Q(λ) cuts the traces) is dropped,
+  since it can never change a value again; otherwise every step would go over every pair seen so far.
 - `sarsa_lambda` (and so `td_lambda`) can learn offline, `learner.offline = true`: every `δ` of an episode is then
   worked out with the values from before it, and the values change at its end, as the λ-return would change them.
 - The greedy action of Q(λ) is the action of highest value among those stored for the state, and the maximum is 0

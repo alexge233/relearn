@@ -422,6 +422,36 @@ TEST_CASE("watkins_q_lambda: the traces are cut after a move that is not greedy"
 }
 
 /// verifies an episode cut short: its last link is not a step, and only gives the next state and action
+/// verifies that a trace which falls to exactly 0 is dropped, so that the traces do not pile up
+TEST_CASE("eligibility_traces: traces at 0 are dropped", "[eligibility_traces][regression]")
+{
+    // a corridor of 100 different pairs, which ends with a reward of 1
+    episode walk;
+    for (int i = 0; i < 100; i++) {
+        walk.push_back({state(i == 99 ? 1 : 0, "s" + std::to_string(i)), action("right")});
+    }
+    // λ = 0: every trace is cut to 0 before the next visit, so only the last pair is left,
+    // and the values are one-step SARSA's (the test above checks them)
+    relearn::sarsa_lambda<state,action> sarsa(0.5, 0.9, 0.0);
+    policy memory;
+    sarsa(walk, memory);
+    REQUIRE(sarsa.traces.entries().size() == 1);
+    REQUIRE(sarsa.traces.trace(state("s99"), action("right")) == Approx(1));
+    REQUIRE(memory.value(state("s99"), action("right")) == Approx(0.5));
+    // Watkins's Q(λ) with λ = 0.9: a non-greedy move cuts every trace, and only the pairs after it are left.
+    // In s1, x is worth 1 and is the greedy action, so the move "right" in s1 is not greedy
+    relearn::watkins_q_lambda<state,action> q(0.5, 0.9, 0.9);
+    policy q_memory;
+    q_memory.update(state("s1"), action("x"), 1);
+    q(episode {{state(0, "s0"), action("right")},
+               {state(0, "s1"), action("right")},
+               {state(0, "s2"), action("right")},
+               {state(1, "s3"), action("right")}}, q_memory);
+    // the cut comes after the step from s0, so s0's trace is gone, and s1, s2 and s3 have theirs
+    REQUIRE(q.traces.entries().size() == 3);
+    REQUIRE(q.traces.trace(state("s0"), action("right")) == Approx(0));
+}
+
 TEST_CASE("sarsa_lambda and watkins_q_lambda: an episode cut short", "[eligibility_traces]")
 {
     // γ = 1, λ = 1, α = 1: (s0, a) earns 1, then the state reached, (s1, b), worth 3 (its reward is not a reward)

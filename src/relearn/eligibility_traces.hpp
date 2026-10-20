@@ -20,6 +20,7 @@
  * @brief eligibility traces: SARSA(λ) (`sarsa_lambda`), TD(λ) (`td_lambda`) and Watkins's Q(λ) (`watkins_q_lambda`)
  */
 #include "core.hpp"
+#include <algorithm>
 #include <cmath>
 #include <cstddef>
 #include <deque>
@@ -62,11 +63,15 @@ public:
     /// @brief Q(s,a) = Q(s,a) + @param step * z(s,a), for every pair with a trace, in @param policy_map
     void update(policy<state_class,action_class,value_type> & policy_map,
                 value_type step) const;
-    /// @brief z(s,a) = @param factor * z(s,a), for every pair (γλ, or 0 to cut them all)
+    /**
+     * @brief z(s,a) = @param factor * z(s,a), for every pair (γλ, or 0 to cut them all).
+     *        A trace that falls to exactly 0 can never change a value again, so it is dropped:
+     *        with λ = 0, or after Watkins's cut, the traces do not pile up and slow every step down
+     */
     void decay(value_type factor);
     /// @brief forget every trace
     void clear();
-    /// @return the pairs with a trace, in the order they were first visited
+    /// @return the pairs with a trace (above 0), in the order they were first visited
     const std::vector<entry> & entries() const;
 
 private:
@@ -281,9 +286,19 @@ template <class state_class,
           typename value_type>
 void eligibility_traces<state_class,action_class,value_type>::decay(value_type factor)
 {
+    // cutting the traces: every one of them goes
+    if (factor == 0) {
+        entries_.clear();
+        return;
+    }
+    // z(s,a) = factor * z(s,a), and the traces that fell to exactly 0 go
     for (auto & e : entries_) {
         e.trace *= factor;
     }
+    entries_.erase(std::remove_if(entries_.begin(),
+                                  entries_.end(),
+                                  [](const entry & e) { return e.trace == value_type(0); }),
+                   entries_.end());
 }
 
 template <class state_class,
