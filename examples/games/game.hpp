@@ -18,6 +18,7 @@
  * carries in `s_t.reward()` the reward received after taking a_t in s_t.
  */
 #include "../../src/relearn.hpp"
+#include <algorithm>
 #include <cstddef>
 #include <deque>
 #include <random>
@@ -122,11 +123,32 @@ played<game_type> play(game_type & game,
 }
 
 /**
+ * @brief the last steps of an episode, for `play_online`
+ * @param steps is the episode played so far
+ * @param count is the number of steps wanted (at least 1)
+ * @return the last @param count links of @param steps, or all of them if there are fewer
+ */
+template <class episode_type>
+episode_type last_steps(const episode_type & steps,
+                        std::size_t count)
+{
+    const std::size_t wanted = std::max<std::size_t>(count, 1);
+    const std::size_t first  = steps.size() > wanted ? steps.size() - wanted : 0;
+    episode_type recent;
+    for (std::size_t i = first; i < steps.size(); i++) {
+        recent.push_back(steps[i]);
+    }
+    return recent;
+}
+
+/**
  * @brief play one episode of @param game, learning after every step (online)
  * @param choose is called as `choose(state, legal_actions)` and returns an action
  * @param learner is any relearn learner: `q_learning`, `sarsa`, `expected_sarsa`
  * @param memory is the policy being learnt (and used by @param choose)
  * @param max_steps cuts the episode short
+ * @param window is the number of steps the learner is given after each step:
+ *        1 (the default) for the one-step learners, n for `n_step_sarsa` and `n_step_td`
  * @return the played episode, already learnt
  *
  * Sutton & Barto's TD algorithms learn after every step, while the episode is
@@ -136,6 +158,15 @@ played<game_type> play(game_type & game,
  * It learns step t from the next state and action, and not yet step t+1.
  * The next action is chosen before learning, as in the book's SARSA.
  * When the game ends, the last step is learnt alone, as the end of the game.
+ *
+ * With a @param window of n, the learner is given the last n steps (fewer at the
+ * start) and then (s_{t+1}, a_{t+1}), so that an n-step learner learns step t-n+1;
+ * when the game ends, it is given the last n steps, which it learns as the end of the game.
+ *
+ * @warning the window must match the learner: 1 for the one-step learners, `learner.n` for the n-step
+ *          ones. Nothing checks it. With a smaller window an n-step learner learns no step until the end
+ *          of the game, and then only the last ones; with a larger one, a learner learns the same steps
+ *          again after every step.
  */
 template <class game_type,
           class chooser,
@@ -144,7 +175,8 @@ played<game_type> play_online(game_type & game,
                               chooser && choose,
                               learner_type & learner,
                               typename types<game_type>::policy & memory,
-                              std::size_t max_steps)
+                              std::size_t max_steps,
+                              std::size_t window = 1)
 {
     using state   = typename types<game_type>::state;
     using action  = typename types<game_type>::action;
@@ -160,17 +192,19 @@ played<game_type> play_online(game_type & game,
         result.total_reward += out.reward;
         result.steps++;
         if (out.terminated) {
-            // the game ended: learn the last step alone, as the end of the game
+            // the game ended: learn the last step (or the last `window` steps), as the end of the game
             result.terminated = true;
-            episode last = {result.episode.back()};
+            episode last = last_steps(result.episode, window);
             learner(last, memory, true);
             break;
         }
         // choose the next action first: SARSA learns step t from it
         auto a_next = choose(out.next, game.actions(out.next));
         // learn step t from (s_{t+1}, a_{t+1}), without learning step t+1 yet
-        episode window = {result.episode.back(), {state(0, out.next), action(a_next)}};
-        learner(window, memory, false);
+        // (an n-step learner, given the last n steps, learns step t-n+1)
+        episode recent = last_steps(result.episode, window);
+        recent.push_back({state(0, out.next), action(a_next)});
+        learner(recent, memory, false);
         // move on to the next state and action
         s_t = out.next;
         a_t = a_next;
