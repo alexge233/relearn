@@ -98,6 +98,8 @@ and uses its new value, and so does the update of `ρ`. relearn follows the figu
 the best one when it was chosen, but becomes the best after its update, does move `ρ`; and the best action, if its
 update makes it worse than another one, does not. The two cases only differ from "the greedy action was taken"
 when an update changes which action is the best, and `tests/r_learning_test.cpp` checks both.
+Schwartz's original paper tests instead whether the action was greedy *when it was chosen*, which is the other way of
+reading "the greedy action was taken"; the two differ only in those same cases.
 
 ## Differential Sarsa
 
@@ -142,7 +144,12 @@ repeat forever:
 | `ρ` learns | on greedy steps only, from its own error | on every step, from `δ` |
 | `ρ` is the average reward of | the greedy policy (off-policy) | the policy the agent follows, exploration included (on-policy) |
 | in Sutton and Barto | 1st edition, Section 6.7, Figure 6.16 | 2nd edition, Section 10.3 |
-| settings of the access-control example | `α = 0.1`, `β = 0.01`, `ε = 0.1` | `α = 0.01`, `β = 0.01`, `ε = 0.1` |
+| settings of the access-control example | `α = 0.1`, `β = 0.01`, `ε = 0.1` (see the note) | `α = 0.01`, `β = 0.01`, `ε = 0.1` |
+
+__note__: we have Example 6.7 of the 1st edition (Figure 6.17) as `α = 0.1`, `β = 0.01` and `ε = 0.1`, but one later
+account of that experiment gives `α = β = 0.01`, so do check your copy. Whichever the book used, what follows holds:
+with `α = 0.1` R-Learning's greedy policy can fall apart, and with `α = 0.01` it does not. Below, "the book's
+settings" means `α = 0.1`.
 
 ## In relearn
 
