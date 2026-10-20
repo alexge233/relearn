@@ -375,7 +375,7 @@ The learners with eligibility traces learn a whole episode at a time, so use `ga
 | `cliff_walking` | S&B 6.6 | `q_learning`, `sarsa`, `expected_sarsa` | On-policy vs off-policy: Q-Learning learns the path along the cliff edge, SARSA a safer one, and both SARSAs earn more whilst exploring |
 | `windy_gridworld` | S&B 6.5, Ex. 6.10 | both Q-Learnings | Steady wind: the 15-move path. Random wind: `q_probabilistic`, and `q_learning` with a learning rate that decays per pair, find the best policy, whereas `q_learning` with α = 0.5 does not |
 | `random_walk` | S&B 6.2, 7.1 | `q_probabilistic` | Prediction, with the learnt values next to the exact ones |
-| `random_walk_td` | S&B 6.2, 7.1 | `n_step_td`, `monte_carlo` | TD(0) learns faster than Monte Carlo (Figure 6.2), and an intermediate n is best (Figure 7.2) |
+| `random_walk_td` | S&B 6.2, 7.1 | `n_step_td`, `monte_carlo` | TD(0) learns faster than Monte Carlo (Example 6.2), and an intermediate n is best (Figure 7.2) |
 | `random_walk_lambda` | S&B 12.1, 12.2 | `td_lambda` | An intermediate λ is best (Figure 12.6), and offline TD(λ) learns exactly what the λ-return does |
 | `maximization_bias` | S&B 6.7 | `q_learning`, `double_q_learning` | Q-Learning's overestimation, which Double Q-Learning removes (Figure 6.5) |
 | `gamblers_problem` | S&B 4.3 | `q_probabilistic` | Values that match the exact solution |

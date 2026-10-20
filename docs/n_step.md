@@ -203,6 +203,9 @@ To learn after every step, the learner needs the last `n` steps, not just the la
 auto r = games::play_online(game, agent, learner, memory, 1000, learner.n);
 ```
 
+Do bear in mind that nothing checks the window: it must be `learner.n`. With a smaller one, the learner learns no step
+until the end of the game, and then only the last few; with a larger one, it learns the same steps again after every step.
+
 ```mermaid
 flowchart LR
     subgraph window ["after step t, the learner is given"]
@@ -257,7 +260,7 @@ reacting to the latest walks. Averaged over 100 runs, the error (the root mean s
     Monte Carlo α = 0.04:  0.236  0.229  0.183  0.130  0.115  0.104  0.107
 ```
 
-which is Figure 6.2: TD(0) learns faster than constant-α Monte Carlo (every-visit, `monte_carlo` with a constant
+which is the right-hand plot of Example 6.2: TD(0) learns faster than constant-α Monte Carlo (every-visit, `monte_carlo` with a constant
 `learning_rate`) at every learning rate tried.
 
 The second part is Figure 7.2: the 19-state walk, where leaving on the left is worth -1 and every value starts at 0.
@@ -344,7 +347,7 @@ __note__: the random walk's numbers are the same with GCC's and Clang's standard
 - that `n = 1` is `sarsa` to the last bit, that `n ≥ T` is constant-α Monte Carlo, and that learning online with
   `games::play_online(..., n)` gives exactly the same values as learning after each episode, cut short or not
 - Example 6.2: TD(0) learns the true values 1/6 ... 5/6 (within 0.06; over 10 seeds the largest error was 0.006 to 0.039)
-- Figure 6.2: TD(0)'s error after 100 walks (0.033 to 0.041 with α = 0.05, over 10 seeds) is well below the best of
+- Example 6.2 (right): TD(0)'s error after 100 walks (0.033 to 0.041 with α = 0.05, over 10 seeds) is well below the best of
   constant-α Monte Carlo (0.076 to 0.089, with α = 0.02)
 - Figure 7.2: over 10 seeds, `n = 4` was always the best, with an error of 0.255 to 0.270, against
   0.341 to 0.348 for `n = 1`, and 0.352 to 0.370 for `n = 32`
@@ -358,5 +361,5 @@ Each threshold was set from 10 seeds, with GCC's standard library and with Clang
 ## References
 
 1. Sutton, R.S. and Barto, A.G., 2018. [Reinforcement Learning: An Introduction](http://incompleteideas.net/book/the-book-2nd.html), 2nd edition. Cambridge, MA: MIT Press.
-   Section 6.1 (TD(0) prediction), Section 6.2 and Example 6.2 (the random walk, Figure 6.2), Section 7.1
+   Section 6.1 (TD(0) prediction), Section 6.2 and Example 6.2 (the random walk, and its two plots), Section 7.1
    (n-step TD prediction, Example 7.1 and Figure 7.2), Section 7.2 (n-step SARSA, Figure 7.4), Example 8.1 (the Dyna maze).

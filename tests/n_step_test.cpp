@@ -17,7 +17,7 @@
  * - n-step returns worked out by hand, at the end of an episode and in an episode cut short
  * - n = 1 is `sarsa`, n ≥ T is constant-α Monte Carlo, and learning online
  *   (`games::play_online` with a window of n) learns exactly what learning after the episode does
- * - the random walk: Example 6.2 and Figure 6.2 (TD(0) against constant-α Monte Carlo),
+ * - the random walk: Example 6.2, both plots (TD(0) against constant-α Monte Carlo on the right),
  *   and Figure 7.2 (an intermediate n is best)
  * - control: the exact values of the ε-greedy policy in a slippery corridor, and in the
  *   Dyna maze, the first episode (Figure 7.4) and larger n learning faster
@@ -66,7 +66,7 @@ double rms_error(const walk_type & walk,
 }
 
 /**
- * @brief Figure 6.2 (right): the RMS error of the 5-state walk after 100 episodes, averaged over 100 runs
+ * @brief Example 6.2, the right-hand plot: the RMS error of the 5-state walk after 100 episodes, averaged over 100 runs
  * @param monte_carlo is true for constant-α Monte Carlo, false for TD(0)
  * @param alpha is the learning rate
  * @param seed seeds the walks of the runs (seed * 1000 + run)
@@ -501,8 +501,8 @@ TEST_CASE("n_step_td: TD(0) predicts the 5-state random walk (Example 6.2)", "[n
     }
 }
 
-/// verifies Figure 6.2 (right): on the 5-state walk, TD(0) learns faster than constant-α Monte Carlo
-TEST_CASE("n_step_td: TD(0) beats constant-alpha Monte Carlo (Figure 6.2)", "[n_step][random_walk][monte_carlo]")
+/// verifies Example 6.2's right-hand plot: on the 5-state walk, TD(0) learns faster than constant-α Monte Carlo
+TEST_CASE("n_step_td: TD(0) beats constant-alpha Monte Carlo (Example 6.2)", "[n_step][random_walk][monte_carlo]")
 {
     // after 100 walks, averaged over 100 runs. Over 10 seeds, with libstdc++ and with libc++, the RMS error was
     // TD(0) α = 0.05: 0.033 to 0.041, α = 0.1: 0.054 to 0.062, and constant-α MC α = 0.01: 0.092 to 0.100,
