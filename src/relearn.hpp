@@ -54,4 +54,5 @@
 #include "relearn/dyna.hpp"
 #include "relearn/monte_carlo.hpp"
 #include "relearn/n_step.hpp"
+#include "relearn/bandits.hpp"
 #endif
