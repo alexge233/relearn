@@ -105,7 +105,8 @@ private:
  * with the state reached and the action chosen next, which is not learnt as a step.
  *
  * Offline (`offline` true), every δ of the episode is worked out with the values from before
- * the episode, and they change only at its end. With accumulating traces, the changes then add
+ * the episode (the values themselves change at every step, but no δ sees those changes, so at the
+ * end of the episode they have moved by the sum of the changes). With accumulating traces, they add
  * up to exactly those of the λ-return (Section 12.1): every V(s_t) moving by α (G^λ_t - V(s_t)),
  * all of them worked out with the values from before the episode (the equivalence of the forward
  * and backward views, in the book's first edition, Section 7.4).

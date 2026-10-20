@@ -230,7 +230,8 @@ q(episode, policy);
   Do bear in mind that a trace which falls to exactly 0 (with `λ = 0`, or after Q(λ) cuts the traces) is dropped,
   since it can never change a value again; otherwise every step would go over every pair seen so far.
 - `sarsa_lambda` (and so `td_lambda`) can learn offline, `learner.offline = true`: every `δ` of an episode is then
-  worked out with the values from before it, and the values change at its end, as the λ-return would change them.
+  worked out with the values from before it. The values still change at every step, but no `δ` sees those changes,
+  so by the end of the episode they have moved by the sum of them, exactly as the λ-return would move them.
 - The greedy action of Q(λ) is the action of highest value among those stored for the state, and the maximum is 0
   if none is stored, exactly as in `q_learning`.
 - There is no `learning_rate` schedule: every pair learns with the same `α δ`, scaled by its trace.

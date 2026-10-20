@@ -422,6 +422,27 @@ TEST_CASE("watkins_q_lambda: the traces are cut after a move that is not greedy"
 }
 
 /// verifies an episode cut short: its last link is not a step, and only gives the next state and action
+/// verifies that Watkins's Q(λ) decides whether a' is greedy with the values from before the step's update
+TEST_CASE("watkins_q_lambda: a' is greedy or not before the update", "[eligibility_traces][watkins]")
+{
+    // α = 1, γ = 1, λ = 1, accumulating, with Q(x, a) = 0 and Q(x, b) = 1 to start with.
+    // The episode is (x, a) earning 1, then (x, b) earning 3, which ends it: both steps are in x.
+    // t = 0: a' = b, and before the update b is the greedy action of x (1 > 0), so the traces are kept.
+    //        δ = 1 + 1 * max Q(x, .) - Q(x, a) = 1 + 1 - 0 = 2, and Q(x, a) = 0 + 2 = 2.
+    //        (after the update, a would be the greedy action of x, and the traces would be cut)
+    // t = 1: z(x, a) = γλ * 1 = 1; δ = 3 - Q(x, b) = 3 - 1 = 2, z(x, b) = 1, so
+    //        Q(x, a) = 2 + 2 * 1 = 4 (through its trace) and Q(x, b) = 1 + 2 = 3.
+    //        Had the traces been cut, Q(x, a) would have stayed 2
+    relearn::watkins_q_lambda<state,action> learner(1.0, 1.0, 1.0);
+    policy memory;
+    memory.update(state("x"), action("a"), 0);
+    memory.update(state("x"), action("b"), 1);
+    learner(episode {{state(1, "x"), action("a")},
+                     {state(3, "x"), action("b")}}, memory);
+    REQUIRE(memory.value(state("x"), action("a")) == Approx(4));
+    REQUIRE(memory.value(state("x"), action("b")) == Approx(3));
+}
+
 /// verifies that a trace which falls to exactly 0 is dropped, so that the traces do not pile up
 TEST_CASE("eligibility_traces: traces at 0 are dropped", "[eligibility_traces][regression]")
 {
