@@ -29,6 +29,9 @@ Actualmente la biblioteca implementa los siguientes algoritmos, cada uno explica
 - predicción **TD(0)** y **TD de n pasos** (`n_step_td`), y **SARSA de n pasos** (`n_step_sarsa`), que aprenden de
   las n recompensas siguientes y después del valor del estado al que llegan, en cualquier punto entre el TD de un paso
   y Monte Carlo, ver [docs/n_step.md](docs/n_step.md)
+- **TD(λ)** (`td_lambda`), **SARSA(λ)** (`sarsa_lambda`) y **Q(λ) de Watkins** (`watkins_q_lambda`), cuyas
+  trazas de elegibilidad reparten cada error TD entre los movimientos que llevaron a él, acumulativas o de reemplazo,
+  ver [docs/eligibility_traces.md](docs/eligibility_traces.md)
 - **REINFORCE**, **REINFORCE con línea base** y **Actor-Critic de un paso** (`reinforce`, `reinforce_with_baseline`
   y `actor_critic`), que aprenden la propia política, como un softmax sobre las preferencias de cada acción (`softmax_policy`),
   de modo que pueda seguir siendo estocástica cuando eso sea lo mejor, ver [docs/policy_gradient.md](docs/policy_gradient.md)
@@ -147,6 +150,7 @@ __nota__: la serialización es opcional, y necesita Boost (ver [activar la seria
 | `relearn/dyna.hpp` | `dyna_q` |
 | `relearn/monte_carlo.hpp` | `monte_carlo` y `off_policy_monte_carlo` |
 | `relearn/n_step.hpp` | `n_step_sarsa`, y `n_step_td` (TD(0) cuando n = 1) |
+| `relearn/eligibility_traces.hpp` | `sarsa_lambda`, `td_lambda` y `watkins_q_lambda`, y sus `eligibility_traces` |
 | `relearn/policy_gradient.hpp` | `softmax_policy`, `reinforce`, `reinforce_with_baseline` y `actor_critic` |
 | `relearn/r_learning.hpp` | `r_learning` y `differential_sarsa` |
 | `relearn/prioritized_sweeping.hpp` | `prioritized_sweeping` |
@@ -387,6 +391,7 @@ auto r = games::play_online(game, agent, learner, memory, 1000);
 
 Los algoritmos de n pasos necesitan los últimos n pasos después de cada paso, no solo el último, así que dale a `play_online` su n:
 `games::play_online(game, agent, learner, memory, 1000, learner.n)` (échale un vistazo a [docs/n_step.md](docs/n_step.md)).
+Los algoritmos con trazas de elegibilidad aprenden un episodio entero cada vez, así que usa `games::play` con ellos.
 
 | Juego | Fuente | Se aprende con | Qué muestra |
 |---|---|---|---|
@@ -398,11 +403,13 @@ Los algoritmos de n pasos necesitan los últimos n pasos después de cada paso, 
 | `windy_gridworld` | S&B 6.5, Ej. 6.10 | los dos Q-Learning | Viento constante: el camino de 15 movimientos. Viento aleatorio: `q_probabilistic`, y `q_learning` con una tasa de aprendizaje que decae por par, encuentran la mejor política, mientras que `q_learning` con α = 0.5 no |
 | `random_walk` | S&B 6.2, 7.1 | `q_probabilistic` | Predicción, con los valores aprendidos junto a los exactos |
 | `random_walk_td` | S&B 6.2, 7.1 | `n_step_td`, `monte_carlo` | TD(0) aprende más rápido que Monte Carlo (Ejemplo 6.2), y una n intermedia es la mejor (Figura 7.2) |
+| `random_walk_lambda` | S&B 12.1, 12.2 | `td_lambda` | Una λ intermedia es la mejor (Figura 12.6), y TD(λ) offline aprende exactamente lo mismo que el retorno λ |
 | `maximization_bias` | S&B 6.7 | `q_learning`, `double_q_learning` | La sobreestimación de Q-Learning, que Double Q-Learning elimina (Figura 6.5) |
 | `gamblers_problem` | S&B 4.3 | `q_probabilistic` | Valores que coinciden con la solución exacta |
 | `dynamic_programming` | S&B 4.1, 4.3, 4.4 | `dynamic_programming` | El gridworld de 4 x 4 (`small_gridworld`, Figura 4.1) y el problema del jugador (Figura 4.3), resueltos a partir de sus modelos, con evaluación de políticas, iteración de políticas e iteración de valores |
 | `dyna_maze` | S&B 8.1 a 8.3 | `dyna_q` | La planificación aprende un laberinto en muchos menos episodios (Figura 8.2), y Dyna-Q+ se adapta a laberintos que cambian (Figuras 8.4, 8.5) |
 | `dyna_maze_n_step` | S&B 7.2, 8.1 | `n_step_sarsa` | El primer episodio le enseña a SARSA de n pasos sus últimos n movimientos (Figura 7.4), así que una n mayor aprende el laberinto más rápido |
+| `dyna_maze_lambda` | S&B 12.7, 12.10 | `sarsa_lambda`, `watkins_q_lambda` | Con trazas de reemplazo, basta un episodio para volver a encontrar la meta; las trazas acumulativas se pierden en los bucles |
 | `short_corridor` | S&B 13.1 | `reinforce`, `reinforce_with_baseline`, `actor_critic` | Casillas que parecen iguales, donde la mejor política es estocástica: REINFORCE la aprende (Figura 13.1), más rápido con línea base (Figura 13.2), mientras que el crítico de Actor-Critic lo despista |
 | `access_control` | S&B 1.ª ed. 6.7, 2.ª ed. 10.2 | `r_learning`, `differential_sarsa` | Una tarea que no termina nunca: aceptar o rechazar clientes para ganar lo máximo por paso, frente a la política óptima exacta (Figuras 6.17, 10.5) |
 | `dyna_maze_prioritized` | S&B 8.4 | `prioritized_sweeping`, `dyna_q` | En laberintos cada vez más grandes, prioritized sweeping necesita muchas menos actualizaciones que Dyna-Q para encontrar un buen camino (Ejemplo 8.4) |
@@ -423,9 +430,8 @@ Las contribuciones generadas con IA son bienvenidas, siempre que una persona las
 
 # Pendiente
 
-1. trazas de elegibilidad: TD(λ), SARSA(λ) y Q(λ) de Watkins
-2. Monte Carlo Tree Search (`tic_tac_toe`)
-3. ver jugar a los agentes: un modo `--watch` para los ejemplos, con una sola función de dibujo para dos vistas
+1. Monte Carlo Tree Search (`tic_tac_toe`)
+2. ver jugar a los agentes: un modo `--watch` para los ejemplos, con una sola función de dibujo para dos vistas
    - en la terminal, con el clásico arte ASCII de siempre
    - en una ventana, con pixel art retro: 2D, dibujado a baja resolución y ampliado con píxeles nítidos,
      con sprites y una paleta de 16 colores definidos en el código (sin archivos de recursos), una fuente pixelada,
