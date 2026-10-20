@@ -21,6 +21,9 @@ Currently the library implements the following algorithms, each one explained in
 - **Monte Carlo control** (`monte_carlo` and `off_policy_monte_carlo`), which waits for each episode to end,
   and learns from the rewards that actually followed, with exploring starts, on-policy (ε-Greedy), or off-policy
   with importance sampling, see [docs/monte_carlo.md](docs/monte_carlo.md)
+- **REINFORCE**, **REINFORCE with a baseline** and **one-step Actor-Critic** (`reinforce`, `reinforce_with_baseline`
+  and `actor_critic`), which learn the policy itself, as a softmax over action preferences (`softmax_policy`),
+  so that it can stay stochastic when that is best, see [docs/policy_gradient.md](docs/policy_gradient.md)
 - **schedules** for the learning rate and the exploration rate, so that each one can *decay* as the agent learns
   (`polynomial_decay`, `exponential_decay` and `linear_decay`), see [docs/schedules.md](docs/schedules.md).
   Do bear in mind that `q_learning`, `sarsa`, `expected_sarsa` and `double_q_learning` can each decay the learning rate
@@ -124,6 +127,7 @@ There is nothing to build! This is a header-only library, you only need the `src
 | `relearn/double_q_learning.hpp` | `double_q_learning` |
 | `relearn/dyna.hpp` | `dyna_q` |
 | `relearn/monte_carlo.hpp` | `monte_carlo` and `off_policy_monte_carlo` |
+| `relearn/policy_gradient.hpp` | `softmax_policy`, `reinforce`, `reinforce_with_baseline` and `actor_critic` |
 
 Each one includes whatever it needs, so if you only use one learner (e.g., on a small board, where every byte
 and every second of compiling counts) feel free to include just that one, `#include "relearn/q_learning.hpp"`.
@@ -366,6 +370,7 @@ auto r = games::play_online(game, agent, learner, memory, 1000);
 | `maximization_bias` | S&B 6.7 | `q_learning`, `double_q_learning` | Q-Learning's overestimation, which Double Q-Learning removes (Figure 6.5) |
 | `gamblers_problem` | S&B 4.3 | `q_probabilistic` | Values that match the exact solution |
 | `dyna_maze` | S&B 8.1 to 8.3 | `dyna_q` | Planning learns a maze in far fewer episodes (Figure 8.2), and Dyna-Q+ copes with mazes that change (Figures 8.4, 8.5) |
+| `short_corridor` | S&B 13.1 | `reinforce`, `reinforce_with_baseline`, `actor_critic` | Cells that look the same, where the best policy is stochastic: REINFORCE learns it (Figure 13.1), faster with a baseline (Figure 13.2), whereas Actor-Critic's critic misleads it |
 | `tic_tac_toe` | S&B 1.5 | `q_learning` | Against a random or a perfect (minimax) opponent |
 | `frozen_lake` | Gymnasium | `q_probabilistic` | Slippery ice, where the learnt 4x4 policy is optimal |
 | `cart_pole` | Gymnasium | `q_learning` | A continuous state, cut into boxes (`games::discretised`) |
@@ -385,12 +390,11 @@ AI-generated contributions are welcome, as long as they have been reviewed and a
 
 1. TD(0) prediction, and n-step TD and n-step SARSA (`random_walk`)
 2. eligibility traces: TD(λ), SARSA(λ) and Watkins's Q(λ)
-3. REINFORCE, REINFORCE with a baseline, and Actor-Critic, which learn the policy itself (a new short corridor game)
-4. the R-Learning continuous algorithm, for tasks that never end (a new access-control queue game)
-5. UCB and gradient bandits (`bandit`)
-6. Monte Carlo Tree Search (`tic_tac_toe`)
-7. prioritized sweeping (`dyna_maze`), and policy iteration and value iteration in the library
-8. watch the agents play: a `--watch` mode for the examples, with one drawing hook for two views
+3. the R-Learning continuous algorithm, for tasks that never end (a new access-control queue game)
+4. UCB and gradient bandits (`bandit`)
+5. Monte Carlo Tree Search (`tic_tac_toe`)
+6. prioritized sweeping (`dyna_maze`), and policy iteration and value iteration in the library
+7. watch the agents play: a `--watch` mode for the examples, with one drawing hook for two views
    - in the terminal, as good old ASCII art
    - in a window, as retro pixel art: 2D, drawn at a low resolution and scaled up with sharp pixels,
      with sprites and a 16-colour palette defined in the code (so no asset files), a pixel font, optional

@@ -10,6 +10,7 @@
 #include "../examples/games/frozen_lake.hpp"
 #include "../examples/games/bandit.hpp"
 #include "../examples/games/random_walk.hpp"
+#include "../examples/games/short_corridor.hpp"
 #include "../examples/games/maximization_bias.hpp"
 #include "../examples/games/gamblers_problem.hpp"
 #include "../examples/games/dyna_maze.hpp"
@@ -629,6 +630,103 @@ TEST_CASE("random walk: q_probabilistic predicts the true values", "[games][rand
                     Approx(walk.true_value(s)).margin(n == 5 ? 0.02 : 0.05));
         }
     }
+}
+
+// ------------------------------------------------------------- short corridor
+
+/// verifies the rules of the short corridor with switched actions (Sutton & Barto, Example 13.1)
+TEST_CASE("short corridor: rules", "[games][short_corridor]")
+{
+    using game_type = games::short_corridor;
+    game_type game;
+    REQUIRE(game.reset() == 0u);
+    REQUIRE(game.cell() == 0u);
+    REQUIRE(game.actions(0).size() == 2);
+    // the first cell: left bumps into the wall, right moves on. Every step is worth -1,
+    // and the agent always sees 0
+    auto out = game.step(game_type::go_left);
+    REQUIRE(game.cell() == 0u);
+    REQUIRE(out.next == 0u);
+    REQUIRE(out.reward == -1);
+    REQUIRE_FALSE(out.terminated);
+    out = game.step(game_type::go_right);
+    REQUIRE(game.cell() == 1u);
+    REQUIRE(out.next == 0u);
+    // the second cell switches the actions: right goes back, left goes on
+    game.step(game_type::go_right);
+    REQUIRE(game.cell() == 0u);
+    game.step(game_type::go_right);
+    out = game.step(game_type::go_left);
+    REQUIRE(game.cell() == 2u);
+    REQUIRE(out.next == 0u);
+    // the third cell: left goes back, right reaches G
+    game.step(game_type::go_left);
+    REQUIRE(game.cell() == 1u);
+    game.step(game_type::go_left);
+    out = game.step(game_type::go_right);
+    REQUIRE(game.cell() == 3u);
+    REQUIRE(out.reward == -1);
+    REQUIRE(out.terminated);
+    // with the cells shown, the agent sees which one it is in
+    game_type shown;
+    shown.show_position(true);
+    REQUIRE(shown.reset() == 0u);
+    REQUIRE(shown.step(game_type::go_right).next == 1u);
+    REQUIRE(shown.step(game_type::go_left).next == 2u);
+    REQUIRE(shown.step(game_type::go_right).terminated);
+}
+
+/// verifies the exact value of the start, against the iterative evaluation of `solvers::tabular`
+TEST_CASE("short corridor: the exact values", "[games][short_corridor]")
+{
+    using game_type = games::short_corridor;
+    // the corridor as a tabular model: cells 0, 1, 2, actions left (0) and right (1)
+    solvers::tabular corridor;
+    corridor.states  = 3;
+    corridor.actions = 2;
+    corridor.gamma   = 1;
+    corridor.model = [](int s, int a) {
+        // the second cell switches the actions round, and left in the first cell bumps into the wall
+        bool goes_right = (a == 1) != (s == 1);
+        int next = goes_right ? s + 1 : std::max(s - 1, 0);
+        return std::vector<solvers::outcome> {{1.0, next == 3 ? 0 : next, -1.0, next == 3}};
+    };
+    // the same probability of right in every cell, and three different ones
+    const std::vector<std::vector<double>> rights = {{0.5, 0.5, 0.5}, {0.05, 0.05, 0.05},
+                                                     {0.95, 0.95, 0.95}, {0.9, 0.2, 0.7}};
+    for (const auto & p : rights) {
+        std::vector<std::vector<double>> pi;
+        for (double right : p) {
+            pi.push_back({1 - right, right});
+        }
+        double exact = corridor.policy_values(pi)[0];
+        REQUIRE(game_type::start_value(p[0], p[1], p[2]) == Approx(exact));
+        if (p[0] == p[1]) {
+            REQUIRE(game_type::start_value(p[0]) == Approx(exact));
+        }
+    }
+    // Example 13.1: ε-greedy (ε = 0.1) right is worth less than -44, left less than -82
+    REQUIRE(game_type::start_value(0.95) == Approx(-44.21).margin(0.01));
+    REQUIRE(game_type::start_value(0.05) == Approx(-82.11).margin(0.01));
+    // the best probability of right, 2 - √2, is worth -(6 + 4√2) = -11.657, and is the best
+    const double best = game_type::best_right();
+    REQUIRE(best == Approx(0.5858).margin(0.0001));
+    REQUIRE(game_type::start_value(best) == Approx(-(6 + 4 * std::sqrt(2.0))));
+    REQUIRE(game_type::start_value(best) > game_type::start_value(best - 0.01));
+    REQUIRE(game_type::start_value(best) > game_type::start_value(best + 0.01));
+    // and the game agrees: going right half the time takes 12 steps on average
+    game_type game;
+    std::mt19937 prng(1);
+    std::bernoulli_distribution coin(0.5);
+    auto agent = [&](const unsigned int &,
+                     const std::vector<unsigned int> &) {
+        return coin(prng) ? game_type::go_right : game_type::go_left;
+    };
+    double total = 0;
+    for (int i = 0; i < 20000; i++) {
+        total += games::play(game, agent, 100000).total_reward;
+    }
+    REQUIRE(total / 20000 == Approx(game_type::start_value(0.5)).margin(0.3));
 }
 
 // ---------------------------------------------------------- maximization bias

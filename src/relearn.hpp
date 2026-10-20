@@ -53,4 +53,5 @@
 #include "relearn/double_q_learning.hpp"
 #include "relearn/dyna.hpp"
 #include "relearn/monte_carlo.hpp"
+#include "relearn/policy_gradient.hpp"
 #endif
