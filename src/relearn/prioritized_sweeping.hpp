@@ -58,8 +58,9 @@ namespace relearn
  *
  * As in the book's box, the real step itself is only learnt through the queue.
  * A move made for the first time is stored in the policy at its value (0), so that
- * max(Q(S, a)), which only counts the actions stored, never misses an action worth 0;
- * if that raises the best value of S, the moves leading to S are queued again.
+ * max(Q(S, a)), which only counts the actions stored, never misses a move it has made worth 0;
+ * if that raises the best value of S, the moves leading to S are queued again. An action never
+ * taken in S is still not counted, as in every relearn learner that takes a max.
  * When a move already in the queue is queued again, it keeps the higher of its two
  * priorities, so that each move is in the queue once (the book's box does not show it,
  * but the text of Section 8.4 says so). Moves of equal priority leave the

@@ -119,7 +119,8 @@ with `games::play_online`.
 - A move made for the first time is stored in `policy` at its value (0), even if it is never worth an update.
   Do bear in mind that relearn's `max(Q(s, a))` only counts the actions stored for `s`, so without this a move worth
   exactly 0 (say, one that ends the game with no reward) would lose to a stored move worth less. If storing it raises
-  the best value of its state, the moves that lead there are queued again.
+  the best value of its state, the moves that lead there are queued again. An action never *taken* in a state is
+  still not counted, as in every relearn learner that takes a max over `Q(s, a)`.
 - When a move already in the queue is queued again, it keeps the higher of its two priorities, so each move is in the
   queue once. The book's box does not show it, but the text of Section 8.4 says so. Moves of equal priority
   leave the queue in the order they joined it.
