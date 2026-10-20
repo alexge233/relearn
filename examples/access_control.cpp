@@ -74,15 +74,26 @@ learnt learn(learner_type & learner,
              std::mt19937 & prng)
 {
     learnt result;
+    // `play_online` chooses the action after a piece's last step, and learns that step from it,
+    // so the next piece must start with that very action: it is kept here until then
+    bool pending = false;
+    unsigned int next_action = 0;
     // the ε-greedy agent, with ε = 0.1
     auto agent = [&](const game_type::state_type & s,
                      const std::vector<unsigned int> & legal) {
+        if (pending) {
+            pending = false;
+            return next_action;
+        }
         return games::epsilon_greedy<game_type>(result.memory, s, legal, 0.1, prng);
     };
     std::size_t pieces = 0;
     for (std::size_t done = 0; done < steps; done += 1000) {
         // 1000 steps, learning after each one
         auto played = games::play_online(queue, agent, learner, result.memory, 1000);
+        // the action chosen after the last step: the next piece starts with it
+        next_action = played.episode.back().action.trait();
+        pending = true;
         // count the states visited (the last link is the state reached, not a step)
         for (std::size_t i = 0; i + 1 < played.episode.size(); i++) {
             auto s = played.episode[i].state.trait();

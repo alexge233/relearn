@@ -97,14 +97,24 @@ queue_run learn_queue(learner_type & learner,
 {
     std::mt19937 prng(seed);
     types::policy memory;
+    // the action chosen after a piece's last step, which the next piece starts with
+    // (`play_online` has already learnt that step from it)
+    bool pending = false;
+    unsigned int next_action = 0;
     auto agent = [&](const game_type::state_type & s,
                      const std::vector<unsigned int> & legal) {
+        if (pending) {
+            pending = false;
+            return next_action;
+        }
         return games::epsilon_greedy<game_type>(memory, s, legal, 0.1, prng);
     };
     queue_run run;
     std::size_t pieces = 0;
     for (std::size_t done = 0; done < steps; done += 1000) {
         auto played = games::play_online(queue, agent, learner, memory, 1000);
+        next_action = played.episode.back().action.trait();
+        pending = true;
         // count the states visited (the last link is the state reached, not a step)
         for (std::size_t i = 0; i + 1 < played.episode.size(); i++) {
             run.visits[index_of(played.episode[i].state.trait())]++;
@@ -377,6 +387,21 @@ TEST_CASE("access_control: the rules", "[access_control]")
 }
 
 /// verifies the exact solution: the optimal average reward and the optimal policy, to compare with Figures 6.17 and 10.5
+TEST_CASE("access_control: no server ever becomes free", "[access_control][regression]")
+{
+    // with a probability of 0, at most `servers` customers are ever served, so every policy
+    // earns exactly 0 in the long run, rather than the NaN of a singular set of equations
+    game_type queue(1, 0.0);
+    auto accept_all = [](const game_type::state_type & s) {
+        return s.free > 0 ? game_type::accept : game_type::reject;
+    };
+    auto reject_all = [](const game_type::state_type &) {
+        return game_type::reject;
+    };
+    REQUIRE(queue.average_reward(accept_all) == 0);
+    REQUIRE(queue.average_reward(reject_all) == 0);
+}
+
 TEST_CASE("access_control: the exact solution", "[access_control][solvers]")
 {
     auto mdp = solvers::access_control();
@@ -438,12 +463,12 @@ TEST_CASE("r_learning: Example 6.7, the access-control queue", "[r_learning][acc
 {
     // the 1st edition's settings: α = 0.1, β = 0.01, ε = 0.1, here for 1000000 steps.
     // Over 10 seeds, with libstdc++ and with libc++:
-    // - the mean of ρ over the second half was 2.7427 to 2.7663 (ρ* = 2.7476), whilst the
-    //   agent, exploring, earned 2.6007 to 2.6174 per step: ρ learns the greedy policy's reward
+    // - the mean of ρ over the second half was 2.7403 to 2.7633 (ρ* = 2.7476), whilst the
+    //   agent, exploring, earned 2.5983 to 2.6165 per step: ρ learns the greedy policy's reward
     // - the greedy policy learnt, taking the optimal action in the states visited fewer than 1000
-    //   times, earned (exactly, from the model) 0.0031 to 0.1393 less than the optimal one.
-    //   The greedy policy on its own earned 0.0091 to 0.1416 less in 7 runs, but 2.34 to 2.75 less
-    //   in the other 13: with every server free, a state seen only a few times, it rejects most
+    //   times, earned (exactly, from the model) 0.0063 to 0.1290 less than the optimal one.
+    //   The greedy policy on its own earned 0.0089 to 0.1303 less in 8 runs, but 1.97 to 2.75 less
+    //   in the other 12: with every server free, a state seen only a few times, it rejects most
     //   customers, so once the queue gets there it hardly fills again (have a look at docs/r_learning.md)
     game_type queue(10, 0.06, 1);
     relearn::r_learning<types::state, types::action> learner(0.1, 0.01);
@@ -478,9 +503,9 @@ TEST_CASE("differential_sarsa: Example 10.2, the access-control queue", "[differ
 {
     // the 2nd edition's settings: α = 0.01, β = 0.01, ε = 0.1, here for 1000000 steps.
     // Over 10 seeds, with libstdc++ and with libc++:
-    // - the mean of ρ over the second half was within 0.017 of what the agent earned per step
-    //   whilst exploring (2.6289 to 2.6404), and 0.092 to 0.133 below ρ* = 2.7476
-    // - the greedy policy learnt earned (exactly, from the model) 0.0014 to 0.0469 less than the optimal one
+    // - the mean of ρ over the second half was within 0.016 of what the agent earned per step
+    //   whilst exploring (2.6317 to 2.6454), and 0.093 to 0.128 below ρ* = 2.7476
+    // - the greedy policy learnt earned (exactly, from the model) 0.0014 to 0.0604 less than the optimal one
     game_type queue(10, 0.06, 1);
     relearn::differential_sarsa<types::state, types::action> learner(0.01, 0.01);
     auto run = learn_queue(learner, queue, 1000000, 101);

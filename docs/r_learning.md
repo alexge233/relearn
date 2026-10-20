@@ -177,6 +177,27 @@ and fit relearn the same way the TD learners do when they learn online:
   }
   ```
   which also keeps the recorded steps (`played.episode`) to 1000 at a time.
+  Do bear in mind that a piece ends with the action the agent chose after its last step, and differential Sarsa has
+  already learnt that step from it, so the next piece must start with that very action, rather than choose again.
+  `examples/access_control.cpp` keeps it in `next_action`, and its agent plays it first:
+
+  ```cpp
+  bool pending = false;
+  unsigned int next_action = 0;
+  auto agent = [&](const games::access_control::state_type & s,
+                   const std::vector<unsigned int> & legal) {
+      if (pending) {
+          pending = false;
+          return next_action;
+      }
+      return games::epsilon_greedy<games::access_control>(memory, s, legal, 0.1, prng);
+  };
+  for (std::size_t done = 0; done < 2000000; done += 1000) {
+      auto played = games::play_online(queue, agent, learner, memory, 1000);
+      next_action = played.episode.back().action.trait();
+      pending = true;
+  }
+  ```
 - `ρ` is part of the learner, in `learner.rho`, and you may set where it starts. Do bear in mind that it moves with
   every step: with `β = 0.01` it only averages about the last hundred steps' worth, so to read it, average it over a
   while (the example averages it over the second half of the run).
@@ -231,96 +252,90 @@ Sampling can be misleading in a task that never ends, as we'll see.
 ### Results
 
 With ε-Greedy (ε = 0.1), for 2000000 steps each, the example prints (with GCC's standard library; Clang's libc++
-draws other random numbers, so its numbers differ, and for the first learner by a lot, as we'll see below):
+draws other random numbers, so its numbers differ a little):
 
 | learner | ρ at the end | ρ, mean over the 2nd half | earned whilst exploring | greedy policy earns, exactly |
 |---|---|---|---|---|
-| R-Learning, α = 0.1, β = 0.01 | 2.8460 | 2.7554 | 2.6009 | 2.7187 |
-| R-Learning, α = 0.01, β = 0.01 | 3.0752 | 2.7425 | 2.6417 | 2.7381 |
-| differential Sarsa, α = 0.01, β = 0.01 | 2.3488 | 2.6320 | 2.6383 | 2.7439 |
+| R-Learning, α = 0.1, β = 0.01 | 2.9159 | 2.7387 | 2.6019 | **0.0000** |
+| R-Learning, α = 0.01, β = 0.01 | 2.8094 | 2.7567 | 2.6420 | 2.7474 |
+| differential Sarsa, α = 0.01, β = 0.01 | 2.5251 | 2.6441 | 2.6414 | 2.7381 |
 
 for an optimal `ρ* = 2.7476`. A few things stand out:
 
-- `ρ` at the end of the run is all over the place, from 2.35 to 3.08: it follows the luck of the last hundred steps or so.
+- `ρ` at the end of the run is all over the place, from 2.53 to 2.92: it follows the luck of the last hundred steps or so.
   Averaged over the second half, it is spot on.
-- R-Learning's `ρ` is the average reward of the **greedy** policy, 2.75, although the agent itself, still exploring,
-  earns only 2.60 to 2.64. Differential Sarsa's `ρ` is what the agent really earns, exploration included, 2.63.
-- All three greedy policies earn within 0.03 of the optimal one.
+- R-Learning's `ρ` is the average reward of the **greedy** policy, about 2.75, although the agent itself, still exploring,
+  earns only 2.60 to 2.64. Differential Sarsa's `ρ` is what the agent really earns, exploration included, 2.64.
+- With α = 0.01, both greedy policies earn within 0.01 of the optimal one.
+- With the book's α = 0.1, R-Learning learns `ρ` just as well, but its greedy policy earns **nothing at all**.
+  The rest of this section explains why.
 
-The policy R-Learning learnt with the book's settings, α = 0.1, in the layout of Figure 6.17
-(lower case marks the states seen fewer than 1000 times in the 2000000 steps), and the value of the best action of each state:
-
-```
-priority \ free servers:  1  2  3  4  5  6  7  8  9 10
-                      8:  A  A  A  A  A  A  A  a  a  a
-                      4:  A  A  A  A  A  A  A  a  r  r
-                      2:  R  R  A  A  R  A  R  r  r  r
-                      1:  R  R  R  A  R  A  R  r  r  r
-
-value of the best action, free servers:
-priority:      0      1      2      3      4      5      6      7      8      9     10
-       8:  -81.3  -72.0  -69.8  -67.5  -64.9  -62.2  -61.4  -58.2  -55.9  -48.7  -26.3
-       4:  -80.3  -75.7  -72.5  -70.9  -68.3  -67.1  -65.0  -63.0  -59.5  -49.2  -26.1
-       2:  -80.3  -75.9  -75.5  -72.4  -69.3  -69.6  -67.9  -64.7  -59.1  -47.0  -26.3
-       1:  -80.3  -76.0  -75.2  -72.3  -71.5  -70.3  -67.8  -65.0  -56.7  -49.7  -24.8
-```
-
-and with differential Sarsa, in the layout of Figure 10.5:
+The policy differential Sarsa learnt, in the layout of Figure 10.5 (lower case marks the states seen fewer than
+1000 times in the 2000000 steps), and the value of the best action of each state:
 
 ```
 priority \ free servers:  1  2  3  4  5  6  7  8  9 10
                       8:  A  A  A  A  A  A  a  a  a  r
-                      4:  R  A  A  A  A  A  a  a  a  a
-                      2:  R  R  R  A  A  A  a  a  a  r
-                      1:  R  R  R  R  R  A  a  a  a  r
+                      4:  A  A  A  A  A  A  a  a  a  a
+                      2:  R  R  A  A  A  A  a  a  a  r
+                      1:  R  R  R  R  R  R  a  a  a  r
 
 value of the best action, free servers:
 priority:      0      1      2      3      4      5      6      7      8      9     10
-       8:   -9.5   -1.6    2.1    4.6    6.6    8.3   10.1   10.7    4.5    0.2    0.0
-       4:   -9.2   -5.9   -2.1    0.8    2.8    4.4    6.2    6.9    2.7    0.1    0.0
-       2:   -9.6   -6.3   -3.5   -1.1    0.8    2.8    4.3    5.3    2.1    0.1    0.0
-       1:   -9.5   -5.8   -3.4   -0.9    0.7    2.3    3.1    4.3    1.4    0.0    0.0
+       8:   -9.2   -1.6    2.0    4.4    6.6    8.1    9.8   10.8    5.6    0.3    0.0
+       4:   -9.3   -5.0   -1.6    0.7    2.7    4.4    5.7    6.9    2.9    0.1    0.1
+       2:   -9.7   -5.4   -3.3   -1.0    0.7    2.5    3.5    5.0    1.6    0.1    0.0
+       1:   -9.4   -5.8   -3.3   -1.4    0.8    2.0    3.1    3.8    1.5   -0.0    0.0
 ```
 
-Both learnt the shape of the book's policy where they have been often: always accept 8, accept 2 only when enough
-servers are free, and reject 1. With α = 0.1 R-Learning's values are noisy, so it gets some of the closer decisions wrong
-(it accepts 1 with 4 and 6 servers free, and 2 with 3, but rejects 2 with 5 and 7), which costs it 0.03 per step.
+It learnt the shape of the book's policy where it has been often: always accept 8 and 4, accept 2 only when enough
+servers are free, and reject 1. It only gets one close decision wrong (it accepts 2 with 3 servers free), which costs
+it 0.01 per step. R-Learning with α = 0.01 learns exactly the optimal policy where it has been often.
 
 ### The states rarely seen
 
-Look at the right of both tables. The agent hardly ever has many servers free, because it keeps accepting customers:
+Look at the right of the table. The agent hardly ever has many servers free, because it keeps accepting customers:
 under the optimal policy, 9 or 10 servers are free in only 56 steps in a million (`tests/r_learning_test.cpp` works it out).
-So those states are rarely learnt, and their values stay near where they started, 0 (differential Sarsa) or lag far
+So those states are rarely learnt, and their values stay near where they started, 0 (differential Sarsa), or lag far
 behind the others (R-Learning).
 
 Now remember that only the differences between relative values mean anything. Nothing holds R-Learning's values in
-place: with α = 0.1 they all drift together, here down to -50 to -80, and the states rarely seen are left behind,
-around -26. To a state seen often, a state left behind then looks like a good place to go, so with many servers
-free, rejecting customers (and so keeping many servers free) looks better than it is.
-
-This matters more than it seems. A policy that rejects every customer once all 10 servers are free never accepts
-anyone again, once the queue gets there: in the long run it earns **0** per step, however good it is everywhere else
-(the tests check this, exactly). Built with Clang and libc++, the very same example shows it: R-Learning with
-α = 0.1 learns `ρ` well (2.7548 over the second half), but its greedy policy rejects most customers with 8 or more
-servers free:
+place: with α = 0.1 they all drift together, here down to -50 to -77, and the states rarely seen are left behind,
+around -22. To a state seen often, a state left behind then looks like a good place to go, so with many servers
+free, rejecting customers (and so keeping many servers free) looks better than it is. This is the policy R-Learning
+learnt with the book's settings, in the layout of Figure 6.17, and its values:
 
 ```
 priority \ free servers:  1  2  3  4  5  6  7  8  9 10
-                      8:  A  A  A  A  A  A  A  r  r  r
-                      4:  A  A  A  A  A  A  R  a  a  r
-                      2:  R  R  A  R  A  A  A  r  r  r
-                      1:  R  R  R  R  R  R  R  r  r  r
+                      8:  A  A  A  A  A  A  A  a  r  r
+                      4:  A  A  A  A  A  A  A  r  r  r
+                      2:  R  R  A  A  R  A  R  r  r  r
+                      1:  R  R  A  A  R  A  R  r  r  r
+
+value of the best action, free servers:
+priority:      0      1      2      3      4      5      6      7      8      9     10
+       8:  -76.7  -67.0  -64.0  -62.2  -59.3  -58.6  -57.3  -53.7  -49.1  -43.2  -22.3
+       4:  -74.9  -71.0  -68.1  -65.6  -64.8  -61.4  -59.7  -58.1  -53.7  -44.0  -21.6
+       2:  -75.5  -71.7  -69.0  -66.3  -66.6  -64.3  -62.8  -58.3  -53.6  -43.7  -22.3
+       1:  -75.6  -71.0  -70.5  -68.7  -67.7  -64.2  -62.9  -58.4  -54.7  -44.6  -21.8
 ```
 
-and it earns exactly 0.0000 per step (0.0201 playing it for 1000000 steps, the queue empties early on).
+Where it has been often, it is close to the book's policy, though noisy (it accepts 1 with 3, 4 and 6 servers free).
+But with 9 or 10 servers free it rejects every customer, even those of priority 8. This matters more than it seems:
+a policy that rejects every customer once all 10 servers are free never accepts anyone again, once the queue gets
+there, so in the long run it earns **0** per step, however good it is everywhere else (the tests check this, exactly).
+This one earns exactly 0.0000 per step (0.0397 playing it for 1000000 steps, since the queue empties early on).
+Built with Clang and libc++, the very same example does the same: `ρ` is learnt well (2.7520 over the second half),
+and the greedy policy rejects every customer with 10 servers free, so it also earns exactly 0.
+
 In the seed sweep of `tests/r_learning_test.cpp` (R-Learning with the book's settings,
-1000000 steps, 10 seeds with each standard library), its greedy policy fell into this, or nearly, in 13 runs of 20, and
-earned 2.34 to 2.75 less than the optimal policy, whilst in the other 7 runs it earned 0.0091 to 0.1416 less.
+1000000 steps, 10 seeds with each standard library), its greedy policy fell into this, or nearly, in 12 runs of 20, and
+earned 1.97 to 2.75 less than the optimal policy, whilst in the other 8 runs it earned 0.0089 to 0.1303 less.
 Taking the optimal action in the states seen fewer than 1000 times, and the learnt one everywhere else, it earned
-0.0031 to 0.1393 less than the optimal policy in all 20. Its `ρ` was within 0.02 of `ρ*` in every run.
+0.0063 to 0.1290 less than the optimal policy in all 20. Its `ρ` was within 0.02 of `ρ*` in every run.
 
 So, basically: a greedy policy is only as good as the states it has learnt. A smaller learning rate keeps the values
-from drifting apart: above, R-Learning and differential Sarsa with α = 0.01 kept theirs between -12 and 11.
+from drifting apart: above, R-Learning and differential Sarsa with α = 0.01 kept theirs between -13 and 11.
 
 __note__: the example starts the queue with every server free. Since those states are hardly ever
 seen again, you may want to make sure the agent keeps visiting them (with more exploration, or by starting again
@@ -337,13 +352,14 @@ from an empty queue now and then) before trusting its policy there.
   it uses the action taken next rather than the best one, and `ρ` learns from exploring steps too
 - the rules of the queue, and the exact solution: `ρ* = 2.7476` and the optimal policy above, the game's own exact
   average reward against the solver's, and 1000000 steps of accepting everyone against the exact 2.1814
+- with no server ever becoming free, every policy earns exactly 0 in the long run
 - Example 6.7 (R-Learning, α = 0.1, β = 0.01, ε = 0.1, 1000000 steps): `ρ` (averaged over the second half) is within 0.05
   of `ρ*`, and above what the agent earns whilst exploring; priority 8 is accepted in every state seen often; and the greedy
   policy, with the optimal action in the states seen fewer than 1000 times, earns within 0.2 of `ρ*`, exactly.
-  Over 10 seeds, with GCC's and with Clang's standard library, `ρ` was 2.7427 to 2.7663, and the policy within 0.14 of `ρ*`
+  Over 10 seeds, with GCC's and with Clang's standard library, `ρ` was 2.7403 to 2.7633, and the policy within 0.13 of `ρ*`
 - Example 10.2 (differential Sarsa, α = 0.01, β = 0.01, ε = 0.1, 1000000 steps): `ρ` is within 0.04 of what the agent
   earns, and below `ρ*`; and the greedy policy earns within 0.08 of `ρ*`, exactly. Over the same seeds, `ρ` was within
-  0.017 of what the agent earned, and the greedy policy within 0.047 of `ρ*`
+  0.016 of what the agent earned, and the greedy policy within 0.061 of `ρ*`
 
 ## References
 

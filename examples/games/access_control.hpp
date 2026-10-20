@@ -154,6 +154,11 @@ public:
      */
     double average_reward(const std::function<action_type(const state_type &)> & choose) const
     {
+        // if no server ever becomes free, at most `servers` customers are ever served:
+        // whatever the policy, it earns nothing in the long run (and the equations below are singular)
+        if (free_probability_ <= 0) {
+            return 0;
+        }
         const std::size_t count = servers_ + 1;
         // p(f' | f) and r(f), averaged over the four priorities of the customer at the head
         std::vector<std::vector<double>> p(count, std::vector<double>(count, 0.0));
