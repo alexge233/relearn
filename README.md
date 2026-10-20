@@ -18,6 +18,9 @@ Currently the library implements the following algorithms, each one explained in
 - **Dyna-Q** and **Dyna-Q+** (`dyna_q`), which remember every move made, and replay them in their head (planning)
   to learn far more from the same experience, whilst Dyna-Q+ also goes back to check moves it hasn't made for a while,
   in case the world has changed, see [docs/dyna.md](docs/dyna.md)
+- **Monte Carlo control** (`monte_carlo` and `off_policy_monte_carlo`), which waits for each episode to end,
+  and learns from the rewards that actually followed, with exploring starts, on-policy (ε-Greedy), or off-policy
+  with importance sampling, see [docs/monte_carlo.md](docs/monte_carlo.md)
 - **schedules** for the learning rate and the exploration rate, so that each one can *decay* as the agent learns
   (`polynomial_decay`, `exponential_decay` and `linear_decay`), see [docs/schedules.md](docs/schedules.md).
   Do bear in mind that `q_learning`, `sarsa`, `expected_sarsa` and `double_q_learning` can each decay the learning rate
@@ -120,6 +123,7 @@ There is nothing to build! This is a header-only library, you only need the `src
 | `relearn/sarsa.hpp` | `sarsa` and `expected_sarsa` |
 | `relearn/double_q_learning.hpp` | `double_q_learning` |
 | `relearn/dyna.hpp` | `dyna_q` |
+| `relearn/monte_carlo.hpp` | `monte_carlo` and `off_policy_monte_carlo` |
 
 Each one includes whatever it needs, so if you only use one learner (e.g., on a small board, where every byte
 and every second of compiling counts) feel free to include just that one, `#include "relearn/q_learning.hpp"`.
@@ -202,6 +206,7 @@ Take a look at the `gridworld` examples, which demonstrate two different ways of
 The `blackjack` example is different: Blackjack is a game of *chance*, where the same decision can win or lose
 depending on the cards that follow, so it uses `q_probabilistic`, which learns the expected reward and the
 probability of each transition from the games it plays.
+The `blackjack_monte_carlo` example learns the same game with Monte Carlo instead, in three different ways.
 
 ## Gridworld
 
@@ -354,6 +359,7 @@ auto r = games::play_online(game, agent, learner, memory, 1000);
 |---|---|---|---|
 | `bandit` | S&B 2.3 | `q_probabilistic` | Exploration vs exploitation, greedy vs ε-Greedy (Figure 2.2) |
 | `blackjack` | S&B 5.1 | `q_probabilistic` | A random game, where the learnt strategy matches Figure 5.2 |
+| `blackjack_monte_carlo` | S&B 5.3, 5.4, 5.7 | `monte_carlo`, `off_policy_monte_carlo` | The same game learnt from whole games: with exploring starts, on-policy, and off-policy from games played at random |
 | `cliff_walking` | S&B 6.6 | `q_learning`, `sarsa`, `expected_sarsa` | On-policy vs off-policy: Q-Learning learns the path along the cliff edge, SARSA a safer one, and both SARSAs earn more whilst exploring |
 | `windy_gridworld` | S&B 6.5, Ex. 6.10 | both Q-Learnings | Steady wind: the 15-move path. Random wind: `q_probabilistic`, and `q_learning` with a learning rate that decays per pair, find the best policy, whereas `q_learning` with α = 0.5 does not |
 | `random_walk` | S&B 6.2, 7.1 | `q_probabilistic` | Prediction, with the learnt values next to the exact ones |
@@ -377,15 +383,14 @@ AI-generated contributions are welcome, as long as they have been reviewed and a
 
 # TODO
 
-1. Monte Carlo control: with exploring starts, on-policy, and off-policy with importance sampling (`blackjack`)
-2. TD(0) prediction, and n-step TD and n-step SARSA (`random_walk`)
-3. eligibility traces: TD(λ), SARSA(λ) and Watkins's Q(λ)
-4. REINFORCE, REINFORCE with a baseline, and Actor-Critic, which learn the policy itself (a new short corridor game)
-5. the R-Learning continuous algorithm, for tasks that never end (a new access-control queue game)
-6. UCB and gradient bandits (`bandit`)
-7. Monte Carlo Tree Search (`tic_tac_toe`)
-8. prioritized sweeping (`dyna_maze`), and policy iteration and value iteration in the library
-9. watch the agents play: a `--watch` mode for the examples, with one drawing hook for two views
+1. TD(0) prediction, and n-step TD and n-step SARSA (`random_walk`)
+2. eligibility traces: TD(λ), SARSA(λ) and Watkins's Q(λ)
+3. REINFORCE, REINFORCE with a baseline, and Actor-Critic, which learn the policy itself (a new short corridor game)
+4. the R-Learning continuous algorithm, for tasks that never end (a new access-control queue game)
+5. UCB and gradient bandits (`bandit`)
+6. Monte Carlo Tree Search (`tic_tac_toe`)
+7. prioritized sweeping (`dyna_maze`), and policy iteration and value iteration in the library
+8. watch the agents play: a `--watch` mode for the examples, with one drawing hook for two views
    - in the terminal, as good old ASCII art
    - in a window, as retro pixel art: 2D, drawn at a low resolution and scaled up with sharp pixels,
      with sprites and a 16-colour palette defined in the code (so no asset files), a pixel font, optional

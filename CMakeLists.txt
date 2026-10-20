@@ -36,7 +36,7 @@ set(EXAMPLES ${EXAMPLES} examples)
 add_executable(ex_gridworld_offline ${EXAMPLES}/gridworld_offline.cpp)
 add_executable(ex_gridworld_online  ${EXAMPLES}/gridworld_online.cpp)
 # the games (see examples/games/): one example program each
-set(GAMES bandit blackjack cart_pole cliff_walking dyna_maze frozen_lake
+set(GAMES bandit blackjack blackjack_monte_carlo cart_pole cliff_walking dyna_maze frozen_lake
           gamblers_problem maximization_bias mountain_car random_walk
           tic_tac_toe windy_gridworld)
 foreach(game ${GAMES})
@@ -96,9 +96,11 @@ if (BUILD_TESTS)
     add_test(double_q_test test_double_q)
     add_executable(test_dyna_q tests/dyna_q_test.cpp)
     add_test(dyna_q_test test_dyna_q)
+    add_executable(test_monte_carlo tests/monte_carlo_test.cpp)
+    add_test(monte_carlo_test test_monte_carlo)
 
     # every part of the library compiles on its own (see tests/headers)
-    foreach(part core schedules q_learning sarsa double_q_learning dyna)
+    foreach(part core schedules q_learning sarsa double_q_learning dyna monte_carlo)
         add_executable(test_header_${part} tests/headers/${part}.cpp)
         add_test(header_${part}_test test_header_${part})
     endforeach()
