@@ -110,9 +110,24 @@ public:
     : prng_(seed)
     {}
 
+    /**
+     * @brief start every game from a random situation rather than from the cards dealt:
+     *        the player's total (12 ... 21), a usable Ace or not, and the dealer's card,
+     *        each at random, as Monte Carlo with exploring starts needs (Example 5.3).
+     *        So that every decision is explored, 21 with a usable Ace is a natural half the time.
+     * @param on turns exploring starts on or off
+     */
+    void exploring_starts(bool on)
+    {
+        exploring_starts_ = on;
+    }
+
     /// @brief deal a new game @return what the player sees
     state_type reset()
     {
+        if (exploring_starts_) {
+            return random_start();
+        }
         // two cards to the player
         player_ = blackjack_hand();
         dealer_ = blackjack_hand();
@@ -181,6 +196,29 @@ public:
     }
 
 private:
+    /// @brief start from a random situation (see `exploring_starts`) @return what the player sees
+    state_type random_start()
+    {
+        // the player's total and usable Ace, each equally likely
+        std::uniform_int_distribution<unsigned int> total(12, 21);
+        std::bernoulli_distribution ace(0.5);
+        player_ = blackjack_hand();
+        player_.sum = total(prng_);
+        player_.usable_ace = ace(prng_);
+        player_.cards = 2;
+        // 21 with a usable Ace can also be a natural (Ace and a 10, as dealt): half the time,
+        // so that the natural's decision is explored too
+        std::bernoulli_distribution dealt(0.5);
+        natural_ = player_.sum == 21 && player_.usable_ace && dealt(prng_);
+        // the dealer's face-up card, each equally likely, and a face-down card dealt as usual
+        std::uniform_int_distribution<unsigned int> card(1, 10);
+        dealer_ = blackjack_hand();
+        showing_ = card(prng_);
+        dealer_.add(showing_);
+        dealer_.add(draw());
+        return observe();
+    }
+
     /// @return a card drawn from an infinite deck: 1 (Ace) ... 10
     unsigned int draw()
     {
@@ -211,6 +249,8 @@ private:
     unsigned int showing_ = 0;
     // true while the player holds a natural
     bool natural_ = false;
+    // true to start every game from a random situation
+    bool exploring_starts_ = false;
 };
 } // namespace games
 
