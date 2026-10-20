@@ -26,6 +26,11 @@ Actualmente la biblioteca implementa los siguientes algoritmos, cada uno explica
 - **control Monte Carlo** (`monte_carlo` y `off_policy_monte_carlo`), que espera a que termine cada episodio
   y aprende de las recompensas que realmente siguieron, con inicios exploratorios, on-policy (ε-Greedy), u off-policy
   con muestreo por importancia, ver [docs/monte_carlo.md](docs/monte_carlo.md)
+- **Prioritized sweeping** (`prioritized_sweeping`), que planifica como Dyna-Q, pero repasa primero los movimientos cuyos valores
+  cambiarían más, yendo hacia atrás desde cada cambio, ver [docs/prioritized_sweeping.md](docs/prioritized_sweeping.md)
+- **Programación dinámica** (`dynamic_programming`, con un modelo `finite_mdp`): evaluación de políticas, iteración de políticas
+  e iteración de valores, que no necesitan jugar en absoluto cuando se conocen exactamente las reglas del mundo,
+  ver [docs/dynamic_programming.md](docs/dynamic_programming.md)
 - **UCB** (`ucb`) y el **bandido de gradiente** (`gradient_bandit`), para el bandido de k brazos: UCB explora los brazos
   de los que está menos seguro, mientras que el bandido de gradiente aprende una preferencia por cada brazo, y elige los
   brazos con su softmax, ver [docs/bandits.md](docs/bandits.md)
@@ -132,6 +137,8 @@ __nota__: la serialización es opcional, y necesita Boost (ver [activar la seria
 | `relearn/double_q_learning.hpp` | `double_q_learning` |
 | `relearn/dyna.hpp` | `dyna_q` |
 | `relearn/monte_carlo.hpp` | `monte_carlo` y `off_policy_monte_carlo` |
+| `relearn/prioritized_sweeping.hpp` | `prioritized_sweeping` |
+| `relearn/dynamic_programming.hpp` | `finite_mdp` y `dynamic_programming` |
 | `relearn/bandits.hpp` | `ucb` y `gradient_bandit` |
 
 Cada uno incluye todo lo que necesita, así que si solo usas un algoritmo de aprendizaje (p. ej., en una placa pequeña, donde
@@ -377,7 +384,9 @@ auto r = games::play_online(game, agent, learner, memory, 1000);
 | `random_walk` | S&B 6.2, 7.1 | `q_probabilistic` | Predicción, con los valores aprendidos junto a los exactos |
 | `maximization_bias` | S&B 6.7 | `q_learning`, `double_q_learning` | La sobreestimación de Q-Learning, que Double Q-Learning elimina (Figura 6.5) |
 | `gamblers_problem` | S&B 4.3 | `q_probabilistic` | Valores que coinciden con la solución exacta |
+| `dynamic_programming` | S&B 4.1, 4.3, 4.4 | `dynamic_programming` | El gridworld de 4 x 4 (`small_gridworld`, Figura 4.1) y el problema del jugador (Figura 4.3), resueltos a partir de sus modelos, con evaluación de políticas, iteración de políticas e iteración de valores |
 | `dyna_maze` | S&B 8.1 a 8.3 | `dyna_q` | La planificación aprende un laberinto en muchos menos episodios (Figura 8.2), y Dyna-Q+ se adapta a laberintos que cambian (Figuras 8.4, 8.5) |
+| `dyna_maze_prioritized` | S&B 8.4 | `prioritized_sweeping`, `dyna_q` | En laberintos cada vez más grandes, prioritized sweeping necesita muchas menos actualizaciones que Dyna-Q para encontrar un buen camino (Ejemplo 8.4) |
 | `tic_tac_toe` | S&B 1.5 | `q_learning` | Contra un rival al azar o perfecto (minimax) |
 | `frozen_lake` | Gymnasium | `q_probabilistic` | Hielo resbaladizo, donde la política aprendida en 4x4 es óptima |
 | `cart_pole` | Gymnasium | `q_learning` | Un estado continuo, dividido en casillas (`games::discretised`) |
@@ -400,8 +409,7 @@ Las contribuciones generadas con IA son bienvenidas, siempre que una persona las
 3. REINFORCE, REINFORCE con línea base, y Actor-Critic, que aprenden la propia política (un nuevo juego, el pasillo corto)
 4. el algoritmo continuo R-Learning, para tareas que no terminan nunca (un nuevo juego, la cola de control de acceso)
 5. Monte Carlo Tree Search (`tic_tac_toe`)
-6. prioritized sweeping (`dyna_maze`), y policy iteration y value iteration en la biblioteca
-7. ver jugar a los agentes: un modo `--watch` para los ejemplos, con una sola función de dibujo para dos vistas
+6. ver jugar a los agentes: un modo `--watch` para los ejemplos, con una sola función de dibujo para dos vistas
    - en la terminal, con el clásico arte ASCII de siempre
    - en una ventana, con pixel art retro: 2D, dibujado a baja resolución y ampliado con píxeles nítidos,
      con sprites y una paleta de 16 colores definidos en el código (sin archivos de recursos), una fuente pixelada,
