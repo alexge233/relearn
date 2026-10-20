@@ -42,8 +42,8 @@ jobs:
       - name: run the games
         run: |
           cd build
-          for game in bandit blackjack blackjack_monte_carlo cart_pole cliff_walking dyna_maze frozen_lake \
-                      gamblers_problem maximization_bias mountain_car random_walk \
+          for game in bandit blackjack blackjack_monte_carlo cart_pole cliff_walking dyna_maze dyna_maze_prioritized \
+                      dynamic_programming frozen_lake gamblers_problem maximization_bias mountain_car random_walk \
                       tic_tac_toe windy_gridworld; do
             echo "::group::$game"
             timeout 300 ./ex_$game
@@ -98,8 +98,8 @@ jobs:
         run: |
           cd build
           for example in gridworld_online gridworld_offline \
-                         bandit blackjack blackjack_monte_carlo cart_pole cliff_walking dyna_maze frozen_lake \
-                         gamblers_problem maximization_bias mountain_car random_walk \
+                         bandit blackjack blackjack_monte_carlo cart_pole cliff_walking dyna_maze dyna_maze_prioritized \
+                         dynamic_programming frozen_lake gamblers_problem maximization_bias mountain_car random_walk \
                          tic_tac_toe windy_gridworld; do
             echo "::group::$example"
             ./ex_$example
