@@ -81,7 +81,7 @@ struct sarsa
           value_type initial_gamma = 0.9);
     /// @brief the update rule of SARSA
     triplet q_value(markov_chain & episode,
-                    unsigned int index,
+                    std::size_t index,
                     policy<state_class,action_class,value_type> & policy_map);
 
     /**
@@ -167,7 +167,7 @@ struct expected_sarsa
                               const policy<state_class,action_class,value_type> & policy_map) const;
     /// @brief the update rule of Expected SARSA
     triplet q_value(markov_chain & episode,
-                    unsigned int index,
+                    std::size_t index,
                     policy<state_class,action_class,value_type> & policy_map);
 
     /**
@@ -217,7 +217,7 @@ template <class state_class,
 typename sarsa<state_class,action_class,markov_chain,value_type>::triplet
             sarsa<state_class,action_class,markov_chain,value_type
                  >::q_value(markov_chain & episode, 
-                            unsigned int index,
+                            std::size_t index,
                             policy<state_class,action_class,value_type> & policy_map) 
 {
     auto step = episode[index];
@@ -227,7 +227,7 @@ typename sarsa<state_class,action_class,markov_chain,value_type>::triplet
     auto q = policy_map.value(step.state, step.action);
     // r_t: the reward received after taking a_t in s_t
     auto r = step.state.reward();
-    if (index < episode.size() - 1) {
+    if (index + 1 < episode.size()) {
         // the next link holds s_{t+1}, and a_{t+1}: the action the agent took next
         auto next   = episode[index + 1];
         auto q_next = policy_map.value(next.state, next.action);
@@ -289,7 +289,7 @@ template <class state_class,
 typename expected_sarsa<state_class,action_class,markov_chain,value_type>::triplet
             expected_sarsa<state_class,action_class,markov_chain,value_type
                           >::q_value(markov_chain & episode, 
-                                     unsigned int index,
+                                     std::size_t index,
                                      policy<state_class,action_class,value_type> & policy_map) 
 {
     auto step = episode[index];
@@ -299,7 +299,7 @@ typename expected_sarsa<state_class,action_class,markov_chain,value_type>::tripl
     auto q = policy_map.value(step.state, step.action);
     // r_t: the reward received after taking a_t in s_t
     auto r = step.state.reward();
-    if (index < episode.size() - 1) {
+    if (index + 1 < episode.size()) {
         // the expected value of s_{t+1} under the policy the agent follows
         auto next   = episode[index + 1];
         auto v_next = expected_value(next.state, policy_map);

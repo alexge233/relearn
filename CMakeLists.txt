@@ -98,6 +98,8 @@ if (BUILD_TESTS)
     add_test(dyna_q_test test_dyna_q)
     add_executable(test_monte_carlo tests/monte_carlo_test.cpp)
     add_test(monte_carlo_test test_monte_carlo)
+    add_executable(test_play_online tests/play_online_test.cpp)
+    add_test(play_online_test test_play_online)
 
     # every part of the library compiles on its own (see tests/headers)
     foreach(part core schedules q_learning sarsa double_q_learning dyna monte_carlo)

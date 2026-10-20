@@ -98,7 +98,7 @@ struct double_q_learning
     /// @brief the update rule of Double Q-learning: updates `first` or `second`,
     ///        and @return their average for the pair
     triplet q_value(markov_chain & episode,
-                    unsigned int index,
+                    std::size_t index,
                     policy<state_class,action_class,value_type> & policy_map);
 
     /**
@@ -137,7 +137,7 @@ template <class state_class,
 typename double_q_learning<state_class,action_class,markov_chain,value_type>::triplet
             double_q_learning<state_class,action_class,markov_chain,value_type
                              >::q_value(markov_chain & episode, 
-                                        unsigned int index,
+                                        std::size_t index,
                                         policy<state_class,action_class,value_type> &) 
 {
     auto step = episode[index];
@@ -154,7 +154,7 @@ typename double_q_learning<state_class,action_class,markov_chain,value_type>::tr
     auto r = step.state.reward();
     // the target: r_t, plus for a step that is not the last one, the value of the next state
     value_type target = r;
-    if (index < episode.size() - 1) {
+    if (index + 1 < episode.size()) {
         auto next = episode[index + 1];
         // the actions known in s_{t+1}: stored in either estimate, or taken there in this
         // episode. Each update fills in only one estimate, so either may lack some of them

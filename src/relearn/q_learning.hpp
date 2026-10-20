@@ -79,7 +79,7 @@ struct q_learning
                value_type initial_gamma = 0.9);
     /// @brief the update rule of Q-learning
     triplet q_value(markov_chain &episode,
-                    unsigned int index,
+                    std::size_t index,
                     policy<state_class,action_class,value_type> & policy_map);
 
     /**
@@ -111,7 +111,8 @@ struct q_learning
  *
  * where the sum runs over all observed next states (an episode ending after
  * (s_t, a_t) contributes 0). No learning rate is needed: the estimates converge
- * as more episodes are observed.
+ * as more episodes are observed, provided every pair keeps being visited (each episode
+ * only works Q out again for the pairs it visits).
  */
 template <class state_class, 
           class action_class,
@@ -131,7 +132,7 @@ struct q_probabilistic
     q_probabilistic(value_type initial_gamma);
     /// @brief the update rule of Q-learning
     triplet q_value(markov_chain &episode,
-                    unsigned int index,
+                    std::size_t index,
                     policy<state_class,action_class,value_type> & policy_map);
     /**
      * @brief do the updating for an episode - @param policy_map will be modified
@@ -191,13 +192,13 @@ template <class state_class,
 typename q_learning<state_class,action_class,markov_chain,value_type>::triplet
             q_learning<state_class,action_class,markov_chain,value_type
 					  >::q_value(markov_chain & episode, 
-					   			 unsigned int index,
+					   			 std::size_t index,
 								 policy<state_class,action_class,value_type> & policy_map) 
 {
     auto step = episode[index];
     // α: `alpha`, or the scheduled learning rate of this update of (s_t, a_t)
     auto rate = step_size(learning_rate, alpha, visits, step.state, step.action);
-    if (index < episode.size() - 1)  {
+    if (index + 1 < episode.size())  {
         auto q      = policy_map.value(step.state, step.action);
         auto next   = episode[index + 1];
         auto q_next = policy_map.best_value(next.state);
@@ -251,7 +252,7 @@ template <class state_class,
 typename q_probabilistic<state_class,action_class,markov_chain,value_type>::triplet
             q_probabilistic<state_class,action_class,markov_chain,value_type
 					       >::q_value(markov_chain & episode, 
-                                      unsigned int index,
+                                      std::size_t index,
                                       policy<state_class,action_class,value_type> & policy_map) 
 {
     auto step = episode[index];

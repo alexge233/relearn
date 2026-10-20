@@ -118,6 +118,9 @@ so that what it plans changes how it plays straight away: use it with `games::pl
   and the learning rate is a constant `alpha` (it has no `learning_rate` schedule).
   For a world where the same move can end differently, `q_probabilistic` keeps counts of every outcome,
   which is a model too, have a look at [q_learning.md](q_learning.md).
+- `max_a Q(s', a)` counts only the actions stored for `s'`, as in `q_learning` (have a look at
+  [q_learning.md](q_learning.md#in-relearn)). Dyna-Q+, given `legal_actions`, plans the actions not tried yet,
+  so they soon have values of their own.
 
 ## Dyna-Q+
 

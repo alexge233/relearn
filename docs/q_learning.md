@@ -120,6 +120,16 @@ where each link `(s_t, a_t)` holds the reward `r_t` in `s_t.reward()`.
 You can replay the same episodes many times (as the offline gridworld does), or learn each episode
 as soon as it has been played (as the online gridworld does).
 
+Do bear in mind how relearn takes `max_a Q(s_{t+1}, a)`: over the actions **stored** for `s_{t+1}` in the policy,
+that is the actions it has learnt a value for (and 0 if there are none yet). The book starts every action at
+`Q = 0`, so an action never tried there counts 0 in its maximum. The two only differ when every action stored
+for a state is worth less than 0: then relearn's target is lower than the book's, until the other actions have
+been tried. Both end up with the same values, and since a lower target makes the agent explore a little less,
+it does no harm in the tasks of this library (on Cliff Walking, for example, it learns the same path). The same
+holds for every relearn learner that takes a maximum: `q_probabilistic`, Dyna-Q, Double Q-Learning, Expected
+SARSA without its probabilities, Watkins's Q(λ) and the greedy test of off-policy Monte Carlo.
+(Dyna-Q+ is given every legal action, and plans the ones not tried yet, so they soon have values of their own.)
+
 ## Q-Learning for non-deterministic systems
 
 For Q-Learning in a non-deterministic system (e.g., when the certainty of transitioning from one state to another
@@ -165,7 +175,9 @@ Q(s_t,a_t) = \bar{r}(s_t,a_t) + \gamma \left( 0.7 \times 0.9 + 0.3 \times 0.2 \r
 ```
 
 An episode that ends after `(s_t, a_t)` has no next state, and adds nothing to the sum.
-No learning rate is needed: the estimates become exact as more episodes are observed.
+No learning rate is needed: the estimates become exact as more episodes are observed, provided every pair keeps
+being visited. Do bear in mind that each episode only works Q out again for the pairs it visits, so a pair not seen
+for a while keeps the value it had then.
 
 ### Pseudocode
 
