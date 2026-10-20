@@ -183,6 +183,70 @@ played<game_type> play_online(game_type & game,
 }
 
 /**
+ * @brief play one episode of @param game, learning after every step, with one-step Actor-Critic
+ * @param choose is called as `choose(state, legal_actions)` and returns an action
+ * @param learner is `relearn::actor_critic`
+ * @param memory are the preferences being learnt (and used by @param choose)
+ * @param max_steps cuts the episode short
+ * @return the played episode, already learnt
+ *
+ * The same as `play_online`, except for when each action is chosen. SARSA learns step t from
+ * the action taken next, so `play_online` chooses it before learning; Actor-Critic draws each
+ * action from the policy just updated (Sutton & Barto, Section 13.5), so here every action is
+ * chosen after the step before has been learnt.
+ * After each step, the learner is given two links: (s_t, a_t) with its reward, and the state
+ * reached, s_{t+1}, with `terminated = false`. The action of that second link is a_t again, a
+ * placeholder which Actor-Critic does not use. When the game ends, the last step is learnt alone.
+ * The episode starts with `learner.start_episode()`, so that I = 1 even after an episode cut short.
+ */
+template <class game_type,
+          class chooser,
+          class learner_type>
+played<game_type> play_online_actor_critic(game_type & game,
+                                           chooser && choose,
+                                           learner_type & learner,
+                                           typename types<game_type>::policy & memory,
+                                           std::size_t max_steps)
+{
+    using state   = typename types<game_type>::state;
+    using action  = typename types<game_type>::action;
+    using episode = typename types<game_type>::episode;
+    played<game_type> result;
+    // start a new game, and a new episode for the learner: I = 1
+    learner.start_episode();
+    auto s_t = game.reset();
+    while (result.steps < max_steps) {
+        // choose an action with the policy learnt so far, take it,
+        // and record (s_t, a_t) with the reward received
+        auto a_t = choose(s_t, game.actions(s_t));
+        auto out = game.step(a_t);
+        result.episode.push_back({state(out.reward, s_t), action(a_t)});
+        result.total_reward += out.reward;
+        result.steps++;
+        if (out.terminated) {
+            // the game ended: learn the last step alone, as the end of the game
+            result.terminated = true;
+            episode last = {result.episode.back()};
+            learner(last, memory, true);
+            break;
+        }
+        // learn step t from the state reached (its action, a_t, is only a placeholder)
+        episode window = {result.episode.back(), {state(0, out.next), action(a_t)}};
+        learner(window, memory, false);
+        // move on to the state reached
+        s_t = out.next;
+    }
+    if (!result.terminated && result.steps > 0) {
+        // cut short: as in `play`, end with the state reached and the action the agent would take next
+        auto legal = game.actions(s_t);
+        if (!legal.empty()) {
+            result.episode.push_back({state(0, s_t), action(choose(s_t, legal))});
+        }
+    }
+    return result;
+}
+
+/**
  * @brief the greedy choice: the legal action with the highest Q-value
  * @param memory is the learnt policy
  * @param s_t is the current state
