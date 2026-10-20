@@ -21,6 +21,9 @@ Currently the library implements the following algorithms, each one explained in
 - **Monte Carlo control** (`monte_carlo` and `off_policy_monte_carlo`), which waits for each episode to end,
   and learns from the rewards that actually followed, with exploring starts, on-policy (ε-Greedy), or off-policy
   with importance sampling, see [docs/monte_carlo.md](docs/monte_carlo.md)
+- **Monte Carlo Tree Search** (`mcts`), with UCT, which plans each move as it is about to make it: it plays
+  thousands of games in its head with a model of the game, spending more of them on the moves that look best,
+  and supports two players (each value from the point of view of the player who moved), see [docs/mcts.md](docs/mcts.md)
 - **schedules** for the learning rate and the exploration rate, so that each one can *decay* as the agent learns
   (`polynomial_decay`, `exponential_decay` and `linear_decay`), see [docs/schedules.md](docs/schedules.md).
   Do bear in mind that `q_learning`, `sarsa`, `expected_sarsa` and `double_q_learning` can each decay the learning rate
@@ -124,6 +127,7 @@ There is nothing to build! This is a header-only library, you only need the `src
 | `relearn/double_q_learning.hpp` | `double_q_learning` |
 | `relearn/dyna.hpp` | `dyna_q` |
 | `relearn/monte_carlo.hpp` | `monte_carlo` and `off_policy_monte_carlo` |
+| `relearn/mcts.hpp` | `mcts`, Monte Carlo Tree Search with UCT |
 
 Each one includes whatever it needs, so if you only use one learner (e.g., on a small board, where every byte
 and every second of compiling counts) feel free to include just that one, `#include "relearn/q_learning.hpp"`.
@@ -207,6 +211,8 @@ The `blackjack` example is different: Blackjack is a game of *chance*, where the
 depending on the cards that follow, so it uses `q_probabilistic`, which learns the expected reward and the
 probability of each transition from the games it plays.
 The `blackjack_monte_carlo` example learns the same game with Monte Carlo instead, in three different ways.
+The `tic_tac_toe_mcts` example does not learn at all: it plans every move with Monte Carlo Tree Search,
+using a model of the game (`examples/games/tic_tac_toe_model.hpp`).
 
 ## Gridworld
 
@@ -367,6 +373,7 @@ auto r = games::play_online(game, agent, learner, memory, 1000);
 | `gamblers_problem` | S&B 4.3 | `q_probabilistic` | Values that match the exact solution |
 | `dyna_maze` | S&B 8.1 to 8.3 | `dyna_q` | Planning learns a maze in far fewer episodes (Figure 8.2), and Dyna-Q+ copes with mazes that change (Figures 8.4, 8.5) |
 | `tic_tac_toe` | S&B 1.5 | `q_learning` | Against a random or a perfect (minimax) opponent |
+| `tic_tac_toe_mcts` | S&B 8.11 | `mcts` | Planning each move, as X or as O: it never loses to a perfect opponent, and beats a random one |
 | `frozen_lake` | Gymnasium | `q_probabilistic` | Slippery ice, where the learnt 4x4 policy is optimal |
 | `cart_pole` | Gymnasium | `q_learning` | A continuous state, cut into boxes (`games::discretised`) |
 | `mountain_car` | Gymnasium | `q_learning` | A continuous state, explored by optimistic initial values |
@@ -388,9 +395,8 @@ AI-generated contributions are welcome, as long as they have been reviewed and a
 3. REINFORCE, REINFORCE with a baseline, and Actor-Critic, which learn the policy itself (a new short corridor game)
 4. the R-Learning continuous algorithm, for tasks that never end (a new access-control queue game)
 5. UCB and gradient bandits (`bandit`)
-6. Monte Carlo Tree Search (`tic_tac_toe`)
-7. prioritized sweeping (`dyna_maze`), and policy iteration and value iteration in the library
-8. watch the agents play: a `--watch` mode for the examples, with one drawing hook for two views
+6. prioritized sweeping (`dyna_maze`), and policy iteration and value iteration in the library
+7. watch the agents play: a `--watch` mode for the examples, with one drawing hook for two views
    - in the terminal, as good old ASCII art
    - in a window, as retro pixel art: 2D, drawn at a low resolution and scaled up with sharp pixels,
      with sprites and a 16-colour palette defined in the code (so no asset files), a pixel font, optional

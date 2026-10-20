@@ -44,7 +44,7 @@ jobs:
           cd build
           for game in bandit blackjack blackjack_monte_carlo cart_pole cliff_walking dyna_maze frozen_lake \
                       gamblers_problem maximization_bias mountain_car random_walk \
-                      tic_tac_toe windy_gridworld; do
+                      tic_tac_toe tic_tac_toe_mcts windy_gridworld; do
             echo "::group::$game"
             timeout 300 ./ex_$game
             echo "::endgroup::"
@@ -100,7 +100,7 @@ jobs:
           for example in gridworld_online gridworld_offline \
                          bandit blackjack blackjack_monte_carlo cart_pole cliff_walking dyna_maze frozen_lake \
                          gamblers_problem maximization_bias mountain_car random_walk \
-                         tic_tac_toe windy_gridworld; do
+                         tic_tac_toe tic_tac_toe_mcts windy_gridworld; do
             echo "::group::$example"
             ./ex_$example
             echo "::endgroup::"
