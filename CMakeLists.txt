@@ -37,9 +37,9 @@ add_executable(ex_gridworld_offline ${EXAMPLES}/gridworld_offline.cpp)
 add_executable(ex_gridworld_online  ${EXAMPLES}/gridworld_online.cpp)
 # the games (see examples/games/): one example program each
 set(GAMES access_control bandit bandit_ucb_gradient blackjack blackjack_monte_carlo cart_pole cliff_walking
-          dyna_maze dyna_maze_n_step dyna_maze_prioritized dynamic_programming frozen_lake gamblers_problem
-          maximization_bias mountain_car random_walk random_walk_td short_corridor tic_tac_toe
-          windy_gridworld)
+          dyna_maze dyna_maze_lambda dyna_maze_n_step dyna_maze_prioritized dynamic_programming frozen_lake
+          gamblers_problem maximization_bias mountain_car random_walk random_walk_lambda random_walk_td
+          short_corridor tic_tac_toe windy_gridworld)
 foreach(game ${GAMES})
     add_executable(ex_${game} ${EXAMPLES}/${game}.cpp)
 endforeach()
@@ -101,6 +101,8 @@ if (BUILD_TESTS)
     add_test(monte_carlo_test test_monte_carlo)
     add_executable(test_n_step tests/n_step_test.cpp)
     add_test(n_step_test test_n_step)
+    add_executable(test_eligibility_traces tests/eligibility_traces_test.cpp)
+    add_test(eligibility_traces_test test_eligibility_traces)
     add_executable(test_policy_gradient tests/policy_gradient_test.cpp)
     add_test(policy_gradient_test test_policy_gradient)
     add_executable(test_r_learning tests/r_learning_test.cpp)
@@ -114,7 +116,8 @@ if (BUILD_TESTS)
     add_executable(test_bandits tests/bandits_test.cpp)
     add_test(bandits_test test_bandits)
     foreach(part core schedules q_learning sarsa double_q_learning dyna monte_carlo bandits
-                 dynamic_programming n_step policy_gradient prioritized_sweeping r_learning)
+                 dynamic_programming eligibility_traces n_step policy_gradient prioritized_sweeping
+                 r_learning)
         add_executable(test_header_${part} tests/headers/${part}.cpp)
         add_test(header_${part}_test test_header_${part})
     endforeach()
