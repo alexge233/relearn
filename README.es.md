@@ -26,6 +26,9 @@ Actualmente la biblioteca implementa los siguientes algoritmos, cada uno explica
 - **control Monte Carlo** (`monte_carlo` y `off_policy_monte_carlo`), que espera a que termine cada episodio
   y aprende de las recompensas que realmente siguieron, con inicios exploratorios, on-policy (ε-Greedy), u off-policy
   con muestreo por importancia, ver [docs/monte_carlo.md](docs/monte_carlo.md)
+- **R-Learning** (`r_learning`) y **Sarsa diferencial** (`differential_sarsa`), para tareas que no terminan nunca:
+  aprenden la recompensa media por paso, y cuánto mejor que la media es cada acción, después de cada paso,
+  ver [docs/r_learning.md](docs/r_learning.md)
 - **Prioritized sweeping** (`prioritized_sweeping`), que planifica como Dyna-Q, pero repasa primero los movimientos cuyos valores
   cambiarían más, yendo hacia atrás desde cada cambio, ver [docs/prioritized_sweeping.md](docs/prioritized_sweeping.md)
 - **Programación dinámica** (`dynamic_programming`, con un modelo `finite_mdp`): evaluación de políticas, iteración de políticas
@@ -137,6 +140,7 @@ __nota__: la serialización es opcional, y necesita Boost (ver [activar la seria
 | `relearn/double_q_learning.hpp` | `double_q_learning` |
 | `relearn/dyna.hpp` | `dyna_q` |
 | `relearn/monte_carlo.hpp` | `monte_carlo` y `off_policy_monte_carlo` |
+| `relearn/r_learning.hpp` | `r_learning` y `differential_sarsa` |
 | `relearn/prioritized_sweeping.hpp` | `prioritized_sweeping` |
 | `relearn/dynamic_programming.hpp` | `finite_mdp` y `dynamic_programming` |
 | `relearn/bandits.hpp` | `ucb` y `gradient_bandit` |
@@ -386,6 +390,7 @@ auto r = games::play_online(game, agent, learner, memory, 1000);
 | `gamblers_problem` | S&B 4.3 | `q_probabilistic` | Valores que coinciden con la solución exacta |
 | `dynamic_programming` | S&B 4.1, 4.3, 4.4 | `dynamic_programming` | El gridworld de 4 x 4 (`small_gridworld`, Figura 4.1) y el problema del jugador (Figura 4.3), resueltos a partir de sus modelos, con evaluación de políticas, iteración de políticas e iteración de valores |
 | `dyna_maze` | S&B 8.1 a 8.3 | `dyna_q` | La planificación aprende un laberinto en muchos menos episodios (Figura 8.2), y Dyna-Q+ se adapta a laberintos que cambian (Figuras 8.4, 8.5) |
+| `access_control` | S&B 1.ª ed. 6.7, 2.ª ed. 10.2 | `r_learning`, `differential_sarsa` | Una tarea que no termina nunca: aceptar o rechazar clientes para ganar lo máximo por paso, frente a la política óptima exacta (Figuras 6.17, 10.5) |
 | `dyna_maze_prioritized` | S&B 8.4 | `prioritized_sweeping`, `dyna_q` | En laberintos cada vez más grandes, prioritized sweeping necesita muchas menos actualizaciones que Dyna-Q para encontrar un buen camino (Ejemplo 8.4) |
 | `tic_tac_toe` | S&B 1.5 | `q_learning` | Contra un rival al azar o perfecto (minimax) |
 | `frozen_lake` | Gymnasium | `q_probabilistic` | Hielo resbaladizo, donde la política aprendida en 4x4 es óptima |
@@ -393,7 +398,7 @@ auto r = games::play_online(game, agent, learner, memory, 1000);
 | `mountain_car` | Gymnasium | `q_learning` | Un estado continuo, explorado con valores iniciales optimistas |
 
 El archivo `tests/games_test.cpp` comprueba las reglas de cada juego, y que los algoritmos llegan a la respuesta conocida:
-o bien soluciones exactas (`tests/solvers.hpp`: value iteration, blackjack exacto, búsqueda en anchura) o bien los
+o bien soluciones exactas (`tests/solvers.hpp`: value iteration, relative value iteration, blackjack exacto, búsqueda en anchura) o bien los
 resultados óptimos que da el libro.
 
 # Contribuir
@@ -407,9 +412,8 @@ Las contribuciones generadas con IA son bienvenidas, siempre que una persona las
 1. predicción TD(0), y TD de n pasos y SARSA de n pasos (`random_walk`)
 2. trazas de elegibilidad: TD(λ), SARSA(λ) y Q(λ) de Watkins
 3. REINFORCE, REINFORCE con línea base, y Actor-Critic, que aprenden la propia política (un nuevo juego, el pasillo corto)
-4. el algoritmo continuo R-Learning, para tareas que no terminan nunca (un nuevo juego, la cola de control de acceso)
-5. Monte Carlo Tree Search (`tic_tac_toe`)
-6. ver jugar a los agentes: un modo `--watch` para los ejemplos, con una sola función de dibujo para dos vistas
+4. Monte Carlo Tree Search (`tic_tac_toe`)
+5. ver jugar a los agentes: un modo `--watch` para los ejemplos, con una sola función de dibujo para dos vistas
    - en la terminal, con el clásico arte ASCII de siempre
    - en una ventana, con pixel art retro: 2D, dibujado a baja resolución y ampliado con píxeles nítidos,
      con sprites y una paleta de 16 colores definidos en el código (sin archivos de recursos), una fuente pixelada,
@@ -421,5 +425,5 @@ Las contribuciones generadas con IA son bienvenidas, siempre que una persona las
 # Referencias
 
 1. Sutton, R.S. y Barto, A.G., 2018. [Reinforcement Learning: An Introduction](http://incompleteideas.net/book/the-book-2nd.html), 2.ª edición. Cambridge, MA: MIT Press.
-   Los números de sección, ejemplo y figura de arriba se refieren a esta edición.
+   Los números de sección, ejemplo y figura de arriba se refieren a esta edición, salvo los que dicen "1.ª ed.".
 2. [Gymnasium](https://gymnasium.farama.org), el sucesor de OpenAI Gym, que sigue en mantenimiento activo.
