@@ -26,6 +26,9 @@ Actualmente la biblioteca implementa los siguientes algoritmos, cada uno explica
 - **control Monte Carlo** (`monte_carlo` y `off_policy_monte_carlo`), que espera a que termine cada episodio
   y aprende de las recompensas que realmente siguieron, con inicios exploratorios, on-policy (ε-Greedy), u off-policy
   con muestreo por importancia, ver [docs/monte_carlo.md](docs/monte_carlo.md)
+- **UCB** (`ucb`) y el **bandido de gradiente** (`gradient_bandit`), para el bandido de k brazos: UCB explora los brazos
+  de los que está menos seguro, mientras que el bandido de gradiente aprende una preferencia por cada brazo, y elige los
+  brazos con su softmax, ver [docs/bandits.md](docs/bandits.md)
 - **schedules** (pautas de decaimiento) para la tasa de aprendizaje y la tasa de exploración, de modo que cada una pueda *decaer*
   a medida que el agente aprende (`polynomial_decay`, `exponential_decay` y `linear_decay`), ver [docs/schedules.md](docs/schedules.md).
   Ten en cuenta que `q_learning`, `sarsa`, `expected_sarsa` y `double_q_learning` pueden hacer decaer, cada uno,
@@ -129,6 +132,7 @@ __nota__: la serialización es opcional, y necesita Boost (ver [activar la seria
 | `relearn/double_q_learning.hpp` | `double_q_learning` |
 | `relearn/dyna.hpp` | `dyna_q` |
 | `relearn/monte_carlo.hpp` | `monte_carlo` y `off_policy_monte_carlo` |
+| `relearn/bandits.hpp` | `ucb` y `gradient_bandit` |
 
 Cada uno incluye todo lo que necesita, así que si solo usas un algoritmo de aprendizaje (p. ej., en una placa pequeña, donde
 cuenta cada byte y cada segundo de compilación) puedes incluir solo ese, `#include "relearn/q_learning.hpp"`.
@@ -206,6 +210,8 @@ Esa elección es tuya, y casi siempre depende del dominio, del sistema o del pro
 Por esta razón no hay ninguna implementación de `on_policy`, `off_policy` o `e_greedy`:
 son algoritmos muy sencillos, y dependen de cada aplicación.
 Los juegos muestran una forma de escribirlos (`games::greedy` y `games::epsilon_greedy` en `examples/games/game.hpp`).
+UCB y el bandido de gradiente, en cambio, son algoritmos completos para bandidos, así que están en la biblioteca
+(échale un vistazo a [docs/bandits.md](docs/bandits.md)).
 
 Échale un vistazo a los ejemplos de `gridworld`, que muestran dos formas distintas de hacer la misma tarea.
 El ejemplo de `blackjack` es diferente: el blackjack es un juego de *azar*, donde la misma decisión puede ganar o perder
@@ -363,6 +369,7 @@ auto r = games::play_online(game, agent, learner, memory, 1000);
 | Juego | Fuente | Se aprende con | Qué muestra |
 |---|---|---|---|
 | `bandit` | S&B 2.3 | `q_probabilistic` | Exploración frente a explotación, greedy frente a ε-Greedy (Figura 2.2) |
+| `bandit_ucb_gradient` | S&B 2.7, 2.8 | `ucb`, `gradient_bandit` | UCB gana más que ε-Greedy (Figura 2.4), y el bandido de gradiente necesita su línea base (Figura 2.5) |
 | `blackjack` | S&B 5.1 | `q_probabilistic` | Un juego de azar, donde la estrategia aprendida coincide con la Figura 5.2 |
 | `blackjack_monte_carlo` | S&B 5.3, 5.4, 5.7 | `monte_carlo`, `off_policy_monte_carlo` | El mismo juego aprendido de partidas enteras: con inicios exploratorios, on-policy, y off-policy a partir de partidas jugadas al azar |
 | `cliff_walking` | S&B 6.6 | `q_learning`, `sarsa`, `expected_sarsa` | On-policy frente a off-policy: Q-Learning aprende el camino por el borde del acantilado, SARSA uno más seguro, y los dos SARSA ganan más mientras exploran |
@@ -392,10 +399,9 @@ Las contribuciones generadas con IA son bienvenidas, siempre que una persona las
 2. trazas de elegibilidad: TD(λ), SARSA(λ) y Q(λ) de Watkins
 3. REINFORCE, REINFORCE con línea base, y Actor-Critic, que aprenden la propia política (un nuevo juego, el pasillo corto)
 4. el algoritmo continuo R-Learning, para tareas que no terminan nunca (un nuevo juego, la cola de control de acceso)
-5. UCB y bandidos de gradiente (`bandit`)
-6. Monte Carlo Tree Search (`tic_tac_toe`)
-7. prioritized sweeping (`dyna_maze`), y policy iteration y value iteration en la biblioteca
-8. ver jugar a los agentes: un modo `--watch` para los ejemplos, con una sola función de dibujo para dos vistas
+5. Monte Carlo Tree Search (`tic_tac_toe`)
+6. prioritized sweeping (`dyna_maze`), y policy iteration y value iteration en la biblioteca
+7. ver jugar a los agentes: un modo `--watch` para los ejemplos, con una sola función de dibujo para dos vistas
    - en la terminal, con el clásico arte ASCII de siempre
    - en una ventana, con pixel art retro: 2D, dibujado a baja resolución y ampliado con píxeles nítidos,
      con sprites y una paleta de 16 colores definidos en el código (sin archivos de recursos), una fuente pixelada,
