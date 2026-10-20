@@ -18,6 +18,23 @@
  * - The blocking maze closes its right-hand gap and opens one on the left after
  *   `change_after` moves; the shortcut maze keeps its left gap and opens a new,
  *   shorter one on the right.
+ * - Optionally (off by default), a maze can be `scale`d up, as in Example 8.4: each cell
+ *   becomes a block of scale x scale cells, so the maze keeps its shape at a finer
+ *   resolution. The start and the goal are the top-left cells of their blocks.
+ *   The maze of Example 8.1 at scale 2 is 18 x 12, with 188 open cells:
+ *
+ *     . . . . . . . . . . . . . . # # G .
+ *     . . . . . . . . . . . . . . # # . .
+ *     . . . . # # . . . . . . . . # # . .
+ *     . . . . # # . . . . . . . . # # . .
+ *     S . . . # # . . . . . . . . # # . .
+ *     . . . . # # . . . . . . . . # # . .
+ *     . . . . # # . . . . . . . . . . . .
+ *     . . . . # # . . . . . . . . . . . .
+ *     . . . . . . . . . . # # . . . . . .
+ *     . . . . . . . . . . # # . . . . . .
+ *     . . . . . . . . . . . . . . . . . .
+ *     . . . . . . . . . . . . . . . . . .
  */
 #include "game.hpp"
 #include "grid.hpp"
@@ -37,7 +54,7 @@ public:
     using state_type  = position;
     /// an action is one of the four moves: up, right, down, left
     using action_type = unsigned int;
-    /// size of the grid
+    /// size of the grid, at scale 1 (see `columns()` and `rows()` for a scaled maze)
     enum : int
     {
         width  = 9,
@@ -55,23 +72,39 @@ public:
      * @brief create a maze
      * @param layout is the maze to play
      * @param change_after is the number of moves after which a changing maze changes
+     * @param scale makes each cell a block of scale x scale cells (1, the default, is the book's maze)
      */
     explicit dyna_maze(layout_type layout = maze,
-                       unsigned long change_after = 1000)
+                       unsigned long change_after = 1000,
+                       int scale = 1)
     : layout_(layout),
-      change_after_(change_after)
+      change_after_(change_after),
+      scale_(scale)
     {}
 
     /// @return the start: on the left in the maze, at the bottom in the changing mazes
     position start() const
     {
-        return layout_ == maze ? position{0, 2} : position{3, 5};
+        position at = layout_ == maze ? position{0, 2} : position{3, 5};
+        return {at.x * scale_, at.y * scale_};
     }
 
-    /// @return the goal: the top-right cell
-    static position goal()
+    /// @return the goal: the top-right cell (of a scaled maze, the top-left cell of the top-right block)
+    position goal() const
     {
-        return {8, 0};
+        return {8 * scale_, 0};
+    }
+
+    /// @return the number of columns: `width` times the scale
+    int columns() const
+    {
+        return width * scale_;
+    }
+
+    /// @return the number of rows: `height` times the scale
+    int rows() const
+    {
+        return height * scale_;
     }
 
     /// @return true after a changing maze has changed
@@ -89,22 +122,24 @@ public:
     /// @return true if cell @param p is a wall, in the current layout
     bool wall(const position & p) const
     {
+        // the cell of the book's maze that p is part of (p itself, unless the maze is scaled)
+        const position cell = {p.x / scale_, p.y / scale_};
         // the maze of Example 8.1: three fixed walls
         if (layout_ == maze) {
-            return (p.x == 2 && p.y >= 1 && p.y <= 3) ||
-                   (p.x == 5 && p.y == 4) ||
-                   (p.x == 7 && p.y <= 2);
+            return (cell.x == 2 && cell.y >= 1 && cell.y <= 3) ||
+                   (cell.x == 5 && cell.y == 4) ||
+                   (cell.x == 7 && cell.y <= 2);
         }
         // the changing mazes have a single wall, along row 3
-        if (p.y != 3) {
+        if (cell.y != 3) {
             return false;
         }
         // blocking: the gap moves from the right end to the left end
         if (layout_ == blocking) {
-            return changed() ? p.x >= 1 : p.x <= 7;
+            return changed() ? cell.x >= 1 : cell.x <= 7;
         }
         // shortcut: the left gap stays, and a gap opens on the right
-        return changed() ? (p.x >= 1 && p.x <= 7) : p.x >= 1;
+        return changed() ? (cell.x >= 1 && cell.x <= 7) : cell.x >= 1;
     }
 
     /// @brief start a new episode @return the start
@@ -126,7 +161,7 @@ public:
         // count every move: the changing mazes change after a number of moves
         moves_++;
         // a move into a wall keeps the agent in place
-        position to = moved(at_, a, width, height);
+        position to = moved(at_, a, columns(), rows());
         if (!wall(to)) {
             at_ = to;
         }
@@ -147,17 +182,17 @@ public:
     /// @return the maze as text, one string per row: '#' walls, 'S' start, 'G' goal
     std::vector<std::string> draw() const
     {
-        std::vector<std::string> rows(height, std::string(width, '.'));
-        for (int y = 0; y < height; y++) {
-            for (int x = 0; x < width; x++) {
+        std::vector<std::string> lines(rows(), std::string(columns(), '.'));
+        for (int y = 0; y < rows(); y++) {
+            for (int x = 0; x < columns(); x++) {
                 if (wall({x, y})) {
-                    rows[y][x] = '#';
+                    lines[y][x] = '#';
                 }
             }
         }
-        rows[start().y][start().x] = 'S';
-        rows[goal().y][goal().x]   = 'G';
-        return rows;
+        lines[start().y][start().x] = 'S';
+        lines[goal().y][goal().x]   = 'G';
+        return lines;
     }
 
 private:
@@ -165,6 +200,8 @@ private:
     layout_type layout_;
     // moves after which a changing maze changes
     unsigned long change_after_;
+    // each cell of the book's maze is a block of scale_ x scale_ cells
+    int scale_;
     // moves taken since the game was created
     unsigned long moves_ = 0;
     // the cell the agent is in
