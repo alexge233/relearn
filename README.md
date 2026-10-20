@@ -21,6 +21,9 @@ Currently the library implements the following algorithms, each one explained in
 - **Monte Carlo control** (`monte_carlo` and `off_policy_monte_carlo`), which waits for each episode to end,
   and learns from the rewards that actually followed, with exploring starts, on-policy (ε-Greedy), or off-policy
   with importance sampling, see [docs/monte_carlo.md](docs/monte_carlo.md)
+- **R-Learning** (`r_learning`) and **differential Sarsa** (`differential_sarsa`), for tasks that never end:
+  they learn the average reward per step, and how much better than average each action is, after every step,
+  see [docs/r_learning.md](docs/r_learning.md)
 - **Prioritized sweeping** (`prioritized_sweeping`), which plans like Dyna-Q, but replays first the moves whose values
   would change the most, working backwards from every change, see [docs/prioritized_sweeping.md](docs/prioritized_sweeping.md)
 - **Dynamic programming** (`dynamic_programming`, with a model `finite_mdp`): policy evaluation, policy iteration
@@ -132,6 +135,7 @@ There is nothing to build! This is a header-only library, you only need the `src
 | `relearn/double_q_learning.hpp` | `double_q_learning` |
 | `relearn/dyna.hpp` | `dyna_q` |
 | `relearn/monte_carlo.hpp` | `monte_carlo` and `off_policy_monte_carlo` |
+| `relearn/r_learning.hpp` | `r_learning` and `differential_sarsa` |
 | `relearn/prioritized_sweeping.hpp` | `prioritized_sweeping` |
 | `relearn/dynamic_programming.hpp` | `finite_mdp` and `dynamic_programming` |
 | `relearn/bandits.hpp` | `ucb` and `gradient_bandit` |
@@ -381,6 +385,7 @@ auto r = games::play_online(game, agent, learner, memory, 1000);
 | `gamblers_problem` | S&B 4.3 | `q_probabilistic` | Values that match the exact solution |
 | `dynamic_programming` | S&B 4.1, 4.3, 4.4 | `dynamic_programming` | The 4 x 4 gridworld (`small_gridworld`, Figure 4.1) and the gambler's problem (Figure 4.3) solved from their models, by policy evaluation, policy iteration and value iteration |
 | `dyna_maze` | S&B 8.1 to 8.3 | `dyna_q` | Planning learns a maze in far fewer episodes (Figure 8.2), and Dyna-Q+ copes with mazes that change (Figures 8.4, 8.5) |
+| `access_control` | S&B 1st ed. 6.7, 2nd ed. 10.2 | `r_learning`, `differential_sarsa` | A task that never ends: accept or reject customers to earn the most per step, against the exact optimal policy (Figures 6.17, 10.5) |
 | `dyna_maze_prioritized` | S&B 8.4 | `prioritized_sweeping`, `dyna_q` | In mazes of increasing size, prioritized sweeping needs far fewer updates than Dyna-Q to find a good path (Example 8.4) |
 | `tic_tac_toe` | S&B 1.5 | `q_learning` | Against a random or a perfect (minimax) opponent |
 | `frozen_lake` | Gymnasium | `q_probabilistic` | Slippery ice, where the learnt 4x4 policy is optimal |
@@ -388,7 +393,7 @@ auto r = games::play_online(game, agent, learner, memory, 1000);
 | `mountain_car` | Gymnasium | `q_learning` | A continuous state, explored by optimistic initial values |
 
 The `tests/games_test.cpp` tests the rules of every game, and that the learners reach the known answer:
-either exact solutions (`tests/solvers.hpp`: value iteration, exact blackjack, breadth-first search) or the
+either exact solutions (`tests/solvers.hpp`: value iteration, relative value iteration, exact blackjack, breadth-first search) or the
 optimal results given by the book.
 
 # Contributing
@@ -402,9 +407,8 @@ AI-generated contributions are welcome, as long as they have been reviewed and a
 1. TD(0) prediction, and n-step TD and n-step SARSA (`random_walk`)
 2. eligibility traces: TD(λ), SARSA(λ) and Watkins's Q(λ)
 3. REINFORCE, REINFORCE with a baseline, and Actor-Critic, which learn the policy itself (a new short corridor game)
-4. the R-Learning continuous algorithm, for tasks that never end (a new access-control queue game)
-5. Monte Carlo Tree Search (`tic_tac_toe`)
-6. watch the agents play: a `--watch` mode for the examples, with one drawing hook for two views
+4. Monte Carlo Tree Search (`tic_tac_toe`)
+5. watch the agents play: a `--watch` mode for the examples, with one drawing hook for two views
    - in the terminal, as good old ASCII art
    - in a window, as retro pixel art: 2D, drawn at a low resolution and scaled up with sharp pixels,
      with sprites and a 16-colour palette defined in the code (so no asset files), a pixel font, optional
@@ -416,5 +420,5 @@ AI-generated contributions are welcome, as long as they have been reviewed and a
 # References
 
 1. Sutton, R.S. and Barto, A.G., 2018. [Reinforcement Learning: An Introduction](http://incompleteideas.net/book/the-book-2nd.html), 2nd edition. Cambridge, MA: MIT Press.
-   Section, example and figure numbers above refer to this edition.
+   Section, example and figure numbers above refer to this edition, unless they say "1st ed.".
 2. [Gymnasium](https://gymnasium.farama.org), the maintained successor of OpenAI Gym.
