@@ -3,7 +3,7 @@
  *
  * 1. Example 6.2: the values TD(0) learns in the 5-state walk, after 0, 1, 10 and 100 walks,
  *    next to the true ones, 1/6 ... 5/6.
- * 2. Figure 6.2: the error of TD(0) and of constant-α Monte Carlo as they learn, averaged over
+ * 2. Example 6.2's right-hand plot: the error of TD(0) and of constant-α Monte Carlo as they learn, averaged over
  *    100 runs. TD(0) learns faster, for every learning rate tried.
  * 3. Figure 7.2: the 19-state walk, learnt with n-step TD for n = 1, 2, 4, ... 512, and the error
  *    over the first 10 walks for each learning rate α. An intermediate n learns best.
@@ -103,7 +103,7 @@ void example_6_2()
 }
 
 /**
- * @brief Figure 6.2 (right): the RMS error after each walk, averaged over 100 runs
+ * @brief Example 6.2, the right-hand plot: the RMS error after each walk, averaged over 100 runs
  * @param monte_carlo is true for constant-α Monte Carlo, false for TD(0)
  * @param alpha is the learning rate
  * @param walks is the number of walks of each run
@@ -168,8 +168,8 @@ int main()
     // 1. Example 6.2: the values learnt by TD(0)
     example_6_2();
 
-    // 2. Figure 6.2: TD(0) against constant-α Monte Carlo
-    std::cout << std::endl << "Figure 6.2: the RMS error over the 5 states, averaged over 100 runs" << std::endl;
+    // 2. Example 6.2's right-hand plot: TD(0) against constant-α Monte Carlo
+    std::cout << std::endl << "Example 6.2 (right): the RMS error over the 5 states, averaged over 100 runs" << std::endl;
     const std::vector<unsigned int> shown = {0, 1, 10, 25, 50, 75, 100};
     std::cout << "    walks:            ";
     for (auto w : shown) {

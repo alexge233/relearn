@@ -162,6 +162,11 @@ episode_type last_steps(const episode_type & steps,
  * With a @param window of n, the learner is given the last n steps (fewer at the
  * start) and then (s_{t+1}, a_{t+1}), so that an n-step learner learns step t-n+1;
  * when the game ends, it is given the last n steps, which it learns as the end of the game.
+ *
+ * @warning the window must match the learner: 1 for the one-step learners, `learner.n` for the n-step
+ *          ones. Nothing checks it. With a smaller window an n-step learner learns no step until the end
+ *          of the game, and then only the last ones; with a larger one, a learner learns the same steps
+ *          again after every step.
  */
 template <class game_type,
           class chooser,

@@ -370,7 +370,7 @@ The n-step learners need the last n steps after each step, not just the last one
 | `cliff_walking` | S&B 6.6 | `q_learning`, `sarsa`, `expected_sarsa` | On-policy vs off-policy: Q-Learning learns the path along the cliff edge, SARSA a safer one, and both SARSAs earn more whilst exploring |
 | `windy_gridworld` | S&B 6.5, Ex. 6.10 | both Q-Learnings | Steady wind: the 15-move path. Random wind: `q_probabilistic`, and `q_learning` with a learning rate that decays per pair, find the best policy, whereas `q_learning` with α = 0.5 does not |
 | `random_walk` | S&B 6.2, 7.1 | `q_probabilistic` | Prediction, with the learnt values next to the exact ones |
-| `random_walk_td` | S&B 6.2, 7.1 | `n_step_td`, `monte_carlo` | TD(0) learns faster than Monte Carlo (Figure 6.2), and an intermediate n is best (Figure 7.2) |
+| `random_walk_td` | S&B 6.2, 7.1 | `n_step_td`, `monte_carlo` | TD(0) learns faster than Monte Carlo (Example 6.2), and an intermediate n is best (Figure 7.2) |
 | `maximization_bias` | S&B 6.7 | `q_learning`, `double_q_learning` | Q-Learning's overestimation, which Double Q-Learning removes (Figure 6.5) |
 | `gamblers_problem` | S&B 4.3 | `q_probabilistic` | Values that match the exact solution |
 | `dyna_maze` | S&B 8.1 to 8.3 | `dyna_q` | Planning learns a maze in far fewer episodes (Figure 8.2), and Dyna-Q+ copes with mazes that change (Figures 8.4, 8.5) |
