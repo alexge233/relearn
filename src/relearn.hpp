@@ -55,4 +55,5 @@
 #include "relearn/monte_carlo.hpp"
 #include "relearn/prioritized_sweeping.hpp"
 #include "relearn/dynamic_programming.hpp"
+#include "relearn/bandits.hpp"
 #endif
