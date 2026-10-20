@@ -23,6 +23,7 @@
 #include <cmath>
 #include <cstddef>
 #include <random>
+#include <utility>
 #include <vector>
 
 namespace relearn
@@ -77,6 +78,10 @@ namespace relearn
  * where `result` has the members `next` (the state reached), `reward` (the reward received by
  * the player who took a in s) and `terminated` (true if the game ended), e.g. `games::step_result`.
  * For a one-player task, `player` simply returns 0. A state with no legal actions counts as the end.
+ *
+ * The model must be deterministic: the same `step(s, a)` must always give the same next state, reward
+ * and end. Each edge of the tree calls `step` once, when it is expanded, and every later visit reuses
+ * that outcome, so a game of chance would keep its first draw for ever. (Rollouts call `step` afresh.)
  */
 template <class model_type,
           typename value_type = double>
@@ -215,9 +220,11 @@ template <class model_type,
           typename value_type>
 void mcts<model_type,value_type>::search(const state_type & root)
 {
-    // a new tree, with only the root in it
+    // a new tree, with only the root in it. The root is made before the old tree goes,
+    // since `root` may be a state of the old tree (e.g. `planner.search(planner.tree()[i].state)`)
+    node start = make_node(root, 0, false);
     tree_.clear();
-    tree_.push_back(make_node(root, 0, false));
+    tree_.push_back(std::move(start));
     assert(!tree_[0].terminal && "mcts needs a root with legal actions");
     for (unsigned int i = 0; i < iterations; i++) {
         iterate();

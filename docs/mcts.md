@@ -223,6 +223,9 @@ struct my_model
   `games::step_result` has exactly those members, but any struct with them will do.
 - `player` says whose turn it is, e.g. 1 for X and 2 for O. For a one-player task, simply return 0.
 - a state with no legal moves counts as the end of the game.
+- the model must be **deterministic**: the same `step(s, a)` must always give the same next state, reward and end.
+  Do bear in mind that each edge of the tree calls `step` once, when it is expanded, and every later visit reuses that
+  outcome, so a game of chance (dice, cards) would keep its first draw for ever. Rollouts call `step` afresh.
 
 Then:
 

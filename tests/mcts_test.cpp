@@ -5,6 +5,7 @@
 #include <functional>
 #include <vector>
 #define CATCH_CONFIG_MAIN
+#include <string>
 #include "catch.hpp"
 
 /**
@@ -440,6 +441,57 @@ TEST_CASE("mcts: the move played is the most visited", "[mcts]")
 }
 
 /// verifies the constructor, and brace initialisation
+/**
+ * @struct long_names
+ * @brief a one-player chain whose states are long strings (kept on the heap): each step adds a letter,
+ *        and the third step ends the game with a reward of 1
+ */
+struct long_names
+{
+    using state_type  = std::string;
+    using action_type = int;
+
+    /// a step's outcome, with a string for the next state
+    struct result
+    {
+        std::string next;
+        double reward;
+        bool terminated;
+    };
+
+    std::vector<int> actions(const std::string &) const
+    {
+        return {0, 1};
+    }
+
+    result step(const std::string & s,
+                const int & a) const
+    {
+        const bool ends = s.size() >= 42;
+        return {s + (a == 0 ? "a" : "b"), ends ? 1.0 : 0.0, ends};
+    }
+
+    unsigned int player(const std::string &) const
+    {
+        return 0;
+    }
+};
+
+/// verifies that a search can start from a state of the tree itself, which the new tree replaces
+TEST_CASE("mcts: a search from a state of the last tree", "[mcts][regression]")
+{
+    // 40 letters: far too long for the string to fit in place, so it lives on the heap
+    const std::string start(40, 's');
+    relearn::mcts<long_names> planner(long_names(), 50);
+    planner.search(start);
+    REQUIRE(planner.tree().size() > 1);
+    // the first child's state belongs to the tree that the next search throws away
+    const std::string child = planner.tree()[planner.tree()[0].children[0]].state;
+    planner.search(planner.tree()[planner.tree()[0].children[0]].state);
+    REQUIRE(planner.tree()[0].state == child);
+    REQUIRE(planner.tree()[0].visits == 50);
+}
+
 TEST_CASE("mcts: constructor and brace initialisation", "[mcts]")
 {
     relearn::mcts<one_move> defaults(one_move{});
