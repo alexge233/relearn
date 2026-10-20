@@ -27,6 +27,9 @@ Currently the library implements the following algorithms, each one explained in
 - **TD(λ)** (`td_lambda`), **SARSA(λ)** (`sarsa_lambda`) and **Watkins's Q(λ)** (`watkins_q_lambda`), whose
   eligibility traces share every TD error with the moves that led to it, accumulating or replacing,
   see [docs/eligibility_traces.md](docs/eligibility_traces.md)
+- **UCB** (`ucb`) and the **gradient bandit** (`gradient_bandit`), for the k-armed bandit: UCB explores the arms
+  it is least sure about, whilst the gradient bandit learns a preference for each arm, and picks arms with their softmax,
+  see [docs/bandits.md](docs/bandits.md)
 - **schedules** for the learning rate and the exploration rate, so that each one can *decay* as the agent learns
   (`polynomial_decay`, `exponential_decay` and `linear_decay`), see [docs/schedules.md](docs/schedules.md).
   Do bear in mind that `q_learning`, `sarsa`, `expected_sarsa`, `double_q_learning` and `n_step_sarsa` can each decay the learning rate
@@ -132,6 +135,7 @@ There is nothing to build! This is a header-only library, you only need the `src
 | `relearn/monte_carlo.hpp` | `monte_carlo` and `off_policy_monte_carlo` |
 | `relearn/n_step.hpp` | `n_step_sarsa`, and `n_step_td` (TD(0) when n = 1) |
 | `relearn/eligibility_traces.hpp` | `sarsa_lambda`, `td_lambda` and `watkins_q_lambda`, and their `eligibility_traces` |
+| `relearn/bandits.hpp` | `ucb` and `gradient_bandit` |
 
 Each one includes whatever it needs, so if you only use one learner (e.g., on a small board, where every byte
 and every second of compiling counts) feel free to include just that one, `#include "relearn/q_learning.hpp"`.
@@ -209,6 +213,8 @@ That choice is up to you, and almost always depends on the domain, system or pro
 It is for this reason that there is no implementation of `on_policy` or `off_policy` or `e_greedy`,
 those are very simple algorithms, and are application-specific.
 The games show one way of writing them (`games::greedy` and `games::epsilon_greedy` in `examples/games/game.hpp`).
+UCB and the gradient bandit, on the other hand, are whole algorithms for bandits, so they are in the library
+(have a look at [docs/bandits.md](docs/bandits.md)).
 
 Take a look at the `gridworld` examples, which demonstrate two different ways of achieving the same task.
 The `blackjack` example is different: Blackjack is a game of *chance*, where the same decision can win or lose
@@ -370,6 +376,7 @@ The learners with eligibility traces learn a whole episode at a time, so use `ga
 | Game | Source | Learnt with | What it shows |
 |---|---|---|---|
 | `bandit` | S&B 2.3 | `q_probabilistic` | Exploration vs exploitation, greedy vs ε-Greedy (Figure 2.2) |
+| `bandit_ucb_gradient` | S&B 2.7, 2.8 | `ucb`, `gradient_bandit` | UCB earns more than ε-Greedy (Figure 2.4), and the gradient bandit needs its baseline (Figure 2.5) |
 | `blackjack` | S&B 5.1 | `q_probabilistic` | A random game, where the learnt strategy matches Figure 5.2 |
 | `blackjack_monte_carlo` | S&B 5.3, 5.4, 5.7 | `monte_carlo`, `off_policy_monte_carlo` | The same game learnt from whole games: with exploring starts, on-policy, and off-policy from games played at random |
 | `cliff_walking` | S&B 6.6 | `q_learning`, `sarsa`, `expected_sarsa` | On-policy vs off-policy: Q-Learning learns the path along the cliff edge, SARSA a safer one, and both SARSAs earn more whilst exploring |
@@ -401,10 +408,9 @@ AI-generated contributions are welcome, as long as they have been reviewed and a
 
 1. REINFORCE, REINFORCE with a baseline, and Actor-Critic, which learn the policy itself (a new short corridor game)
 2. the R-Learning continuous algorithm, for tasks that never end (a new access-control queue game)
-3. UCB and gradient bandits (`bandit`)
-4. Monte Carlo Tree Search (`tic_tac_toe`)
-5. prioritized sweeping (`dyna_maze`), and policy iteration and value iteration in the library
-6. watch the agents play: a `--watch` mode for the examples, with one drawing hook for two views
+3. Monte Carlo Tree Search (`tic_tac_toe`)
+4. prioritized sweeping (`dyna_maze`), and policy iteration and value iteration in the library
+5. watch the agents play: a `--watch` mode for the examples, with one drawing hook for two views
    - in the terminal, as good old ASCII art
    - in a window, as retro pixel art: 2D, drawn at a low resolution and scaled up with sharp pixels,
      with sprites and a 16-colour palette defined in the code (so no asset files), a pixel font, optional
