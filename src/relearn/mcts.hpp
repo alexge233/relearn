@@ -147,10 +147,13 @@ struct mcts
     /**
      * @brief search from @param root, and @return the action to take there
      * @note it is `search(root)` then `best_action()`
+     * @warning @param root must have a legal action: there is no move to return from the end of
+     *          a game. Check `model.actions(root)` first (it is only `assert`ed, so a release
+     *          build would read past an empty list of actions)
      */
     action_type operator()(const state_type & root);
 
-    /// @brief build a new tree from @param root, with `iterations` iterations
+    /// @brief build a new tree from @param root, with `iterations` iterations (@param root must have a legal action)
     void search(const state_type & root);
 
     /**

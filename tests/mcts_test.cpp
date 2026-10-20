@@ -256,6 +256,36 @@ player_type mcts_player(planner & p)
 }
 } // namespace
 
+/// verifies that UCT uses ln N of the parent, over many iterations, against the formula worked out here
+TEST_CASE("mcts: UCT's visits follow its formula exactly", "[mcts]")
+{
+    // On the game of one move every return is the action's reward (0, 1, 0.5), so UCT's choices can be
+    // replayed here: iterations 1 to 3 expand the actions in order, and iteration k + 1 (k = 3, 4, ...)
+    // picks the first action of highest Q + c * sqrt(ln k / N), k being the root's visits so far
+    const double rewards[3] = {0, 1, 0.5};
+    for (unsigned int iterations = 4; iterations <= 300; iterations++) {
+        unsigned int visits[3] = {1, 1, 1};
+        for (unsigned int k = 3; k < iterations; k++) {
+            unsigned int best = 0;
+            double best_score = 0;
+            for (unsigned int a = 0; a < 3; a++) {
+                double score = rewards[a] + 1.0 * std::sqrt(std::log(static_cast<double>(k)) / visits[a]);
+                if (a == 0 || score > best_score) {
+                    best = a;
+                    best_score = score;
+                }
+            }
+            visits[best]++;
+        }
+        relearn::mcts<one_move> search(one_move(), iterations, 1.0);
+        search.search(0);
+        const auto & tree = search.tree();
+        for (unsigned int a = 0; a < 3; a++) {
+            REQUIRE(tree[tree[0].children[a]].visits == visits[a]);
+        }
+    }
+}
+
 /// verifies UCT's choices, worked out by hand, on a game of one move
 TEST_CASE("mcts: UCT on a game of one move", "[mcts]")
 {

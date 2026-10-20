@@ -52,7 +52,8 @@ Selection walks down the green nodes, choosing by UCT at each one, until it reac
 Expansion adds that move as a new node (orange), the simulation plays at random from it to the end of the game,
 and the backup adds the return to the new node and to every green one, on the way back up: each of them gets
 one more visit. So a node's `N` is the sum of its children's, plus one for the iteration that added it,
-and the root's is simply the sum of its children's.
+and the root's is simply the sum of its children's. A node that ends the game has no children: its `N` counts
+every iteration that reached it.
 
 ## The formulas
 
@@ -239,6 +240,9 @@ auto move = planner(state);                           // search from state, and 
 
 or in short, `relearn::mcts<my_model> planner(my_model(), 10000, 2 * std::sqrt(2.0), 42);`
 (the model, the iterations, c and the seed).
+
+__note__: only ask for a move in a state that has one. At the end of a game there is no move to return:
+check `model.actions(state)` first. The planner only `assert`s it, so a release build would not stop you.
 
 - `planner(state)` is `planner.search(state)` then `planner.best_action()`. After a search, `planner.tree()`
   holds every node (`tree()[0]` is the root): its `state`, `player`, `reward`, `actions`, `children`,
