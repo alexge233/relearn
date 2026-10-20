@@ -54,5 +54,7 @@
 #include "relearn/dyna.hpp"
 #include "relearn/monte_carlo.hpp"
 #include "relearn/policy_gradient.hpp"
+#include "relearn/prioritized_sweeping.hpp"
+#include "relearn/dynamic_programming.hpp"
 #include "relearn/bandits.hpp"
 #endif

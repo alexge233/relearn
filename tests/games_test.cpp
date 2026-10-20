@@ -14,10 +14,12 @@
 #include "../examples/games/maximization_bias.hpp"
 #include "../examples/games/gamblers_problem.hpp"
 #include "../examples/games/dyna_maze.hpp"
+#include "../examples/games/small_gridworld.hpp"
 #include "../examples/games/tic_tac_toe.hpp"
 #include "../examples/games/cart_pole.hpp"
 #include "../examples/games/mountain_car.hpp"
 #include "../examples/games/discretised.hpp"
+#include <algorithm>
 #include <cmath>
 #include <map>
 #include <queue>
@@ -891,12 +893,12 @@ int shortest_path(const games::dyna_maze & maze)
         auto p = frontier.front();
         frontier.pop();
         // cells leave the queue in order of distance: the first time we see the goal is the shortest
-        if (p == games::dyna_maze::goal()) {
+        if (p == maze.goal()) {
             return distance[{p.x, p.y}];
         }
         for (unsigned int a = 0; a < 4; a++) {
             // a wall keeps the agent in place
-            auto n = games::moved(p, a, games::dyna_maze::width, games::dyna_maze::height);
+            auto n = games::moved(p, a, maze.columns(), maze.rows());
             if (maze.wall(n)) {
                 n = p;
             }
@@ -941,6 +943,48 @@ TEST_CASE("dyna maze: layouts", "[games][dyna_maze]")
     REQUIRE(out.reward == 1);
 }
 
+/// verifies the scaled mazes of Sutton & Barto, Example 8.4: the same maze, at a finer resolution
+TEST_CASE("dyna maze: scaled layouts", "[games][dyna_maze]")
+{
+    using maze = games::dyna_maze;
+    // scale 1 is the maze of Figure 8.2, cell for cell
+    maze plain;
+    maze one(maze::maze, 1000, 1);
+    REQUIRE(one.draw() == plain.draw());
+    REQUIRE(one.columns() == maze::width);
+    REQUIRE(one.rows() == maze::height);
+    // each cell becomes a block of k x k cells: 47 open cells become 47 k^2, and the shortest path 14 k
+    for (int k = 2; k <= 4; k++) {
+        maze scaled(maze::maze, 1000, k);
+        REQUIRE(scaled.columns() == 9 * k);
+        REQUIRE(scaled.rows() == 6 * k);
+        // the cells that are not walls
+        int open = 0;
+        for (const auto & row : scaled.draw()) {
+            open += static_cast<int>(row.size()) - static_cast<int>(std::count(row.begin(), row.end(), '#'));
+        }
+        REQUIRE(open == 47 * k * k);
+        REQUIRE(scaled.start() == (games::position{0, 2 * k}));
+        REQUIRE(scaled.goal() == (games::position{8 * k, 0}));
+        REQUIRE(shortest_path(scaled) == 14 * k);
+    }
+    // the walls of a 2 x 2 block, and the goal ends the episode
+    maze two(maze::maze, 1000, 2);
+    REQUIRE(two.wall({4, 2}));
+    REQUIRE(two.wall({5, 7}));
+    REQUIRE_FALSE(two.wall({4, 8}));
+    two.place({16, 1});
+    auto out = two.step(games::up);
+    REQUIRE(out.terminated);
+    REQUIRE(out.reward == 1);
+    // the changing mazes scale too: the blocking maze's wall is two rows thick at scale 2
+    maze blocking(maze::blocking, 1000, 2);
+    REQUIRE(blocking.start() == (games::position{6, 10}));
+    REQUIRE(blocking.wall({0, 6}));
+    REQUIRE(blocking.wall({0, 7}));
+    REQUIRE_FALSE(blocking.wall({16, 6}));
+}
+
 /// verifies that Q-learning learns a route through the maze of Sutton & Barto, Figure 8.2
 TEST_CASE("dyna maze: q_learning finds one of the two shortest routes", "[games][dyna_maze]")
 {
@@ -963,6 +1007,77 @@ TEST_CASE("dyna maze: q_learning finds one of the two shortest routes", "[games]
     auto greedy = games::play(maze, agent, 100);
     REQUIRE(greedy.terminated);
     REQUIRE(greedy.steps <= 16u);
+}
+
+// ------------------------------------------------------------- small gridworld
+
+/// verifies the rules of the 4 x 4 gridworld (Sutton & Barto, Example 4.1), and that its model follows them
+TEST_CASE("small gridworld: rules and model", "[games][small_gridworld]")
+{
+    using game_type = games::small_gridworld;
+    game_type game(3);
+    // the corners 0 and 15 are terminal, and have no moves
+    REQUIRE(game.actions(0).empty());
+    REQUIRE(game.actions(15).empty());
+    REQUIRE(game.actions(5).size() == 4u);
+    // a move off the grid stays put; every move is worth -1; a corner ends the episode
+    game.place(1);
+    auto out = game.step(games::up);
+    REQUIRE(out.next == 1u);
+    REQUIRE(out.reward == -1);
+    REQUIRE_FALSE(out.terminated);
+    out = game.step(games::left);
+    REQUIRE(out.next == 0u);
+    REQUIRE(out.terminated);
+    game.place(11);
+    REQUIRE(game.step(games::down).next == 15u);
+    game.place(5);
+    REQUIRE(game.step(games::right).next == 6u);
+    REQUIRE(game.step(games::down).next == 10u);
+    // episodes start anywhere but in a corner
+    for (int i = 0; i < 100; i++) {
+        auto s = game.reset();
+        REQUIRE(s >= 1u);
+        REQUIRE(s <= 14u);
+    }
+    // the model: every move of every cell, as the game plays it
+    auto m = game.model();
+    REQUIRE(m.states.size() == 16u);
+    for (const auto & s : m.states) {
+        REQUIRE(m.actions(s).size() == game.actions(s.trait()).size());
+        for (const auto & a : m.actions(s)) {
+            game.place(s.trait());
+            auto played = game.step(a.trait());
+            auto outcomes = m.outcomes(s, a);
+            REQUIRE(outcomes.size() == 1u);
+            REQUIRE(outcomes[0].next.trait() == played.next);
+            REQUIRE(outcomes[0].reward == played.reward);
+            REQUIRE(outcomes[0].probability == 1);
+        }
+    }
+}
+
+/// verifies that the model of the gambler's problem follows its rules
+TEST_CASE("gambler's problem: the model", "[games][gambler]")
+{
+    games::gamblers_problem game(0.4);
+    auto m = game.model();
+    REQUIRE(m.states.size() == 101u);
+    // no stakes at 0 and at 100, and min(s, 100 - s) of them in between
+    REQUIRE(m.actions(relearn::state<unsigned int>(0)).empty());
+    REQUIRE(m.actions(relearn::state<unsigned int>(100)).empty());
+    for (unsigned int s = 1; s < 100; s++) {
+        REQUIRE(m.actions(relearn::state<unsigned int>(s)).size() == game.actions(s).size());
+    }
+    // a stake of 30 from 70: heads (0.4) reaches 100 and is worth 1, tails (0.6) falls to 40
+    auto outcomes = m.outcomes(relearn::state<unsigned int>(70), relearn::action<unsigned int>(30));
+    REQUIRE(outcomes.size() == 2u);
+    REQUIRE(outcomes[0].next.trait() == 100u);
+    REQUIRE(outcomes[0].reward == 1);
+    REQUIRE(outcomes[0].probability == Approx(0.4));
+    REQUIRE(outcomes[1].next.trait() == 40u);
+    REQUIRE(outcomes[1].reward == 0);
+    REQUIRE(outcomes[1].probability == Approx(0.6));
 }
 
 // ---------------------------------------------------------------- tic-tac-toe
