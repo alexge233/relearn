@@ -57,6 +57,9 @@ namespace relearn
  *    every predecessor (S̄, Ā) of S, P = |R̄ + γ * max(Q(S, a)) - Q(S̄, Ā)|, and queues it if P > θ.
  *
  * As in the book's box, the real step itself is only learnt through the queue.
+ * A move made for the first time is stored in the policy at its value (0), so that
+ * max(Q(S, a)), which only counts the actions stored, never misses an action worth 0;
+ * if that raises the best value of S, the moves leading to S are queued again.
  * When a move already in the queue is queued again, it keeps the higher of its two
  * priorities, so that each move is in the queue once (the book's box does not show it,
  * but the text of Section 8.4 says so). Moves of equal priority leave the
@@ -153,8 +156,10 @@ private:
                         const entry & rhs) const;
     };
     using queue_type = std::set<entry, first_out>;
+    // the entry of each move queued, by its action: the entry itself rather than an iterator
+    // into the queue, so that a copy of the learner never points into another learner's queue
     using actions_queued = std::unordered_map<action_class,
-                                              typename queue_type::iterator,
+                                              entry,
                                               hasher<action_class>>;
 
     // @return R + γ * max(Q(S', a)) - Q(S, A) for the move @param s_t, @param a_t,
@@ -163,6 +168,9 @@ private:
                         const action_class & a_t,
                         const outcome & happened,
                         const policy<state_class,action_class,value_type> & policy_map) const;
+    // @brief queue every move that leads to @param s_t, with priority |R̄ + γ * max(Q(s_t, a)) - Q(S̄, Ā)|
+    void queue_predecessors(const state_class & s_t,
+                            const policy<state_class,action_class,value_type> & policy_map);
     // @brief take the move @param s_t, @param a_t out of the predecessors of @param next
     void forget_predecessor(const state_class & s_t,
                             const action_class & a_t,
@@ -319,15 +327,16 @@ void prioritized_sweeping<state_class,action_class,markov_chain,value_type
     auto & actions = where_[s_t];
     auto queued = actions.find(a_t);
     if (queued != actions.end()) {
-        if (queued->second->priority >= priority) {
+        if (queued->second.priority >= priority) {
             return;
         }
         queue_.erase(queued->second);
         actions.erase(queued);
     }
     link<state_class,action_class> move = {s_t, a_t};
-    auto it = queue_.insert(entry{priority, joined_++, move}).first;
-    actions.emplace(a_t, it);
+    const entry joining = {priority, joined_++, move};
+    queue_.insert(joining);
+    actions.emplace(a_t, joining);
 }
 
 template <class state_class,
@@ -350,16 +359,27 @@ void prioritized_sweeping<state_class,action_class,markov_chain,value_type
                           q + alpha * td_error(move.state, move.action, happened, policy_map));
         updates_++;
         // the value of S may have changed: so may the values of the moves that lead to it
-        auto found = predecessors_.find(move.state);
-        if (found == predecessors_.end()) {
-            continue;
-        }
-        for (const auto & before : found->second) {
-            // P = |R̄ + γ * max(Q(S, a)) - Q(S̄, Ā)|, queued if P > θ
-            const auto & leads = model_.at(before.state).at(before.action);
-            auto p = std::abs(td_error(before.state, before.action, leads, policy_map));
-            queue(before.state, before.action, p);
-        }
+        queue_predecessors(move.state, policy_map);
+    }
+}
+
+template <class state_class,
+          class action_class,
+          typename markov_chain,
+          typename value_type>
+void prioritized_sweeping<state_class,action_class,markov_chain,value_type
+                         >::queue_predecessors(const state_class & s_t,
+                                               const policy<state_class,action_class,value_type> & policy_map)
+{
+    auto found = predecessors_.find(s_t);
+    if (found == predecessors_.end()) {
+        return;
+    }
+    for (const auto & before : found->second) {
+        // P = |R̄ + γ * max(Q(S, a)) - Q(S̄, Ā)|, queued if P > θ
+        const auto & leads = model_.at(before.state).at(before.action);
+        auto p = std::abs(td_error(before.state, before.action, leads, policy_map));
+        queue(before.state, before.action, p);
     }
 }
 
@@ -379,8 +399,19 @@ void prioritized_sweeping<state_class,action_class,markov_chain,value_type
         steps_++;
         // Model(S,A) = R, S', and (S, A) is a predecessor of S'
         remember(episode, static_cast<unsigned int>(i));
-        // P = |R + γ * max(Q(S', a)) - Q(S, A)|, queued if P > θ
         const auto & step = episode[i];
+        // a move made for the first time is stored at its value (0 unless set before), even when it
+        // is never worth an update, so that max(Q(S, a)) counts it: an action worth 0 must not lose
+        // to one worth less. If it raises the best value of S, the moves leading to S are queued
+        if (policy_map.actions(step.state).count(step.action) == 0) {
+            const auto best_before = policy_map.best_value(step.state);
+            policy_map.update(step.state, step.action, policy_map.value(step.state, step.action));
+            // (with nothing stored before, the best value of S already counted as 0: nothing changes)
+            if (policy_map.best_value(step.state) > best_before) {
+                queue_predecessors(step.state, policy_map);
+            }
+        }
+        // P = |R + γ * max(Q(S', a)) - Q(S, A)|, queued if P > θ
         const auto & happened = model_.at(step.state).at(step.action);
         queue(step.state, step.action,
               std::abs(td_error(step.state, step.action, happened, policy_map)));
@@ -429,7 +460,7 @@ value_type prioritized_sweeping<state_class,action_class,markov_chain,value_type
         return value_type(0);
     }
     auto queued = found->second.find(a_t);
-    return queued == found->second.end() ? value_type(0) : queued->second->priority;
+    return queued == found->second.end() ? value_type(0) : queued->second.priority;
 }
 
 template <class state_class,

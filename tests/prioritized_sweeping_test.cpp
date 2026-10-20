@@ -325,6 +325,63 @@ TEST_CASE("prioritized_sweeping: sweeping back along two paths", "[prioritized_s
     REQUIRE(learner.updates() == 3);
 }
 
+/// verifies that a move worth exactly 0 counts in max(Q(s, a)), though it is never worth an update
+TEST_CASE("prioritized_sweeping: a move worth 0 counts in the best value of its state", "[prioritized_sweeping][regression]")
+{
+    // α = 1, γ = 0.9, n = 5. In b, x ends the game with r = 0 and y with r = -1, and a leads from s to b
+    // with r = 0, so Q(s, a) = 0 + 0.9 * max(Q(b, x), Q(b, y)) = 0.9 * max(0, -1) = 0.
+    // (b, x) has nothing to learn (its error is 0), yet it must be stored, or the best value of b would be -1
+    // and Q(s, a) would be -0.9
+    SECTION("x seen first") {
+        learner_type learner(1.0, 0.9, 5);
+        policy memory;
+        learner(episode {{state(0, "b"), action("x")}}, memory);
+        learner(episode {{state(-1, "b"), action("y")}}, memory);
+        learner(episode {{state(0, "s"), action("a")}, {state(0, "b"), action("x")}}, memory);
+        REQUIRE(memory.value(state("b"), action("x")) == Approx(0));
+        REQUIRE(memory.value(state("b"), action("y")) == Approx(-1));
+        REQUIRE(memory.value(state("s"), action("a")) == Approx(0));
+        REQUIRE(memory.best_value(state("b")) == Approx(0));
+    }
+    // the other way round: Q(s, a) = -0.9 is learnt whilst only y is known in b; then x, worth 0, raises
+    // the best value of b, so (s, a) is queued again (priority |0 + 0.9 * 0 - (-0.9)| = 0.9) and learns 0
+    SECTION("x seen last") {
+        learner_type learner(1.0, 0.9, 5);
+        policy memory;
+        learner(episode {{state(-1, "b"), action("y")}}, memory);
+        learner(episode {{state(0, "s"), action("a")}, {state(-1, "b"), action("y")}}, memory);
+        REQUIRE(memory.value(state("s"), action("a")) == Approx(-0.9));
+        learner(episode {{state(0, "b"), action("x")}}, memory);
+        REQUIRE(memory.value(state("s"), action("a")) == Approx(0).margin(1e-12));
+        REQUIRE(memory.best_value(state("b")) == Approx(0));
+    }
+}
+
+/// verifies that a copy of a learner has a queue of its own, and outlives the original
+TEST_CASE("prioritized_sweeping: a copy of the learner keeps its own queue", "[prioritized_sweeping][regression]")
+{
+    // no planning whilst learning, so the corridor's last move stays queued (priority 1)
+    learner_type * original = new learner_type(1.0, 0.9, 0);
+    policy memory;
+    (*original)(corridor(), memory);
+    REQUIRE(original->queued() == 1);
+    learner_type copy = *original;
+    // the original is gone: the copy must not depend on anything of it
+    delete original;
+    REQUIRE(copy.queued() == 1);
+    REQUIRE(copy.priority(state("s3"), action("right")) == Approx(1));
+    // raising the priority of the queued move replaces its entry, in the copy's own queue
+    copy(episode {{state(3, "s3"), action("right")}}, memory);
+    REQUIRE(copy.queued() == 1);
+    REQUIRE(copy.priority(state("s3"), action("right")) == Approx(3));
+    // and planning sweeps the reward back along the corridor, as in the first test
+    copy.planning_steps = 10;
+    copy.plan(memory);
+    REQUIRE(copy.queued() == 0);
+    REQUIRE(memory.value(state("s3"), action("right")) == Approx(3));
+    REQUIRE(memory.value(state("s0"), action("right")) == Approx(3 * 0.9 * 0.9 * 0.9));
+}
+
 /// verifies that a cut-short episode's last link is neither learnt nor remembered
 TEST_CASE("prioritized_sweeping: the last link of a cut-short episode is not learnt", "[prioritized_sweeping]")
 {
