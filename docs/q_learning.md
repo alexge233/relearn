@@ -126,8 +126,11 @@ that is the actions it has learnt a value for (and 0 if there are none yet). The
 for a state is worth less than 0: then relearn's target is lower than the book's, until the other actions have
 been tried. Both end up with the same values, and since a lower target makes the agent explore a little less,
 it does no harm in the tasks of this library (on Cliff Walking, for example, it learns the same path). The same
-holds for every relearn learner that takes a maximum: `q_probabilistic`, Dyna-Q, Double Q-Learning, Expected
-SARSA without its probabilities, Watkins's Q(λ) and the greedy test of off-policy Monte Carlo.
+holds for `q_probabilistic`, Dyna-Q, Expected SARSA without its probabilities, Watkins's Q(λ) and the greedy test
+of off-policy Monte Carlo. Double Q-Learning is different: it picks among the actions known to either estimate,
+or taken next in the episode, counting 0 for those an estimate has not stored, and values its pick with the other
+estimate, so its target can come out higher, not only lower (have a look at
+[double_q_learning.md](double_q_learning.md#in-relearn)).
 (Dyna-Q+ is given every legal action, and plans the ones not tried yet, so they soon have values of their own.)
 
 ## Q-Learning for non-deterministic systems
