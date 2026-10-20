@@ -24,6 +24,9 @@ Currently the library implements the following algorithms, each one explained in
 - **TD(0)** and **n-step TD** prediction (`n_step_td`), and **n-step SARSA** (`n_step_sarsa`), which learn from
   the next n rewards and then the value of the state reached, anywhere between one-step TD and Monte Carlo,
   see [docs/n_step.md](docs/n_step.md)
+- **TD(λ)** (`td_lambda`), **SARSA(λ)** (`sarsa_lambda`) and **Watkins's Q(λ)** (`watkins_q_lambda`), whose
+  eligibility traces share every TD error with the moves that led to it, accumulating or replacing,
+  see [docs/eligibility_traces.md](docs/eligibility_traces.md)
 - **schedules** for the learning rate and the exploration rate, so that each one can *decay* as the agent learns
   (`polynomial_decay`, `exponential_decay` and `linear_decay`), see [docs/schedules.md](docs/schedules.md).
   Do bear in mind that `q_learning`, `sarsa`, `expected_sarsa`, `double_q_learning` and `n_step_sarsa` can each decay the learning rate
@@ -128,6 +131,7 @@ There is nothing to build! This is a header-only library, you only need the `src
 | `relearn/dyna.hpp` | `dyna_q` |
 | `relearn/monte_carlo.hpp` | `monte_carlo` and `off_policy_monte_carlo` |
 | `relearn/n_step.hpp` | `n_step_sarsa`, and `n_step_td` (TD(0) when n = 1) |
+| `relearn/eligibility_traces.hpp` | `sarsa_lambda`, `td_lambda` and `watkins_q_lambda`, and their `eligibility_traces` |
 
 Each one includes whatever it needs, so if you only use one learner (e.g., on a small board, where every byte
 and every second of compiling counts) feel free to include just that one, `#include "relearn/q_learning.hpp"`.
@@ -361,6 +365,7 @@ auto r = games::play_online(game, agent, learner, memory, 1000);
 
 The n-step learners need the last n steps after each step, not just the last one, so give `play_online` their n:
 `games::play_online(game, agent, learner, memory, 1000, learner.n)` (have a look at [docs/n_step.md](docs/n_step.md)).
+The learners with eligibility traces learn a whole episode at a time, so use `games::play` with them.
 
 | Game | Source | Learnt with | What it shows |
 |---|---|---|---|
@@ -371,10 +376,12 @@ The n-step learners need the last n steps after each step, not just the last one
 | `windy_gridworld` | S&B 6.5, Ex. 6.10 | both Q-Learnings | Steady wind: the 15-move path. Random wind: `q_probabilistic`, and `q_learning` with a learning rate that decays per pair, find the best policy, whereas `q_learning` with α = 0.5 does not |
 | `random_walk` | S&B 6.2, 7.1 | `q_probabilistic` | Prediction, with the learnt values next to the exact ones |
 | `random_walk_td` | S&B 6.2, 7.1 | `n_step_td`, `monte_carlo` | TD(0) learns faster than Monte Carlo (Figure 6.2), and an intermediate n is best (Figure 7.2) |
+| `random_walk_lambda` | S&B 12.1, 12.2 | `td_lambda` | An intermediate λ is best (Figure 12.6), and offline TD(λ) learns exactly what the λ-return does |
 | `maximization_bias` | S&B 6.7 | `q_learning`, `double_q_learning` | Q-Learning's overestimation, which Double Q-Learning removes (Figure 6.5) |
 | `gamblers_problem` | S&B 4.3 | `q_probabilistic` | Values that match the exact solution |
 | `dyna_maze` | S&B 8.1 to 8.3 | `dyna_q` | Planning learns a maze in far fewer episodes (Figure 8.2), and Dyna-Q+ copes with mazes that change (Figures 8.4, 8.5) |
 | `dyna_maze_n_step` | S&B 7.2, 8.1 | `n_step_sarsa` | The first episode teaches n-step SARSA its last n moves (Figure 7.4), so a larger n learns the maze faster |
+| `dyna_maze_lambda` | S&B 12.7, 12.10 | `sarsa_lambda`, `watkins_q_lambda` | With replacing traces, one episode is enough to find the goal again; accumulating traces get lost in the loops |
 | `tic_tac_toe` | S&B 1.5 | `q_learning` | Against a random or a perfect (minimax) opponent |
 | `frozen_lake` | Gymnasium | `q_probabilistic` | Slippery ice, where the learnt 4x4 policy is optimal |
 | `cart_pole` | Gymnasium | `q_learning` | A continuous state, cut into boxes (`games::discretised`) |
@@ -392,13 +399,12 @@ AI-generated contributions are welcome, as long as they have been reviewed and a
 
 # TODO
 
-1. eligibility traces: TD(λ), SARSA(λ) and Watkins's Q(λ)
-2. REINFORCE, REINFORCE with a baseline, and Actor-Critic, which learn the policy itself (a new short corridor game)
-3. the R-Learning continuous algorithm, for tasks that never end (a new access-control queue game)
-4. UCB and gradient bandits (`bandit`)
-5. Monte Carlo Tree Search (`tic_tac_toe`)
-6. prioritized sweeping (`dyna_maze`), and policy iteration and value iteration in the library
-7. watch the agents play: a `--watch` mode for the examples, with one drawing hook for two views
+1. REINFORCE, REINFORCE with a baseline, and Actor-Critic, which learn the policy itself (a new short corridor game)
+2. the R-Learning continuous algorithm, for tasks that never end (a new access-control queue game)
+3. UCB and gradient bandits (`bandit`)
+4. Monte Carlo Tree Search (`tic_tac_toe`)
+5. prioritized sweeping (`dyna_maze`), and policy iteration and value iteration in the library
+6. watch the agents play: a `--watch` mode for the examples, with one drawing hook for two views
    - in the terminal, as good old ASCII art
    - in a window, as retro pixel art: 2D, drawn at a low resolution and scaled up with sharp pixels,
      with sprites and a 16-colour palette defined in the code (so no asset files), a pixel font, optional
