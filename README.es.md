@@ -23,6 +23,9 @@ Actualmente la biblioteca implementa los siguientes algoritmos, cada uno explica
 - **Dyna-Q** y **Dyna-Q+** (`dyna_q`), que recuerdan todos los movimientos que hacen y los repasan mentalmente (planificación)
   para aprender mucho más de la misma experiencia, mientras que Dyna-Q+ además vuelve a comprobar los movimientos que
   no hace desde hace tiempo, por si el mundo ha cambiado, ver [docs/dyna.md](docs/dyna.md)
+- **control Monte Carlo** (`monte_carlo` y `off_policy_monte_carlo`), que espera a que termine cada episodio
+  y aprende de las recompensas que realmente siguieron, con inicios exploratorios, on-policy (ε-Greedy), u off-policy
+  con muestreo por importancia, ver [docs/monte_carlo.md](docs/monte_carlo.md)
 - **schedules** (pautas de decaimiento) para la tasa de aprendizaje y la tasa de exploración, de modo que cada una pueda *decaer*
   a medida que el agente aprende (`polynomial_decay`, `exponential_decay` y `linear_decay`), ver [docs/schedules.md](docs/schedules.md).
   Ten en cuenta que `q_learning`, `sarsa`, `expected_sarsa` y `double_q_learning` pueden hacer decaer, cada uno,
@@ -125,6 +128,7 @@ __nota__: la serialización es opcional, y necesita Boost (ver [activar la seria
 | `relearn/sarsa.hpp` | `sarsa` y `expected_sarsa` |
 | `relearn/double_q_learning.hpp` | `double_q_learning` |
 | `relearn/dyna.hpp` | `dyna_q` |
+| `relearn/monte_carlo.hpp` | `monte_carlo` y `off_policy_monte_carlo` |
 
 Cada uno incluye todo lo que necesita, así que si solo usas un algoritmo de aprendizaje (p. ej., en una placa pequeña, donde
 cuenta cada byte y cada segundo de compilación) puedes incluir solo ese, `#include "relearn/q_learning.hpp"`.
@@ -207,6 +211,7 @@ Los juegos muestran una forma de escribirlos (`games::greedy` y `games::epsilon_
 El ejemplo de `blackjack` es diferente: el blackjack es un juego de *azar*, donde la misma decisión puede ganar o perder
 según las cartas que salgan después, así que usa `q_probabilistic`, que aprende la recompensa esperada y la
 probabilidad de cada transición a partir de las partidas que juega.
+El ejemplo `blackjack_monte_carlo` aprende el mismo juego con Monte Carlo, de tres formas distintas.
 
 ## Gridworld
 
@@ -359,6 +364,7 @@ auto r = games::play_online(game, agent, learner, memory, 1000);
 |---|---|---|---|
 | `bandit` | S&B 2.3 | `q_probabilistic` | Exploración frente a explotación, greedy frente a ε-Greedy (Figura 2.2) |
 | `blackjack` | S&B 5.1 | `q_probabilistic` | Un juego de azar, donde la estrategia aprendida coincide con la Figura 5.2 |
+| `blackjack_monte_carlo` | S&B 5.3, 5.4, 5.7 | `monte_carlo`, `off_policy_monte_carlo` | El mismo juego aprendido de partidas enteras: con inicios exploratorios, on-policy, y off-policy a partir de partidas jugadas al azar |
 | `cliff_walking` | S&B 6.6 | `q_learning`, `sarsa`, `expected_sarsa` | On-policy frente a off-policy: Q-Learning aprende el camino por el borde del acantilado, SARSA uno más seguro, y los dos SARSA ganan más mientras exploran |
 | `windy_gridworld` | S&B 6.5, Ej. 6.10 | los dos Q-Learning | Viento constante: el camino de 15 movimientos. Viento aleatorio: `q_probabilistic`, y `q_learning` con una tasa de aprendizaje que decae por par, encuentran la mejor política, mientras que `q_learning` con α = 0.5 no |
 | `random_walk` | S&B 6.2, 7.1 | `q_probabilistic` | Predicción, con los valores aprendidos junto a los exactos |
@@ -382,15 +388,14 @@ Las contribuciones generadas con IA son bienvenidas, siempre que una persona las
 
 # Pendiente
 
-1. control Monte Carlo: con inicios exploratorios (exploring starts), on-policy, y off-policy con muestreo por importancia (`blackjack`)
-2. predicción TD(0), y TD de n pasos y SARSA de n pasos (`random_walk`)
-3. trazas de elegibilidad: TD(λ), SARSA(λ) y Q(λ) de Watkins
-4. REINFORCE, REINFORCE con línea base, y Actor-Critic, que aprenden la propia política (un nuevo juego, el pasillo corto)
-5. el algoritmo continuo R-Learning, para tareas que no terminan nunca (un nuevo juego, la cola de control de acceso)
-6. UCB y bandidos de gradiente (`bandit`)
-7. Monte Carlo Tree Search (`tic_tac_toe`)
-8. prioritized sweeping (`dyna_maze`), y policy iteration y value iteration en la biblioteca
-9. ver jugar a los agentes: un modo `--watch` para los ejemplos, con una sola función de dibujo para dos vistas
+1. predicción TD(0), y TD de n pasos y SARSA de n pasos (`random_walk`)
+2. trazas de elegibilidad: TD(λ), SARSA(λ) y Q(λ) de Watkins
+3. REINFORCE, REINFORCE con línea base, y Actor-Critic, que aprenden la propia política (un nuevo juego, el pasillo corto)
+4. el algoritmo continuo R-Learning, para tareas que no terminan nunca (un nuevo juego, la cola de control de acceso)
+5. UCB y bandidos de gradiente (`bandit`)
+6. Monte Carlo Tree Search (`tic_tac_toe`)
+7. prioritized sweeping (`dyna_maze`), y policy iteration y value iteration en la biblioteca
+8. ver jugar a los agentes: un modo `--watch` para los ejemplos, con una sola función de dibujo para dos vistas
    - en la terminal, con el clásico arte ASCII de siempre
    - en una ventana, con pixel art retro: 2D, dibujado a baja resolución y ampliado con píxeles nítidos,
      con sprites y una paleta de 16 colores definidos en el código (sin archivos de recursos), una fuente pixelada,
