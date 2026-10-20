@@ -43,9 +43,9 @@ jobs:
         run: |
           cd build
           for game in access_control bandit bandit_ucb_gradient blackjack blackjack_monte_carlo cart_pole \
-                      cliff_walking dyna_maze dyna_maze_prioritized dynamic_programming frozen_lake \
-                      gamblers_problem maximization_bias mountain_car random_walk short_corridor tic_tac_toe \
-                      tic_tac_toe_mcts windy_gridworld; do
+                      cliff_walking dyna_maze dyna_maze_n_step dyna_maze_prioritized dynamic_programming \
+                      frozen_lake gamblers_problem maximization_bias mountain_car random_walk random_walk_td \
+                      short_corridor tic_tac_toe tic_tac_toe_mcts windy_gridworld; do
             echo "::group::$game"
             timeout 300 ./ex_$game
             echo "::endgroup::"
@@ -99,9 +99,9 @@ jobs:
         run: |
           cd build
           for example in gridworld_online gridworld_offline access_control bandit bandit_ucb_gradient \
-                         blackjack blackjack_monte_carlo cart_pole cliff_walking dyna_maze \
+                         blackjack blackjack_monte_carlo cart_pole cliff_walking dyna_maze dyna_maze_n_step \
                          dyna_maze_prioritized dynamic_programming frozen_lake gamblers_problem \
-                         maximization_bias mountain_car random_walk short_corridor tic_tac_toe \
+                         maximization_bias mountain_car random_walk random_walk_td short_corridor tic_tac_toe \
                          tic_tac_toe_mcts windy_gridworld; do
             echo "::group::$example"
             ./ex_$example
