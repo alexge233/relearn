@@ -175,6 +175,21 @@ TEST_CASE("softmax_policy: the probabilities of the preferences", "[policy_gradi
     preferences.update(state("t"), action("left"), 999);
     REQUIRE(pi.probability(state("t"), action("right"), preferences) == Approx(1 / (1 + std::exp(-1.0))));
     REQUIRE(pi.probability(state("t"), action("left"), preferences) == Approx(1 / (1 + std::exp(1.0))));
+    // and the highest preference is the one taken away, whichever action it belongs to: with 0 and 1000,
+    // taking away the first one (0) would leave e^1000, and π would be inf / inf, not a number
+    preferences.update(state("u"), action("right"), 1000);
+    preferences.update(state("u"), action("left"), 0);
+    preferences.update(state("w"), action("right"), 0);
+    preferences.update(state("w"), action("left"), 1000);
+    for (const auto & s : {"u", "w"}) {
+        const auto p_right = pi.probability(state(s), action("right"), preferences);
+        const auto p_left  = pi.probability(state(s), action("left"), preferences);
+        REQUIRE_FALSE(std::isnan(p_right));
+        REQUIRE_FALSE(std::isnan(p_left));
+        REQUIRE(p_right + p_left == Approx(1));
+    }
+    REQUIRE(pi.probability(state("u"), action("right"), preferences) == Approx(1));
+    REQUIRE(pi.probability(state("w"), action("left"), preferences) == Approx(1));
 }
 
 /// verifies ∇ ln π, and the step along it
@@ -346,6 +361,21 @@ TEST_CASE("actor_critic: step by step, and episodes cut short", "[policy_gradien
     // step 1, the end of the episode
     stepwise(episode {{state(2, "s1"), action("left")}}, stepwise_preferences, true);
     REQUIRE(stepwise.discount() == 1);
+    for (const auto & s : {"s0", "s1"}) {
+        REQUIRE(stepwise.value(state(s)) == Approx(whole.value(state(s))));
+        for (const auto & a : {"left", "right"}) {
+            REQUIRE(stepwise_preferences.value(state(s), action(a)) ==
+                    Approx(whole_preferences.value(state(s), action(a))));
+        }
+    }
+    // the same episode again, now that v(s1) = 1: step 0 bootstraps from it,
+    // δ = 1 + 0.5 * v(s1) - v(s0) = 1 + 0.5 - 0.5 = 1, as in the second episode of the test above
+    whole(episode {{state(1, "s0"), action("right")},
+                   {state(2, "s1"), action("left")}}, whole_preferences);
+    stepwise(episode {{state(1, "s0"), action("right")},
+                      {state(0, "s1"), action("right")}}, stepwise_preferences, false);
+    stepwise(episode {{state(2, "s1"), action("left")}}, stepwise_preferences, true);
+    REQUIRE(stepwise.value(state("s0")) == Approx(1));
     for (const auto & s : {"s0", "s1"}) {
         REQUIRE(stepwise.value(state(s)) == Approx(whole.value(state(s))));
         for (const auto & a : {"left", "right"}) {

@@ -100,7 +100,7 @@ public:
     /**
      * @return the value of the start, v(S), of the policy which goes right with probability
      *         @param right_first in the first cell, @param right_second in the second, and
-     *         @param right_third in the third (each of them above 0 and below 1)
+     *         @param right_third in the third (the end must be reachable: p1 and p3 above 0, p2 below 1)
      *
      * With p1, p2, p3 the probabilities of right, the values of the three cells satisfy
      *     v1 = -1 + p1 v2 + (1 - p1) v1
