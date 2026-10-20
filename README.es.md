@@ -26,6 +26,9 @@ Actualmente la biblioteca implementa los siguientes algoritmos, cada uno explica
 - **control Monte Carlo** (`monte_carlo` y `off_policy_monte_carlo`), que espera a que termine cada episodio
   y aprende de las recompensas que realmente siguieron, con inicios exploratorios, on-policy (ε-Greedy), u off-policy
   con muestreo por importancia, ver [docs/monte_carlo.md](docs/monte_carlo.md)
+- **Monte Carlo Tree Search** (`mcts`), con UCT, que planifica cada movimiento justo antes de hacerlo: juega
+  miles de partidas en su cabeza con un modelo del juego, dedicando más de ellas a los movimientos que parecen mejores,
+  y admite dos jugadores (cada valor desde el punto de vista del jugador que movió), ver [docs/mcts.md](docs/mcts.md)
 - predicción **TD(0)** y **TD de n pasos** (`n_step_td`), y **SARSA de n pasos** (`n_step_sarsa`), que aprenden de
   las n recompensas siguientes y después del valor del estado al que llegan, en cualquier punto entre el TD de un paso
   y Monte Carlo, ver [docs/n_step.md](docs/n_step.md)
@@ -149,6 +152,7 @@ __nota__: la serialización es opcional, y necesita Boost (ver [activar la seria
 | `relearn/double_q_learning.hpp` | `double_q_learning` |
 | `relearn/dyna.hpp` | `dyna_q` |
 | `relearn/monte_carlo.hpp` | `monte_carlo` y `off_policy_monte_carlo` |
+| `relearn/mcts.hpp` | `mcts`, Monte Carlo Tree Search con UCT |
 | `relearn/n_step.hpp` | `n_step_sarsa`, y `n_step_td` (TD(0) cuando n = 1) |
 | `relearn/eligibility_traces.hpp` | `sarsa_lambda`, `td_lambda` y `watkins_q_lambda`, y sus `eligibility_traces` |
 | `relearn/policy_gradient.hpp` | `softmax_policy`, `reinforce`, `reinforce_with_baseline` y `actor_critic` |
@@ -241,6 +245,8 @@ El ejemplo de `blackjack` es diferente: el blackjack es un juego de *azar*, dond
 según las cartas que salgan después, así que usa `q_probabilistic`, que aprende la recompensa esperada y la
 probabilidad de cada transición a partir de las partidas que juega.
 El ejemplo `blackjack_monte_carlo` aprende el mismo juego con Monte Carlo, de tres formas distintas.
+El ejemplo `tic_tac_toe_mcts` no aprende nada: planifica cada movimiento con Monte Carlo Tree Search,
+usando un modelo del juego (`examples/games/tic_tac_toe_model.hpp`).
 
 ## Gridworld
 
@@ -414,6 +420,7 @@ Los algoritmos con trazas de elegibilidad aprenden un episodio entero cada vez, 
 | `access_control` | S&B 1.ª ed. 6.7, 2.ª ed. 10.2 | `r_learning`, `differential_sarsa` | Una tarea que no termina nunca: aceptar o rechazar clientes para ganar lo máximo por paso, frente a la política óptima exacta (Figuras 6.17, 10.5) |
 | `dyna_maze_prioritized` | S&B 8.4 | `prioritized_sweeping`, `dyna_q` | En laberintos cada vez más grandes, prioritized sweeping necesita muchas menos actualizaciones que Dyna-Q para encontrar un buen camino (Ejemplo 8.4) |
 | `tic_tac_toe` | S&B 1.5 | `q_learning` | Contra un rival al azar o perfecto (minimax) |
+| `tic_tac_toe_mcts` | S&B 8.11 | `mcts` | Planifica cada movimiento, como X o como O: nunca pierde contra un rival perfecto, y le gana a uno al azar |
 | `frozen_lake` | Gymnasium | `q_probabilistic` | Hielo resbaladizo, donde la política aprendida en 4x4 es óptima |
 | `cart_pole` | Gymnasium | `q_learning` | Un estado continuo, dividido en casillas (`games::discretised`) |
 | `mountain_car` | Gymnasium | `q_learning` | Un estado continuo, explorado con valores iniciales optimistas |
@@ -430,8 +437,7 @@ Las contribuciones generadas con IA son bienvenidas, siempre que una persona las
 
 # Pendiente
 
-1. Monte Carlo Tree Search (`tic_tac_toe`)
-2. ver jugar a los agentes: un modo `--watch` para los ejemplos, con una sola función de dibujo para dos vistas
+1. ver jugar a los agentes: un modo `--watch` para los ejemplos, con una sola función de dibujo para dos vistas
    - en la terminal, con el clásico arte ASCII de siempre
    - en una ventana, con pixel art retro: 2D, dibujado a baja resolución y ampliado con píxeles nítidos,
      con sprites y una paleta de 16 colores definidos en el código (sin archivos de recursos), una fuente pixelada,
