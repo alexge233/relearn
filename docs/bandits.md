@@ -101,7 +101,7 @@ learner.prng.seed(42);                    // optional: the seed of the ties, to 
 
 auto a = learner.choose(state(0), arms, memory);       // A_t
 // ... pull a, and receive the reward r ...
-learner(episode {{state(r, 0), a}}, memory);           // N(a) and Q(a)
+learner(episode { {state(r, 0), a} }, memory);         // N(a) and Q(a)
 ```
 
 or in short, `relearn::ucb<state,action> learner(2.0, 42);` (c and the seed).
@@ -219,7 +219,7 @@ learner.prng.seed(42);                              // optional: the seed of the
 
 auto a = learner.choose(state(0), arms, preferences);          // A_t, drawn from π
 // ... pull a, and receive the reward r ...
-learner(episode {{state(r, 0), a}}, preferences, arms);        // every H(a) moves
+learner(episode { {state(r, 0), a} }, preferences, arms);      // every H(a) moves
 ```
 
 or in short, `relearn::gradient_bandit<state,action> learner(0.1, true, 42);` (α, the baseline and the seed).

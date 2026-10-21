@@ -607,3 +607,696 @@ TEST_CASE("n_step_sarsa: a larger n learns the maze faster in the early episodes
     REQUIRE(four < 0.75 * one);
     REQUIRE(eight < 0.75 * one);
 }
+
+/********************************************************************************
+ ***  n-step Expected SARSA, off-policy n-step SARSA, tree backup and Q(σ)
+ ***  (Sutton & Barto, Sections 7.2 to 7.6)
+ ********************************************************************************/
+
+namespace
+{
+using distribution = std::vector<std::pair<action,double>>;
+
+/**
+ * @brief π for the worked examples: in s1, b and d with 0.5 each; in s2, c with 0.25 and e with 0.75;
+ *        elsewhere, the action of the episode for sure
+ * @param s is the state
+ * @return π(· | s)
+ */
+distribution worked_pi(const state & s)
+{
+    if (s.trait() == "s1") {
+        return {{action("b"), 0.5}, {action("d"), 0.5}};
+    }
+    if (s.trait() == "s2") {
+        return {{action("c"), 0.25}, {action("e"), 0.75}};
+    }
+    return {{action("a"), 1.0}};
+}
+
+/// @brief b for the worked examples: every action with probability 0.5 @return 0.5
+double worked_b(const state &,
+                const action &)
+{
+    return 0.5;
+}
+
+/// @return the episode of the worked examples: (s0, a, r = 1), (s1, b, r = 0), (s2, c, r = 2), which ends
+episode worked_episode()
+{
+    return episode {{state(1, "s0"), action("a")},
+                    {state(0, "s1"), action("b")},
+                    {state(2, "s2"), action("c")}};
+}
+
+/// @return the values before the worked examples: Q(s1, d) = 2, Q(s2, c) = 4, Q(s2, e) = 8, and 0 for the rest
+policy worked_values()
+{
+    policy memory;
+    memory.update(state("s1"), action("d"), 2);
+    memory.update(state("s2"), action("c"), 4);
+    memory.update(state("s2"), action("e"), 8);
+    return memory;
+}
+
+/**
+ * @brief random episodes of the corridor, played by an agent that moves right with 0.7, left with 0.3
+ * @param count is the number of episodes
+ * @param seed seeds the corridor and the agent
+ * @return the episodes, every other one cut short after 4 moves, with whether each really ended
+ */
+std::vector<std::pair<corridor_types::episode,bool>> corridor_episodes(int count,
+                                                                       unsigned int seed)
+{
+    corridor game(seed);
+    std::mt19937 prng(seed + 1);
+    std::bernoulli_distribution right(0.7);
+    auto agent = [&](const int &,
+                     const std::vector<unsigned int> &) {
+        return right(prng) ? 1u : 0u;
+    };
+    std::vector<std::pair<corridor_types::episode,bool>> episodes;
+    for (int i = 0; i < count; i++) {
+        auto r = games::play(game, agent, i % 2 == 0 ? 4 : 1000);
+        episodes.push_back({r.episode, r.terminated});
+    }
+    return episodes;
+}
+
+/// @brief b of the corridor's agent above @return 0.7 for right, 0.3 for left
+double corridor_b(const corridor_types::state &,
+                  const corridor_types::action & a)
+{
+    return a.trait() == 1 ? 0.7 : 0.3;
+}
+
+/// @brief a fixed π for the corridor: right with 0.6, left with 0.4 @return π(· | s)
+std::vector<std::pair<corridor_types::action,double>> corridor_pi(const corridor_types::state &)
+{
+    return {{corridor_types::action(0), 0.4}, {corridor_types::action(1), 0.6}};
+}
+
+/**
+ * @brief the largest difference between two learnt policies of the corridor
+ * @return the largest |Q1(s,a) - Q2(s,a)| over the cells 0 ... 3 and both moves
+ */
+double largest_difference(const corridor_types::policy & one,
+                          const corridor_types::policy & two)
+{
+    double largest = 0;
+    for (int s = 0; s < 4; s++) {
+        for (unsigned int a = 0; a < 2; a++) {
+            largest = std::max(largest, std::fabs(one.value(corridor_types::state(s), corridor_types::action(a)) -
+                                                  two.value(corridor_types::state(s), corridor_types::action(a))));
+        }
+    }
+    return largest;
+}
+
+/**
+ * @brief learn the corridor online, playing with @param play_right (the probability of moving right),
+ *        with α = α0/k^0.6 for the k-th update of each pair, γ = 0.9, for 20000 episodes
+ * @param learner is the learner, to which @param prepare gives π (and b) on the values being learnt
+ * @param alpha_0 is α0, the first step size of each pair
+ * @param n is its number of steps, the window of `games::play_online`
+ * @param seed seeds the corridor and the agent
+ * @return the learnt policy
+ */
+template <class learner_type,
+          class preparer>
+corridor_types::policy learn_corridor_with(learner_type learner,
+                                           preparer && prepare,
+                                           double play_right,
+                                           double alpha_0,
+                                           unsigned int n,
+                                           unsigned int seed)
+{
+    corridor game(seed);
+    std::mt19937 prng(seed + 100);
+    std::bernoulli_distribution right(play_right);
+    corridor_types::policy memory;
+    learner.learning_rate = relearn::polynomial_decay<>(alpha_0, 0.6);
+    prepare(learner, memory);
+    auto agent = [&](const int &,
+                     const std::vector<unsigned int> &) {
+        return right(prng) ? 1u : 0u;
+    };
+    for (int k = 1; k <= 20000; k++) {
+        games::play_online(game, agent, learner, memory, 1000, n);
+    }
+    return memory;
+}
+} // namespace
+
+/// verifies n-step Expected SARSA's returns worked out by hand, on-policy and off-policy
+TEST_CASE("n_step_expected_sarsa: n-step returns worked out by hand", "[n_step][expected_sarsa]")
+{
+    // n = 2, γ = 0.5, α = 0.5; V̄(s2) = 0.25 * 4 + 0.75 * 8 = 7 before the episode
+    //    τ = 0: G = r0 + γ r1 + γ² V̄(s2) = 1 + 0 + 0.25 * 7 = 2.75,  Q(s0, a) = 0.5 * 2.75 = 1.375
+    //    τ = 1: G = r1 + γ r2 = 0 + 0.5 * 2 = 1 (the episode ends),  Q(s1, b) = 0.5
+    //    τ = 2: G = r2 = 2,                                          Q(s2, c) = 4 + 0.5 (2 - 4) = 3
+    relearn::n_step_expected_sarsa<state,action> on(0.5, 0.5, 2, worked_pi);
+    auto memory = worked_values();
+    REQUIRE(on.expected_value(state("s2"), memory) == Approx(7));
+    REQUIRE(on.n_step_return(worked_episode(), 0, memory) == Approx(2.75));
+    REQUIRE(on.importance_ratio(worked_episode(), 0, memory) == Approx(1));
+    on(worked_episode(), memory);
+    REQUIRE(memory.value(state("s0"), action("a")) == Approx(1.375));
+    REQUIRE(memory.value(state("s1"), action("b")) == Approx(0.5));
+    REQUIRE(memory.value(state("s2"), action("c")) == Approx(3));
+    // off-policy, b = 0.5 everywhere: ρ_{τ+1:τ+n-1} has n - 1 = 1 factor
+    //    τ = 0: ρ = π(b | s1) / b = 0.5 / 0.5 = 1,      Q(s0, a) = 0.5 * 1 * 2.75 = 1.375
+    //    τ = 1: ρ = π(c | s2) / b = 0.25 / 0.5 = 0.5,   Q(s1, b) = 0.5 * 0.5 * 1 = 0.25
+    //    τ = 2: ρ = 1 (no action after a_τ in the episode),  Q(s2, c) = 3
+    relearn::n_step_expected_sarsa<state,action> off(0.5, 0.5, 2, worked_pi);
+    off.behaviour = worked_b;
+    auto off_memory = worked_values();
+    REQUIRE(off.importance_ratio(worked_episode(), 1, off_memory) == Approx(0.5));
+    REQUIRE(off.importance_ratio(worked_episode(), 2, off_memory) == Approx(1));
+    off(worked_episode(), off_memory);
+    REQUIRE(off_memory.value(state("s0"), action("a")) == Approx(1.375));
+    REQUIRE(off_memory.value(state("s1"), action("b")) == Approx(0.25));
+    REQUIRE(off_memory.value(state("s2"), action("c")) == Approx(3));
+}
+
+/// verifies off-policy n-step SARSA's ratios and updates worked out by hand
+TEST_CASE("off_policy_n_step_sarsa: ratios worked out by hand", "[n_step]")
+{
+    // n = 2, γ = 0.5, α = 0.5, b = 0.5 everywhere; the return is n-step SARSA's:
+    //    τ = 0: G = r0 + γ r1 + γ² Q(s2, c) = 1 + 0 + 0.25 * 4 = 2,
+    //           ρ_{1:2} = π(b | s1) / b * π(c | s2) / b = 1 * 0.5 = 0.5,  Q(s0, a) = 0.5 * 0.5 * 2 = 0.5
+    //    τ = 1: G = r1 + γ r2 = 1, ρ_{2:2} = 0.5 (no factor after the last step),  Q(s1, b) = 0.5 * 0.5 * 1 = 0.25
+    //    τ = 2: G = 2, ρ = 1 (no factor at all),  Q(s2, c) = 4 + 0.5 (2 - 4) = 3
+    relearn::off_policy_n_step_sarsa<state,action> sarsa(0.5, 0.5, 2, worked_pi, worked_b);
+    auto memory = worked_values();
+    REQUIRE(sarsa.n_step_return(worked_episode(), 0, memory) == Approx(2));
+    REQUIRE(sarsa.importance_ratio(worked_episode(), 0, memory) == Approx(0.5));
+    REQUIRE(sarsa.importance_ratio(worked_episode(), 1, memory) == Approx(0.5));
+    REQUIRE(sarsa.importance_ratio(worked_episode(), 2, memory) == Approx(1));
+    sarsa(worked_episode(), memory);
+    REQUIRE(memory.value(state("s0"), action("a")) == Approx(0.5));
+    REQUIRE(memory.value(state("s1"), action("b")) == Approx(0.25));
+    REQUIRE(memory.value(state("s2"), action("c")) == Approx(3));
+}
+
+/// verifies that a step π would never have played teaches nothing, and is not counted as an update
+TEST_CASE("off_policy_n_step_sarsa: a ratio of 0 is not an update", "[n_step]")
+{
+    // π takes only a, b takes a and z with 0.5 each: the step before z has ρ = 0
+    auto only_a = [](const state &) { return distribution {{action("a"), 1.0}}; };
+    relearn::off_policy_n_step_sarsa<state,action> sarsa(0.5, 1.0, 1, only_a, worked_b);
+    sarsa.learning_rate = relearn::polynomial_decay<>(1.0, 1.0);
+    policy memory;
+    sarsa(episode {{state(1, "x"), action("a")},
+                   {state(5, "y"), action("z")}}, memory);
+    // (x, a): ρ = π(z | y) / b = 0, not learnt nor counted; (y, z): ρ = 1 (no action after it), Q = 5
+    REQUIRE(memory.actions(state("x")).empty());
+    REQUIRE(sarsa.visits.count(state("x"), action("a")) == 0);
+    REQUIRE(memory.value(state("y"), action("z")) == Approx(5));
+}
+
+/// verifies that with b = π, off-policy n-step SARSA is n-step SARSA, to the last bit
+TEST_CASE("off_policy_n_step_sarsa: with b = pi it is n_step_sarsa", "[n_step]")
+{
+    auto b_is_pi = [](const corridor_types::state & s, const corridor_types::action & a) {
+        return a.trait() == 1 ? corridor_pi(s)[1].second : corridor_pi(s)[0].second;
+    };
+    for (unsigned int n : {1u, 2u, 4u}) {
+        relearn::off_policy_n_step_sarsa<corridor_types::state, corridor_types::action> off(0.3, 0.9, n, corridor_pi, b_is_pi);
+        relearn::n_step_sarsa<corridor_types::state, corridor_types::action> on(0.3, 0.9, n);
+        corridor_types::policy off_memory;
+        corridor_types::policy on_memory;
+        for (const auto & e : corridor_episodes(200, n)) {
+            off(e.first, off_memory, e.second);
+            on(e.first, on_memory, e.second);
+        }
+        INFO("n = " << n);
+        REQUIRE(largest_difference(off_memory, on_memory) == 0);
+    }
+}
+
+/// verifies tree backup's return worked out by hand
+TEST_CASE("n_step_tree_backup: n-step returns worked out by hand", "[n_step][tree_backup]")
+{
+    // n = 2, γ = 0.5, α = 0.5:
+    //    τ = 0: G_{1:2} = r1 + γ V̄(s2) = 0 + 0.5 * 7 = 3.5, then
+    //           G_{0:2} = r0 + γ π(d | s1) Q(s1, d) + γ π(b | s1) G_{1:2} = 1 + 0.5 * 1 + 0.25 * 3.5 = 2.375,
+    //           Q(s0, a) = 0.5 * 2.375 = 1.1875
+    //    τ = 1: G_{2:3} = r2 = 2 (the episode ends), then
+    //           G_{1:3} = r1 + γ π(e | s2) Q(s2, e) + γ π(c | s2) G_{2:3} = 0 + 0.5 * 6 + 0.5 * 0.25 * 2 = 3.25,
+    //           Q(s1, b) = 0.5 * 3.25 = 1.625
+    //    τ = 2: G = r2 = 2,  Q(s2, c) = 4 + 0.5 (2 - 4) = 3
+    relearn::n_step_tree_backup<state,action> tree(0.5, 0.5, 2, worked_pi);
+    auto memory = worked_values();
+    REQUIRE(tree.n_step_return(worked_episode(), 0, memory) == Approx(2.375));
+    REQUIRE(tree.n_step_return(worked_episode(), 1, memory) == Approx(3.25));
+    tree(worked_episode(), memory);
+    REQUIRE(memory.value(state("s0"), action("a")) == Approx(1.1875));
+    REQUIRE(memory.value(state("s1"), action("b")) == Approx(1.625));
+    REQUIRE(memory.value(state("s2"), action("c")) == Approx(3));
+}
+
+/// verifies that with a greedy π, tree backup follows the rewards for as long as the actions were greedy
+TEST_CASE("n_step_tree_backup: a greedy pi cuts the return at the first other action", "[n_step][tree_backup]")
+{
+    // no π given: greedy on the values stored. In y, the best action is g (worth 10), and the episode took z.
+    // n = 2, γ = 1, α = 1, so Q(x, a) is its return: G = r0 + max_a Q(y, a) = 1 + 10 = 11,
+    // whatever came after z (its reward of 100 is never used). The episode is cut short at w: only τ = 0 is learnt
+    relearn::n_step_tree_backup<state,action> tree(1.0, 1.0, 2);
+    policy memory;
+    memory.update(state("y"), action("g"), 10);
+    memory.update(state("y"), action("z"), 0);
+    tree(episode {{state(1, "x"), action("a")},
+                  {state(100, "y"), action("z")},
+                  {state(0, "w"), action("d")}}, memory, false);
+    REQUIRE(memory.value(state("x"), action("a")) == Approx(11));
+    // and when the greedy action was taken, the return follows it: r0 + r1 + max_a Q(w, a) = 1 + 100 + 0
+    policy greedy_taken;
+    greedy_taken.update(state("y"), action("g"), 10);
+    tree(episode {{state(1, "x"), action("a")},
+                  {state(100, "y"), action("g")},
+                  {state(0, "w"), action("d")}}, greedy_taken, false);
+    REQUIRE(greedy_taken.value(state("x"), action("a")) == Approx(101));
+}
+
+/// verifies the greedy π used when none is given: the actions of highest value share the probability
+TEST_CASE("n-step family: the greedy pi shares its probability between tied actions", "[n_step]")
+{
+    // in s, g and h are both worth 4, and z is worth 1: π(g | s) = π(h | s) = 0.5, and V̄(s) = 4
+    policy memory;
+    memory.update(state("s"), action("g"), 4);
+    memory.update(state("s"), action("h"), 4);
+    memory.update(state("s"), action("z"), 1);
+    auto pi = relearn::target_policy(std::function<distribution(const state &)>(), state("s"), memory);
+    REQUIRE(pi.size() == 2);
+    REQUIRE(relearn::probability_of(pi, action("g")) == Approx(0.5));
+    REQUIRE(relearn::probability_of(pi, action("h")) == Approx(0.5));
+    REQUIRE(relearn::probability_of(pi, action("z")) == 0);
+    relearn::n_step_expected_sarsa<state,action> expected(0.5, 1.0, 1);
+    REQUIRE(expected.expected_value(state("s"), memory) == Approx(4));
+    // a state never seen has no actions stored: π is empty, and V̄ is 0
+    REQUIRE(relearn::target_policy(std::function<distribution(const state &)>(), state("new"), memory).empty());
+    REQUIRE(expected.expected_value(state("new"), memory) == 0);
+}
+
+/// verifies Q(σ)'s returns worked out by hand, on-policy and off-policy
+TEST_CASE("n_step_q_sigma: n-step returns worked out by hand", "[n_step][q_sigma]")
+{
+    // n = 2, γ = 0.5, α = 0.5, σ = 0.5, on-policy (ρ = 1):
+    //    τ = 0: G_{2:2} = Q(s2, c) = 4, then
+    //           G_{1:2} = r1 + γ V̄(s2) + γ (σ + (1 - σ) 0.25)(G_{2:2} - Q(s2, c)) = 0 + 3.5 + 0 = 3.5,
+    //           G_{0:2} = r0 + γ V̄(s1) + γ (σ + (1 - σ) 0.5)(G_{1:2} - Q(s1, b)) = 1 + 0.5 * 1 + 0.5 * 0.75 * 3.5 = 2.8125,
+    //           Q(s0, a) = 0.5 * 2.8125 = 1.40625
+    //    τ = 1: G_{2:3} = r2 = 2, then G_{1:3} = 0 + 3.5 + 0.5 * 0.625 * (2 - 4) = 2.875,  Q(s1, b) = 1.4375
+    //    τ = 2: G = r2 = 2,  Q(s2, c) = 3
+    relearn::n_step_q_sigma<state,action> q_sigma(0.5, 0.5, 2, 0.5, worked_pi);
+    auto memory = worked_values();
+    REQUIRE(q_sigma.n_step_return(worked_episode(), 0, memory) == Approx(2.8125));
+    q_sigma(worked_episode(), memory);
+    REQUIRE(memory.value(state("s0"), action("a")) == Approx(1.40625));
+    REQUIRE(memory.value(state("s1"), action("b")) == Approx(1.4375));
+    REQUIRE(memory.value(state("s2"), action("c")) == Approx(3));
+    // σ = 1, off-policy with b(b | s1) = 0.25 and 0.5 elsewhere: ρ = 0.5 / 0.25 = 2 in s1, 0.25 / 0.5 = 0.5 in s2
+    //    τ = 0: G_{1:2} = 3.5 + 0.5 * 0.5 * (4 - 4) = 3.5,  G_{0:2} = 1 + 0.5 * 1 + 0.5 * 2 * (3.5 - 0) = 5
+    //    (on-policy, ρ = 1, it would be 3.25)
+    relearn::n_step_q_sigma<state,action> sampled(0.5, 0.5, 2, 1.0, worked_pi);
+    sampled.behaviour = [](const state & s, const action & a) {
+        return (s.trait() == "s1" && a.trait() == "b") ? 0.25 : 0.5;
+    };
+    REQUIRE(sampled.n_step_return(worked_episode(), 0, worked_values()) == Approx(5));
+    // σ chosen per step: σ = 1 in s1 and 0 in s2 gives, for τ = 0, G_{1:2} = 3.5 and
+    // G_{0:2} = 1 + 0.5 * 1 + 0.5 * 1 * 3.5 = 3.25 as well (the σ of s2 meets G - Q = 0)
+    relearn::n_step_q_sigma<state,action> mixed(0.5, 0.5, 2, 0.5, worked_pi);
+    mixed.sigma_of = [](const state & s, const action &) { return s.trait() == "s1" ? 1.0 : 0.0; };
+    REQUIRE(mixed.n_step_return(worked_episode(), 0, worked_values()) == Approx(3.25));
+}
+
+/// verifies that σ = 0 is tree backup, and that n = 1 is Expected SARSA whatever σ is, to rounding
+TEST_CASE("n_step_q_sigma: sigma = 0 is tree backup, n = 1 is expected_sarsa", "[n_step][q_sigma][tree_backup]")
+{
+    // the same corridor episodes (half of them cut short), a fixed π, learnt by each
+    for (unsigned int n : {1u, 2u, 4u}) {
+        relearn::n_step_q_sigma<corridor_types::state, corridor_types::action> q_zero(0.3, 0.9, n, 0.0, corridor_pi);
+        relearn::n_step_tree_backup<corridor_types::state, corridor_types::action> tree(0.3, 0.9, n, corridor_pi);
+        corridor_types::policy zero_memory;
+        corridor_types::policy tree_memory;
+        for (const auto & e : corridor_episodes(200, n)) {
+            q_zero(e.first, zero_memory, e.second);
+            tree(e.first, tree_memory, e.second);
+        }
+        INFO("n = " << n);
+        REQUIRE(largest_difference(zero_memory, tree_memory) < 1e-12);
+    }
+    for (double sigma : {0.0, 0.5, 1.0}) {
+        relearn::n_step_q_sigma<corridor_types::state, corridor_types::action> q_sigma(0.3, 0.9, 1, sigma, corridor_pi);
+        q_sigma.behaviour = corridor_b;
+        relearn::expected_sarsa<corridor_types::state, corridor_types::action> expected(0.3, 0.9, corridor_pi);
+        relearn::n_step_expected_sarsa<corridor_types::state, corridor_types::action> n_expected(0.3, 0.9, 1, corridor_pi);
+        corridor_types::policy q_memory;
+        corridor_types::policy e_memory;
+        corridor_types::policy n_memory;
+        for (const auto & e : corridor_episodes(200, 7)) {
+            q_sigma(e.first, q_memory, e.second);
+            expected(e.first, e_memory, e.second);
+            n_expected(e.first, n_memory, e.second);
+        }
+        INFO("sigma = " << sigma);
+        REQUIRE(largest_difference(q_memory, e_memory) < 1e-12);
+        REQUIRE(largest_difference(n_memory, e_memory) < 1e-12);
+    }
+}
+
+/// verifies an episode cut short, for the new learners: only the steps whose n rewards are known are learnt
+TEST_CASE("n-step family: an episode cut short learns the steps whose n rewards are known", "[n_step]")
+{
+    // the worked episode, cut short after its second step: (s2, c) is the state reached and the action chosen next.
+    // n = 2: only τ = 0 is learnt, and the same as when the episode goes on (G_{0:2} uses s2, not r2)
+    auto cut = worked_episode();
+    relearn::n_step_tree_backup<state,action> tree(0.5, 0.5, 2, worked_pi);
+    relearn::n_step_q_sigma<state,action> q_sigma(0.5, 0.5, 2, 0.5, worked_pi);
+    relearn::n_step_expected_sarsa<state,action> expected(0.5, 0.5, 2, worked_pi);
+    auto tree_memory = worked_values();
+    auto sigma_memory = worked_values();
+    auto expected_memory = worked_values();
+    tree(cut, tree_memory, false);
+    q_sigma(cut, sigma_memory, false);
+    expected(cut, expected_memory, false);
+    REQUIRE(tree_memory.value(state("s0"), action("a")) == Approx(1.1875));
+    REQUIRE(sigma_memory.value(state("s0"), action("a")) == Approx(1.40625));
+    REQUIRE(expected_memory.value(state("s0"), action("a")) == Approx(1.375));
+    // (s1, b) is not learnt, and (s2, c) keeps its value
+    for (const auto * memory : {&tree_memory, &sigma_memory, &expected_memory}) {
+        REQUIRE(memory->value(state("s1"), action("b")) == 0);
+        REQUIRE(memory->value(state("s2"), action("c")) == Approx(4));
+    }
+}
+
+/// verifies that learning online, after every step, learns exactly what learning after the episode does
+TEST_CASE("n-step family: online with a window of n is the same as after the episode", "[n_step]")
+{
+    // each learner plays its own corridor with the same seeds, and the agent does not look at the values,
+    // so all of them play the same episodes. π and b are fixed, so learning online updates the same steps,
+    // in the same order, from the same values as learning after the episode. Half are cut short, after 4 moves
+    using tree_type  = relearn::n_step_tree_backup<corridor_types::state, corridor_types::action>;
+    using sigma_type = relearn::n_step_q_sigma<corridor_types::state, corridor_types::action>;
+    using sarsa_type = relearn::off_policy_n_step_sarsa<corridor_types::state, corridor_types::action>;
+    // play 100 episodes online with @param learner, and learn the same episodes after each one with @param after
+    auto compare = [](auto online, auto after, unsigned int n) {
+        corridor online_game(9);
+        corridor after_game(9);
+        std::mt19937 online_prng(10);
+        std::mt19937 after_prng(10);
+        std::bernoulli_distribution right(0.7);
+        auto online_agent = [&](const int &, const std::vector<unsigned int> &) { return right(online_prng) ? 1u : 0u; };
+        auto after_agent  = [&](const int &, const std::vector<unsigned int> &) { return right(after_prng) ? 1u : 0u; };
+        corridor_types::policy online_memory;
+        corridor_types::policy after_memory;
+        for (int i = 0; i < 100; i++) {
+            std::size_t limit = i % 2 == 0 ? 4 : 1000;
+            games::play_online(online_game, online_agent, online, online_memory, limit, n);
+            auto r = games::play(after_game, after_agent, limit);
+            after(r.episode, after_memory, r.terminated);
+        }
+        return largest_difference(online_memory, after_memory);
+    };
+    for (unsigned int n : {1u, 3u}) {
+        INFO("n = " << n);
+        REQUIRE(compare(tree_type(0.3, 0.9, n, corridor_pi), tree_type(0.3, 0.9, n, corridor_pi), n) == 0);
+        sigma_type q_sigma(0.3, 0.9, n, 0.5, corridor_pi);
+        q_sigma.behaviour = corridor_b;
+        REQUIRE(compare(q_sigma, q_sigma, n) == 0);
+        sarsa_type sarsa(0.3, 0.9, n, corridor_pi, corridor_b);
+        REQUIRE(compare(sarsa, sarsa, n) == 0);
+    }
+}
+
+/// verifies that b is the probability each action was chosen with, not b after the updates of the episode
+TEST_CASE("n-step family: b is read before the updates, as the episode was played", "[n_step]")
+{
+    // one state, two actions, π uniform; b is ε-greedy (ε = 0.2) on the values being learnt; α = γ = 1, n = 2.
+    // The episode (a, r = -1), (b, 0), (a, 2) was played with Q = 0, so with b = 0.5 for both actions.
+    // After τ = 0, Q(a) = -1: read again, b(a) would be 0.1, and ρ = 0.5 / 0.1 = 5 instead of 1
+    auto pi = [](const state &) { return distribution {{action("a"), 0.5}, {action("b"), 0.5}}; };
+    auto played = episode {{state(-1, "s"), action("a")},
+                           {state(0, "s"), action("b")},
+                           {state(2, "s"), action("a")}};
+    auto make_b = [](const policy & memory) {
+        return [&memory](const state & s, const action & a) {
+            // ε-greedy on memory over a and b: the greedy actions share 1 - ε, and each action has ε / 2
+            double qa = memory.value(s, action("a"));
+            double qb = memory.value(s, action("b"));
+            bool greedy = (a.trait() == "a") ? qa >= qb : qb >= qa;
+            std::size_t ties = (qa == qb) ? 2 : 1;
+            return 0.1 + (greedy ? 0.8 / static_cast<double>(ties) : 0.0);
+        };
+    };
+    //    Expected SARSA: τ = 0: G = -1 + 0 + V̄ = -1, Q(a) = -1;  τ = 1: G = 0 + 2 = 2, ρ = 1, Q(b) = 2
+    policy expected_memory;
+    relearn::n_step_expected_sarsa<state,action> expected(1.0, 1.0, 2, pi);
+    expected.behaviour = make_b(expected_memory);
+    expected(played, expected_memory);
+    REQUIRE(expected_memory.value(state("s"), action("b")) == Approx(2));
+    REQUIRE(expected_memory.value(state("s"), action("a")) == Approx(2));
+    //    off-policy n-step SARSA: τ = 0: G = -1 + 0 + Q(a) = -1, ρ = 1, Q(a) = -1;  τ = 1: G = 2, ρ = 1, Q(b) = 2
+    policy sarsa_memory;
+    relearn::off_policy_n_step_sarsa<state,action> sarsa(1.0, 1.0, 2, pi);
+    sarsa.behaviour = make_b(sarsa_memory);
+    sarsa(played, sarsa_memory);
+    REQUIRE(sarsa_memory.value(state("s"), action("b")) == Approx(2));
+    //    Q(σ), σ = 1: τ = 0: Q(a) = -1;  τ = 1: G_{2:3} = 2, then
+    //    G_{1:3} = r1 + V̄ + ρ (G_{2:3} - Q(a)) = 0 - 0.5 + 1 * (2 + 1) = 2.5,  Q(b) = 2.5 (with ρ = 5 it would be 14.5)
+    policy sigma_memory;
+    relearn::n_step_q_sigma<state,action> q_sigma(1.0, 1.0, 2, 1.0, pi);
+    q_sigma.behaviour = make_b(sigma_memory);
+    q_sigma(played, sigma_memory);
+    REQUIRE(sigma_memory.value(state("s"), action("b")) == Approx(2.5));
+}
+
+/// verifies the record of b: the links a window shares with the end of the last one keep the probability read then
+TEST_CASE("n-step family: the behaviour record keeps b from when each link was first seen", "[n_step]")
+{
+    // a b that gives a new probability every time it is read: 0.1, 0.2, 0.3, ...
+    double next = 0;
+    std::function<double(const state &, const action &)> counting = [&next](const state &, const action &) {
+        next += 0.1;
+        return next;
+    };
+    relearn::behaviour_record<state,action,episode,double> record;
+    auto x = step {state(0, "x"), action("a")};
+    auto y = step {state(0, "y"), action("b")};
+    auto z = step {state(0, "z"), action("c")};
+    auto w = step {state(0, "w"), action("d")};
+    // the first window of an episode: both read
+    auto first = record.probabilities(episode {x, y}, counting, false);
+    REQUIRE(first[0] == Approx(0.1));
+    REQUIRE(first[1] == Approx(0.2));
+    // the next window adds z: x and y keep their probabilities, only z is read
+    auto second = record.probabilities(episode {x, y, z}, counting, false);
+    REQUIRE(second[0] == Approx(0.1));
+    REQUIRE(second[1] == Approx(0.2));
+    REQUIRE(second[2] == Approx(0.3));
+    // a window of n = 2 that moves on: y and z kept, w read
+    auto third = record.probabilities(episode {y, z, w}, counting, false);
+    REQUIRE(third[0] == Approx(0.2));
+    REQUIRE(third[1] == Approx(0.3));
+    REQUIRE(third[2] == Approx(0.4));
+    // the end of the episode: the last steps, all kept (the reward of a step does not matter)
+    auto last = record.probabilities(episode {step {state(5, "z"), action("c")}, w}, counting, true);
+    REQUIRE(last[0] == Approx(0.3));
+    REQUIRE(last[1] == Approx(0.4));
+    // after the end, a new episode is read afresh, even if it starts with the same links
+    auto fresh = record.probabilities(episode {z, w}, counting, false);
+    REQUIRE(fresh[0] == Approx(0.5));
+    REQUIRE(fresh[1] == Approx(0.6));
+    // and an episode that adds more than one link to the last window is a new one too
+    auto other = record.probabilities(episode {z, w, x, y}, counting, false);
+    REQUIRE(other[0] == Approx(0.7));
+    // the same state and action again and again: the newest link is still a new one, read now
+    relearn::behaviour_record<state,action,episode,double> again;
+    next = 0;
+    again.probabilities(episode {x, x, x}, counting, false);
+    auto repeated = again.probabilities(episode {x, x, x}, counting, false);
+    REQUIRE(repeated[0] == Approx(0.2));
+    REQUIRE(repeated[1] == Approx(0.3));
+    REQUIRE(repeated[2] == Approx(0.4));
+}
+
+/// verifies learning online against the book's algorithm, which stores b when each action is chosen
+TEST_CASE("off_policy_n_step_sarsa: online, as the book's algorithm with b stored when each action is chosen", "[n_step]")
+{
+    // the agent plays ε-greedy (ε = 0.3) on the values it learns, π is greedy on them, α = 0.2, γ = 0.9:
+    // b changes as the values are learnt, so each ratio needs b as it was when its action was chosen
+    const double epsilon = 0.3;
+    const double alpha = 0.2;
+    const double gamma = 0.9;
+    auto b_of = [epsilon](const corridor_types::policy & memory, const int & s, unsigned int a) {
+        auto dist = games::epsilon_greedy_probabilities<corridor>(memory, s, {0u, 1u}, epsilon);
+        return a == 1 ? dist[1].second : dist[0].second;
+    };
+    auto pi_of = [](const corridor_types::policy & memory, const int & s, unsigned int a) {
+        auto dist = games::epsilon_greedy_probabilities<corridor>(memory, s, {0u, 1u}, 0.0);
+        return a == 1 ? dist[1].second : dist[0].second;
+    };
+    for (unsigned int n : {2u, 3u}) {
+        // relearn, online
+        corridor game(21);
+        std::mt19937 prng(22);
+        corridor_types::policy memory;
+        relearn::off_policy_n_step_sarsa<corridor_types::state, corridor_types::action> sarsa(alpha, gamma, n);
+        sarsa.probabilities = [&memory](const corridor_types::state & s) {
+            return games::epsilon_greedy_probabilities<corridor>(memory, s.trait(), {0u, 1u}, 0.0);
+        };
+        sarsa.behaviour = [&memory, &b_of](const corridor_types::state & s, const corridor_types::action & a) {
+            return b_of(memory, s.trait(), a.trait());
+        };
+        auto agent = [&](const int & s, const std::vector<unsigned int> & legal) {
+            return games::epsilon_greedy<corridor>(memory, s, legal, epsilon, prng);
+        };
+        for (int i = 0; i < 100; i++) {
+            games::play_online(game, agent, sarsa, memory, 1000, n);
+        }
+        // the book's algorithm (Section 7.3), storing b(a_t | s_t) when a_t is chosen
+        corridor book_game(21);
+        std::mt19937 book_prng(22);
+        corridor_types::policy book;
+        for (int i = 0; i < 100; i++) {
+            std::vector<int> s {book_game.reset()};
+            std::vector<unsigned int> a {games::epsilon_greedy<corridor>(book, s[0], {0u, 1u}, epsilon, book_prng)};
+            std::vector<double> b {b_of(book, s[0], a[0])};
+            std::vector<double> r;
+            std::size_t T = std::numeric_limits<std::size_t>::max();
+            for (std::size_t t = 0; ; t++) {
+                if (t < T) {
+                    auto out = book_game.step(a[t]);
+                    r.push_back(out.reward);
+                    s.push_back(out.next);
+                    if (out.terminated) {
+                        T = t + 1;
+                    }
+                    else {
+                        a.push_back(games::epsilon_greedy<corridor>(book, out.next, {0u, 1u}, epsilon, book_prng));
+                        b.push_back(b_of(book, out.next, a.back()));
+                    }
+                }
+                if (t + 1 < n) {
+                    continue;
+                }
+                std::size_t tau = t + 1 - n;
+                double G = 0;
+                double discount = 1;
+                for (std::size_t k = tau; k < std::min(tau + n, T); k++) {
+                    G += discount * r[k];
+                    discount *= gamma;
+                }
+                if (tau + n < T) {
+                    G += discount * book.value(corridor_types::state(s[tau + n]), corridor_types::action(a[tau + n]));
+                }
+                double rho = 1;
+                for (std::size_t k = tau + 1; k <= std::min(tau + n, T - 1); k++) {
+                    rho *= pi_of(book, s[k], a[k]) / b[k];
+                }
+                if (rho != 0) {
+                    double q = book.value(corridor_types::state(s[tau]), corridor_types::action(a[tau]));
+                    book.update(corridor_types::state(s[tau]), corridor_types::action(a[tau]), q + alpha * rho * (G - q));
+                }
+                if (tau + 1 == T) {
+                    break;
+                }
+            }
+        }
+        INFO("n = " << n);
+        REQUIRE(largest_difference(memory, book) < 1e-12);
+    }
+}
+
+/// verifies the constructors, and brace initialisation
+TEST_CASE("n-step family: constructors and brace initialisation", "[n_step]")
+{
+    relearn::n_step_expected_sarsa<state,action> expected;
+    REQUIRE(expected.alpha == Approx(0.9));
+    REQUIRE(expected.gamma == Approx(0.9));
+    REQUIRE(expected.n == 1);
+    REQUIRE(!expected.probabilities);
+    REQUIRE(!expected.behaviour);
+    relearn::n_step_q_sigma<state,action> q_sigma;
+    REQUIRE(q_sigma.sigma == Approx(0.5));
+    auto tree = relearn::n_step_tree_backup<state,action>{0.1, 1.0, 4, worked_pi};
+    REQUIRE(tree.alpha == Approx(0.1));
+    REQUIRE(tree.n == 4);
+    REQUIRE(tree.probabilities);
+    auto off = relearn::off_policy_n_step_sarsa<state,action>{0.2, 0.5, 3, worked_pi, worked_b};
+    REQUIRE(off.gamma == Approx(0.5));
+    REQUIRE(off.behaviour);
+}
+
+/// verifies on-policy control: each learns the exact values of the ε-greedy policy it plays and learns
+TEST_CASE("n-step family: on-policy, learns q of the epsilon-greedy policy in the corridor", "[n_step][convergence]")
+{
+    // the agent plays ε-greedy (ε = 0.1) on the values it learns, and π is that same policy
+    const double gamma = 0.9;
+    auto exact = corridor::model(gamma);
+    std::vector<std::vector<double>> pi(5, {0.05, 0.95});
+    auto v_epsilon = exact.policy_values(pi);
+    auto run = [&](auto learner, unsigned int n, unsigned int seed) {
+        corridor game(seed);
+        std::mt19937 prng(seed + 100);
+        corridor_types::policy memory;
+        learner.learning_rate = relearn::polynomial_decay<>(1.0, 0.6);
+        learner.probabilities = [&memory](const corridor_types::state & s) {
+            return games::epsilon_greedy_probabilities<corridor>(memory, s.trait(), {0u, 1u}, 0.1);
+        };
+        auto agent = [&](const int & s,
+                         const std::vector<unsigned int> & legal) {
+            return games::epsilon_greedy<corridor>(memory, s, legal, 0.1, prng);
+        };
+        for (int k = 1; k <= 20000; k++) {
+            games::play_online(game, agent, learner, memory, 1000, n);
+        }
+        return worst_error(memory, exact, v_epsilon);
+    };
+    // over 10 seeds, with libstdc++ and with libc++, the worst errors were at most 0.097 with n = 2,
+    // and 0.157 with n = 4 (n-step Expected SARSA 0.143, tree backup 0.107, Q(σ) 0.157 and 0.128)
+    for (unsigned int n : {2u, 4u}) {
+        INFO("n = " << n);
+        REQUIRE(run(relearn::n_step_expected_sarsa<corridor_types::state, corridor_types::action>(0.1, gamma, n), n, 1) < 0.25);
+        REQUIRE(run(relearn::n_step_tree_backup<corridor_types::state, corridor_types::action>(0.1, gamma, n), n, 1) < 0.25);
+        REQUIRE(run(relearn::n_step_q_sigma<corridor_types::state, corridor_types::action>(0.1, gamma, n, 0.5), n, 1) < 0.25);
+        REQUIRE(run(relearn::n_step_q_sigma<corridor_types::state, corridor_types::action>(0.1, gamma, n, 1.0), n, 1) < 0.25);
+    }
+}
+
+/// verifies off-policy control: playing a fixed exploring policy, each learns the optimal values q*
+TEST_CASE("n-step family: off-policy, learns q* in the corridor from another policy's play", "[n_step][convergence]")
+{
+    // the agent moves right with 0.7 and left with 0.3 whatever it has learnt; π is greedy on the values
+    const double gamma = 0.9;
+    auto exact = corridor::model(gamma);
+    auto v_star = exact.optimal_values();
+    auto greedy = [](auto & learner, const corridor_types::policy & memory) {
+        learner.probabilities = [&memory](const corridor_types::state & s) {
+            return games::epsilon_greedy_probabilities<corridor>(memory, s.trait(), {0u, 1u}, 0.0);
+        };
+    };
+    auto greedy_and_b = [&greedy](auto & learner, const corridor_types::policy & memory) {
+        greedy(learner, memory);
+        learner.behaviour = corridor_b;
+    };
+    // over 10 seeds, the same with libstdc++ and with libc++, the worst errors were at most 0.045 with n = 2,
+    // and 0.102 with n = 4 (tree backup 0.037, off-policy SARSA 0.051, Expected SARSA 0.102, Q(σ) 0.055)
+    for (unsigned int n : {2u, 4u}) {
+        INFO("n = " << n);
+        auto tree = learn_corridor_with(relearn::n_step_tree_backup<corridor_types::state, corridor_types::action>(0.1, gamma, n),
+                                        greedy, 0.7, 1.0, n, 1);
+        REQUIRE(worst_error(tree, exact, v_star) < 0.25);
+        // importance sampling: ρ reaches (1 / 0.7)^n, so its step sizes start at 0.2, keeping α ρ below 1
+        auto sarsa = learn_corridor_with(relearn::off_policy_n_step_sarsa<corridor_types::state, corridor_types::action>(0.1, gamma, n),
+                                         greedy_and_b, 0.7, 0.2, n, 1);
+        REQUIRE(worst_error(sarsa, exact, v_star) < 0.25);
+        auto expected = learn_corridor_with(relearn::n_step_expected_sarsa<corridor_types::state, corridor_types::action>(0.1, gamma, n),
+                                            greedy_and_b, 0.7, 1.0, n, 1);
+        REQUIRE(worst_error(expected, exact, v_star) < 0.25);
+        auto q_sigma = learn_corridor_with(relearn::n_step_q_sigma<corridor_types::state, corridor_types::action>(0.1, gamma, n, 0.5),
+                                           greedy_and_b, 0.7, 1.0, n, 1);
+        REQUIRE(worst_error(q_sigma, exact, v_star) < 0.25);
+    }
+}

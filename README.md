@@ -29,6 +29,10 @@ Currently the library implements the following algorithms, each one explained in
 - **TD(0)** and **n-step TD** prediction (`n_step_td`), and **n-step SARSA** (`n_step_sarsa`), which learn from
   the next n rewards and then the value of the state reached, anywhere between one-step TD and Monte Carlo,
   see [docs/n_step.md](docs/n_step.md)
+- **n-step Expected SARSA** (`n_step_expected_sarsa`), **off-policy n-step SARSA** (`off_policy_n_step_sarsa`), the
+  **tree backup** algorithm (`n_step_tree_backup`) and **Q(σ)** (`n_step_q_sigma`), which learn n steps at a time, on-policy
+  or off-policy (the values of a greedy policy from an agent that explores), with or without importance sampling,
+  see [docs/n_step.md](docs/n_step.md)
 - **TD(λ)** (`td_lambda`), **SARSA(λ)** (`sarsa_lambda`) and **Watkins's Q(λ)** (`watkins_q_lambda`), whose
   eligibility traces share every TD error with the moves that led to it, accumulating or replacing,
   see [docs/eligibility_traces.md](docs/eligibility_traces.md)
@@ -48,7 +52,7 @@ Currently the library implements the following algorithms, each one explained in
   see [docs/bandits.md](docs/bandits.md)
 - **schedules** for the learning rate and the exploration rate, so that each one can *decay* as the agent learns
   (`polynomial_decay`, `exponential_decay` and `linear_decay`), see [docs/schedules.md](docs/schedules.md).
-  Do bear in mind that `q_learning`, `sarsa`, `expected_sarsa`, `double_q_learning` and `n_step_sarsa` can each decay the learning rate
+  Do bear in mind that `q_learning`, `sarsa`, `expected_sarsa`, `double_q_learning` and the n-step learners can each decay the learning rate
   of every state/action pair on its own
 
 It also comes with a collection of classic games to learn, described in [Games](#games) below.
@@ -150,7 +154,7 @@ There is nothing to build! This is a header-only library, you only need the `src
 | `relearn/dyna.hpp` | `dyna_q` |
 | `relearn/monte_carlo.hpp` | `monte_carlo` and `off_policy_monte_carlo` |
 | `relearn/mcts.hpp` | `mcts`, Monte Carlo Tree Search with UCT |
-| `relearn/n_step.hpp` | `n_step_sarsa`, and `n_step_td` (TD(0) when n = 1) |
+| `relearn/n_step.hpp` | `n_step_sarsa`, and `n_step_td` (TD(0) when n = 1); `n_step_expected_sarsa`, `off_policy_n_step_sarsa`, `n_step_tree_backup` and `n_step_q_sigma` |
 | `relearn/eligibility_traces.hpp` | `sarsa_lambda`, `td_lambda` and `watkins_q_lambda`, and their `eligibility_traces` |
 | `relearn/policy_gradient.hpp` | `softmax_policy`, `reinforce`, `reinforce_with_baseline` and `actor_critic` |
 | `relearn/r_learning.hpp` | `r_learning` and `differential_sarsa` |
@@ -412,6 +416,7 @@ The learners with eligibility traces learn a whole episode at a time, so use `ga
 | `dynamic_programming` | S&B 4.1, 4.3, 4.4 | `dynamic_programming` | The 4 x 4 gridworld (`small_gridworld`, Figure 4.1) and the gambler's problem (Figure 4.3) solved from their models, by policy evaluation, policy iteration and value iteration |
 | `dyna_maze` | S&B 8.1 to 8.3 | `dyna_q` | Planning learns a maze in far fewer episodes (Figure 8.2), and Dyna-Q+ copes with mazes that change (Figures 8.4, 8.5) |
 | `dyna_maze_n_step` | S&B 7.2, 8.1 | `n_step_sarsa` | The first episode teaches n-step SARSA its last n moves (Figure 7.4), so a larger n learns the maze faster |
+| `cliff_walking_n_step` | S&B 6.6, 7.2 to 7.6 | `n_step_expected_sarsa`, `off_policy_n_step_sarsa`, `n_step_tree_backup`, `n_step_q_sigma` | Learning 4 steps at a time: on-policy, the expectations earn more whilst exploring; off-policy, the less importance sampling, the closer to the greedy policy's values |
 | `dyna_maze_lambda` | S&B 12.7, 12.10 | `sarsa_lambda`, `watkins_q_lambda` | With replacing traces, one episode is enough to find the goal again; accumulating traces get lost in the loops |
 | `short_corridor` | S&B 13.1 | `reinforce`, `reinforce_with_baseline`, `actor_critic` | Cells that look the same, where the best policy is stochastic: REINFORCE learns it (Figure 13.1), faster with a baseline (Figure 13.2), whereas Actor-Critic's critic misleads it |
 | `access_control` | S&B 1st ed. 6.7, 2nd ed. 10.2 | `r_learning`, `differential_sarsa` | A task that never ends: accept or reject customers to earn the most per step, against the exact optimal policy (Figures 6.17, 10.5) |
