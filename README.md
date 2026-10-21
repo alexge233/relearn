@@ -399,7 +399,8 @@ auto r = games::play_online(game, agent, learner, memory, 1000);
 
 The n-step learners need the last n steps after each step, not just the last one, so give `play_online` their n:
 `games::play_online(game, agent, learner, memory, 1000, learner.n)` (have a look at [docs/n_step.md](docs/n_step.md)).
-The learners with eligibility traces learn a whole episode at a time, so use `games::play` with them.
+The learners with eligibility traces learn a whole episode at a time, so use `games::play` with them; all but
+`true_online_sarsa_lambda` and `true_online_td_lambda`, which learn after every step with `games::play_online`.
 
 | Game | Source | Learnt with | What it shows |
 |---|---|---|---|

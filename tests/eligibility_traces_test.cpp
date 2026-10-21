@@ -849,6 +849,7 @@ TEST_CASE("true_online_sarsa_lambda: after every step, it is the online lambda-r
         auto expected = online_lambda_return(e, start, alpha, gamma, lambda, terminated);
         // learnt after every step, as `games::play_online` gives it: (s_t, a_t) and the next link, then the last step alone
         relearn::true_online_sarsa_lambda<state,action> online(alpha, gamma, lambda);
+        online.start_episode();
         policy memory = start;
         const std::size_t T = terminated ? e.size() : e.size() - 1;
         for (std::size_t t = 0; t < T; t++) {
@@ -931,10 +932,12 @@ TEST_CASE("true_online_sarsa_lambda: episodes cut short, and one call after anot
     auto x = step {state(1, "x"), action("a")};
     auto y = step {state(0, "y"), action("b")};
     auto z = step {state(2, "z"), action("c")};
-    // an episode learnt a step at a time, as `games::play_online` gives it, is the episode learnt at once
+    // an episode started with start_episode() and learnt a step at a time, as `games::play_online` gives it,
+    // is the episode learnt at once
     relearn::true_online_sarsa_lambda<state,action> stepwise(0.5, 0.9, 0.8);
     relearn::true_online_sarsa_lambda<state,action> at_once(0.5, 0.9, 0.8);
     policy stepwise_memory, at_once_memory;
+    stepwise.start_episode();
     stepwise(episode {x, y}, stepwise_memory, false);
     stepwise(episode {y, z}, stepwise_memory, false);
     stepwise(episode {z}, stepwise_memory, true);
@@ -945,12 +948,16 @@ TEST_CASE("true_online_sarsa_lambda: episodes cut short, and one call after anot
     REQUIRE(stepwise.traces.entries().size() == 3);
     // after the end of an episode, the next call is a new one, its traces starting at 0,
     // even if it starts with the very link the last one ended with
-    stepwise(episode {y}, stepwise_memory, true);
+    stepwise(episode {z}, stepwise_memory, true);
     REQUIRE(stepwise.traces.entries().size() == 1);
     REQUIRE(stepwise.traces.trace(state("x"), action("a")) == Approx(0));
-    at_once(episode {z}, at_once_memory, true);
-    REQUIRE(at_once.traces.entries().size() == 1);
-    REQUIRE(at_once.traces.trace(state("x"), action("a")) == Approx(0));
+    // without start_episode(), the steps of an episode given one call at a time are learnt as episodes of their own
+    relearn::true_online_sarsa_lambda<state,action> unopened(0.5, 0.9, 0.8);
+    policy unopened_memory;
+    unopened(episode {x, y}, unopened_memory, false);
+    unopened(episode {y, z}, unopened_memory, false);
+    REQUIRE(unopened.traces.entries().size() == 1);
+    REQUIRE(unopened.traces.trace(state("x"), action("a")) == Approx(0));
     // an episode cut short does not learn its last link: (s1, b) only gives Q' to the step before it.
     // γ = λ = α = 1: δ = 1 + Q(s1, b) - Q(s0, a) = 4, so Q(s0, a) = 4, and (s1, b) has no trace
     relearn::true_online_sarsa_lambda<state,action> cut(1.0, 1.0, 1.0);
@@ -961,11 +968,15 @@ TEST_CASE("true_online_sarsa_lambda: episodes cut short, and one call after anot
     REQUIRE(memory.value(state("s1"), action("b")) == Approx(3));
     REQUIRE(cut.traces.entries().size() == 1);
     REQUIRE(cut.q_old == Approx(3));
-    // the next episode, starting elsewhere, is a new one, even if the last was cut short
-    cut(episode {{state(0, "s2"), action("c")}}, memory, true);
+    // the next whole episode is a new one, even if it starts with the very link the one cut short ended with:
+    // (s1, b) earns 5 and ends it, δ = 5 - 3 = 2, so Q(s1, b) = 5, and Q(s0, a) keeps its 4
+    cut(episode {{state(5, "s1"), action("b")}}, memory, true);
+    REQUIRE(memory.value(state("s1"), action("b")) == Approx(5));
+    REQUIRE(memory.value(state("s0"), action("a")) == Approx(4));
     REQUIRE(cut.traces.entries().size() == 1);
     REQUIRE(cut.traces.trace(state("s0"), action("a")) == Approx(0));
-    // and start_episode() starts a new one whatever the last call was, even one ending with the same link
+    // and start_episode() starts a new one whatever the last call was
+    cut.start_episode();
     cut(episode {{state(1, "s0"), action("a")}, {state(100, "s1"), action("b")}}, memory, false);
     cut.start_episode();
     REQUIRE(cut.traces.entries().empty());

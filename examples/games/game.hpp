@@ -159,7 +159,8 @@ void start_episode(learner_type &, long)
 /**
  * @brief play one episode of @param game, learning after every step (online)
  * @param choose is called as `choose(state, legal_actions)` and returns an action
- * @param learner is any relearn learner: `q_learning`, `sarsa`, `expected_sarsa`
+ * @param learner is any relearn learner: `q_learning`, `sarsa`, `expected_sarsa`, the n-step learners,
+ *        `true_online_sarsa_lambda`
  * @param memory is the policy being learnt (and used by @param choose)
  * @param max_steps cuts the episode short
  * @param window is the number of steps the learner is given after each step:

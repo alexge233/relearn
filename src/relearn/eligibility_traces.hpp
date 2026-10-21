@@ -272,12 +272,11 @@ struct watkins_q_lambda
  * at a time after `games::play`, which for a prediction task gives the very same values.
  * Each call learns every step of the episode given, but the last link if the episode is cut short
  * (`terminated` false): that link is the state reached and the action chosen next, which is not a step.
- * Unlike `sarsa_lambda`, the traces are *kept* from one call to the next, whilst an episode goes on:
- * a call continues the episode of the last one if that one did not end it (`terminated` false) and
- * if it starts with the link the last one ended with, the step it did not learn yet. Otherwise it
- * starts a new episode. `games::play_online` calls `start_episode()` before every game, which starts
- * a new episode whatever the last call was; after an episode cut short and learnt with `games::play`,
- * call it yourself, in case the next episode starts with the same state and action.
+ * To learn an episode a step at a time, start it with `start_episode()`: from then on the traces,
+ * and Q_old, are *kept* from one call to the next, until a call ends the episode (`terminated` true).
+ * `games::play_online` does this before every game. Any other call is a whole episode on its own,
+ * whose traces start at 0, as for `sarsa_lambda`, even after one cut short.
+ * @warning an episode learnt a step at a time and cut short stays open until the next `start_episode()`
  */
 template <class state_class,
           class action_class,
@@ -304,12 +303,15 @@ struct true_online_sarsa_lambda
                              value_type initial_gamma = 0.9,
                              value_type initial_lambda = 0.9);
 
-    /// @brief start a new episode: every trace, and Q_old, back to 0
+    /**
+     * @brief start a new episode, to be learnt a step at a time: every trace, and Q_old, back to 0,
+     *        and kept from one call to the next until a call ends the episode
+     */
     void start_episode();
 
     /**
-     * @brief learn the steps of @param episode, going on from the last call if it is the same episode
-     *        - @param policy_map will be modified
+     * @brief learn the steps of @param episode: the next steps of the episode started with `start_episode()`,
+     *        or else a whole episode on its own - @param policy_map will be modified
      * @param terminated true if the episode really ended after its last link.
      *        Pass false for an episode cut short, or for the last steps of one still being played
      *        (as `games::play_online` does): its last link is then not learnt yet, and only gives the
@@ -320,10 +322,8 @@ struct true_online_sarsa_lambda
                     bool terminated = true);
 
 private:
-    // true if an episode is being learnt, which the next call may go on with
-    bool going_on_ = false;
-    // the link the last call ended with, not learnt yet: the next call goes on from it
-    std::vector<link<state_class,action_class>> next_;
+    // true from `start_episode()` until a call ends the episode: the calls go on with the same episode
+    bool open_ = false;
 };
 
 /**
@@ -561,6 +561,7 @@ void watkins_q_lambda<state_class,action_class,markov_chain,value_type
         fade = greedy ? gamma * lambda : value_type(0);
     }
 }
+
 template <class state_class,
           class action_class,
           typename markov_chain,
@@ -582,8 +583,7 @@ void true_online_sarsa_lambda<state_class,action_class,markov_chain,value_type>:
 {
     traces.clear();
     q_old = 0;
-    going_on_ = false;
-    next_.clear();
+    open_ = true;
 }
 
 template <class state_class,
@@ -595,11 +595,11 @@ void true_online_sarsa_lambda<state_class,action_class,markov_chain,value_type
                                            policy<state_class,action_class,value_type> & policy_map,
                                            bool terminated)
 {
-    // the same episode as the last call if that one did not end it, and if this one starts with
-    // the link it ended with; otherwise a new episode, whose traces and Q_old start at 0
-    const bool same = going_on_ && !episode.empty() && !next_.empty() && episode[0] == next_[0];
-    if (!same) {
-        start_episode();
+    // the next steps of the episode started with `start_episode()`, or else a whole episode on its own,
+    // whose traces and Q_old start at 0
+    if (!open_) {
+        traces.clear();
+        q_old = 0;
     }
     // a cut-short episode does not learn its last link (yet): it is not a step
     const std::size_t learnt = (terminated || episode.size() == 0) ? episode.size()
@@ -626,11 +626,9 @@ void true_online_sarsa_lambda<state_class,action_class,markov_chain,value_type
                           policy_map.value(step.state, step.action) - alpha * (q - q_old));
         q_old = q_next;
     }
-    // an episode that goes on: the next call starts with the link this one ended with
-    going_on_ = !terminated && !episode.empty();
-    next_.clear();
-    if (going_on_) {
-        next_.push_back(episode.back());
+    // the end of the episode: the next call is a new one
+    if (terminated) {
+        open_ = false;
     }
 }
 } // end of namespace

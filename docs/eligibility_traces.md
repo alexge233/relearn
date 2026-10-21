@@ -315,18 +315,18 @@ relearn::true_online_td_lambda<state,action> true_td(0.4, 1.0, 0.8);
 
 `true_online_sarsa_lambda` (and so `true_online_td_lambda`, the same struct under the name of prediction) is different:
 
-- **It learns after every step**, with `games::play_online` (its window is 1, the default), and its traces are *kept*
-  from one call to the next whilst an episode goes on. `play_online` gives it each step with the next state and action,
-  and it learns that step, exactly as the pseudocode above does.
+- **It learns after every step**, with `games::play_online` (its window is 1, the default). `play_online` calls
+  `learner.start_episode()` before every game, and from then on the traces and `Q_old` are *kept* from one call to the
+  next, until the call that ends the episode (`terminated = true`). Each call gives it a step with the next state and
+  action, and it learns that step, exactly as the pseudocode above does.
 - It can also learn a whole episode at a time, after `games::play`. For prediction the values are then the very same,
   to the last bit, as learning after every step; for control, the agent plays each episode with the values it had at
   its start, so learning after every step is what you want.
-- A call goes on with the episode of the call before if that one did not end it (`terminated = false`), and if it starts
-  with the link the one before ended with, the step not learnt yet. Otherwise it starts a new episode, its traces and `Q_old`
-  at 0. `games::play_online` calls `learner.start_episode()` before every game, which starts a new episode whatever the
-  last call was. Do bear in mind that after an episode cut short and learnt whole after `games::play`, the next episode
-  is only taken for a new one if it starts elsewhere; call `learner.start_episode()` yourself if it could start with the
-  same state and action.
+- Any call made without `start_episode()` first is a whole episode on its own, its traces and `Q_old` at 0, as for
+  `sarsa_lambda`, even after an episode cut short. So to learn an episode a step at a time without `play_online`, call
+  `learner.start_episode()` before its first step yourself. Do bear in mind that an episode learnt a step at a time and
+  cut short is still open until the next `start_episode()`: if you then give the same learner whole episodes, call
+  `learner.start_episode()` and end that episode first, or simply use another learner.
 - `learner.traces` has the Dutch traces of the episode being learnt, and `learner.q_old` its `Q_old`.
 
 __note__: `games::play_online` calls `start_episode()` on any learner that has one, so `actor_critic` (whose `I` it sets
@@ -499,17 +499,18 @@ moves with `std::uniform_int_distribution`, whose numbers differ between the two
   it has exactly the values of the online λ-return algorithm, written from its definition (to within `10⁻¹²`, on 200
   random episodes that come back to the same pairs, with random α, γ and λ, γ = 1 and λ = 1 too, a third of them cut short),
   learning the episode at once giving the very same values, to the last bit
-- that with λ = 0, true online Sarsa(λ) is SARSA and true online TD(λ) is TD(0) (to within `10⁻¹²`), when an episode goes
-  on from one call to the next and when a new one starts, and that `games::play_online` calls `start_episode()` before
-  every game, even after one cut short
+- that with λ = 0, true online Sarsa(λ) is SARSA and true online TD(λ) is TD(0) (to within `10⁻¹²`); that an episode goes
+  on from one call to the next only after `start_episode()`, until it ends, and that any other call is a new episode, even
+  one starting with the very link an episode cut short ended with; and that `games::play_online` calls `start_episode()`
+  before every game, even after one cut short
 - the random walk: at its best α true online TD(λ) was better than TD(λ) on each of 10 seeds, by 0.007 to 0.010 (λ = 0.8)
   and 0.012 to 0.016 (λ = 0.9); with α = 1, its error was 0.353 to 0.371 and 0.406 to 0.428, against 0.656 to 0.705 and
   0.962 to 0.968 for TD(λ)
 - control: online, true online Sarsa(λ) with ε = 0.1 learns the values of the ε-greedy policy in the corridor (worst error
   0.023 to 0.123 over 10 seeds)
-- every one of 14 mutations of true online Sarsa(λ) (accumulating or replacing traces instead of Dutch ones, the trace read
-  after it fades, the `Q - Q_old` correction left out, `Q_old` not kept, a new episode started at every call, or never, and so
-  on) makes at least one of these tests fail
+- every one of 15 mutations of true online Sarsa(λ) (accumulating or replacing traces instead of Dutch ones, the trace read
+  after it fades, the `Q - Q_old` correction left out, `Q_old` not kept, a new episode started at every call, or an episode
+  cut short going on into the next call, and so on) makes at least one of these tests fail
 - the Dyna maze: after one episode with replacing traces, the greedy path reaches the goal without a loop, for both learners,
   and in episodes 2 to 10, λ = 0.9 with replacing traces needs 20.6 to 23.0 moves, against 263 to 350 for λ = 0,
   and 82 to 132 for SARSA(λ) with accumulating traces (over 10 seeds)
