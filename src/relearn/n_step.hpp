@@ -178,6 +178,49 @@ value_type discounted_rewards(const markov_chain & episode,
                               value_type & discount);
 
 /**
+ * @struct behaviour_record
+ * @brief the probabilities b(a_t | s_t) with which the behaviour policy took the actions of an episode,
+ *        for the off-policy learners below
+ *
+ * An importance sampling ratio needs the probability the action was chosen *with*. If b depends
+ * on the values being learnt (e.g. ε-greedy on them), reading it again after an update gives
+ * another probability. So b is read for every link of an episode once, before any update:
+ * for an episode played to the end and then learnt (`games::play`), that is the policy that
+ * played it. Learning online (`games::play_online`), each window is the last one moved on by a
+ * step, whose newest link was chosen just before the call: so the links a window shares with the
+ * end of the last one keep the probability recorded for them then, and only the new link is read.
+ * This is what the book's Q(σ) algorithm does, storing ρ when each action is chosen.
+ *
+ * A window counts as the next one only if the last did not end its episode (`terminated`), and if
+ * it is the last one moved on by one new link (or, ending the episode, by none); anything else is a
+ * new episode, read afresh.
+ * `games::play_online` does not tell the learner when it starts a new episode after one cut short,
+ * so a new episode starting with the very links the last window ended with would keep their
+ * probabilities: rare, and harmless with a b that does not change.
+ */
+template <class state_class,
+          class action_class,
+          typename markov_chain,
+          typename value_type>
+struct behaviour_record
+{
+    /// the links of the last episode (or window) given, and b(a_t | s_t) for each of them
+    std::vector<link<state_class,action_class>> links;
+    std::vector<value_type> b;
+    /// true if the last episode (or window) given ended its episode, or if there was none
+    bool ended = true;
+
+    /**
+     * @return b(a_t | s_t) for every link of @param episode, with the policy @param behaviour:
+     *         recorded earlier for the links shared with the end of the last window, read now for the rest
+     * @param terminated is true if @param episode ends its episode
+     */
+    std::vector<value_type> probabilities(const markov_chain & episode,
+                                          const std::function<value_type(const state_class &, const action_class &)> & behaviour,
+                                          bool terminated);
+};
+
+/**
  * @struct n_step_expected_sarsa This is n-step Expected SARSA (Sutton & Barto, Sections 7.2 and 7.3)
  * @brief n-step Expected SARSA learns each value from the next n rewards, and the value the state
  *        reached after them is *expected* to have under the policy π
@@ -212,8 +255,9 @@ value_type discounted_rewards(const markov_chain & episode,
  * As in `expected_sarsa`, `probabilities(s)` returns each action π may take in state s, with
  * its probability; if it is not set, π is the greedy policy on the values learnt. `behaviour(s, a)`
  * returns b(a | s), the probability that the policy which played the episode took a in s.
- * The probabilities are worked out when the step is learnt: if π or b change as values are learnt
- * (e.g. ε-greedy on them), they are those of that moment, as in the book's algorithm.
+ * π is worked out when each step is learnt, so a π greedy on the values is greedy on the values of
+ * that moment, as in the book's algorithms; b is read once for each action, for it must be the
+ * probability that action was chosen with (have a look at `behaviour_record`).
  * Episodes cut short and learning online work as for `n_step_sarsa`.
  */
 template <class state_class,
@@ -242,6 +286,8 @@ struct n_step_expected_sarsa
     std::function<distribution(const state_class &)> probabilities;
     /// optional: b(a | s), the probability that the policy which played the episodes takes a in s (off-policy)
     std::function<value_type(const state_class &, const action_class &)> behaviour;
+    /// b(a_t | s_t) as it was when each action of the episodes given was chosen (see `behaviour_record`)
+    behaviour_record<state_class,action_class,markov_chain,value_type> recorded;
 
     /**
      * @brief ctor with a learning rate @param initial_alpha and a discount rate @param initial_gamma,
@@ -265,10 +311,14 @@ struct n_step_expected_sarsa
                              std::size_t tau,
                              const policy<state_class,action_class,value_type> & policy_map) const;
 
-    /// @return ρ_{τ+1:τ+n-1} for the step at @param tau in @param episode, or 1 if `behaviour` is not set
+    /**
+     * @return ρ_{τ+1:τ+n-1} for the step at @param tau in @param episode, or 1 if `behaviour` is not set,
+     *         with b(a_t | s_t) from @param b (one per link) if it is given, otherwise from `behaviour` now
+     */
     value_type importance_ratio(const markov_chain & episode,
                                 std::size_t tau,
-                                const policy<state_class,action_class,value_type> & policy_map) const;
+                                const policy<state_class,action_class,value_type> & policy_map,
+                                const std::vector<value_type> * b = nullptr) const;
 
     /**
      * @brief learn from an episode - @param policy_map will be modified
@@ -333,6 +383,8 @@ struct off_policy_n_step_sarsa
     std::function<distribution(const state_class &)> probabilities;
     /// b(a | s): the probability that the policy which played the episodes takes a in s - required
     std::function<value_type(const state_class &, const action_class &)> behaviour;
+    /// b(a_t | s_t) as it was when each action of the episodes given was chosen (see `behaviour_record`)
+    behaviour_record<state_class,action_class,markov_chain,value_type> recorded;
 
     /**
      * @brief ctor with a learning rate @param initial_alpha and a discount rate @param initial_gamma,
@@ -350,10 +402,14 @@ struct off_policy_n_step_sarsa
                              std::size_t tau,
                              const policy<state_class,action_class,value_type> & policy_map) const;
 
-    /// @return ρ_{τ+1:τ+n} for the step at @param tau in @param episode
+    /**
+     * @return ρ_{τ+1:τ+n} for the step at @param tau in @param episode,
+     *         with b(a_t | s_t) from @param b (one per link) if it is given, otherwise from `behaviour` now
+     */
     value_type importance_ratio(const markov_chain & episode,
                                 std::size_t tau,
-                                const policy<state_class,action_class,value_type> & policy_map) const;
+                                const policy<state_class,action_class,value_type> & policy_map,
+                                const std::vector<value_type> * b = nullptr) const;
 
     /**
      * @brief learn from an episode played by the behaviour policy - @param policy_map will be modified
@@ -506,6 +562,8 @@ struct n_step_q_sigma
     std::function<distribution(const state_class &)> probabilities;
     /// optional: b(a | s), the probability that the policy which played the episodes takes a in s (off-policy)
     std::function<value_type(const state_class &, const action_class &)> behaviour;
+    /// b(a_t | s_t) as it was when each action of the episodes given was chosen (see `behaviour_record`)
+    behaviour_record<state_class,action_class,markov_chain,value_type> recorded;
 
     /**
      * @brief ctor with a learning rate @param initial_alpha and a discount rate @param initial_gamma,
@@ -518,10 +576,14 @@ struct n_step_q_sigma
                    value_type initial_sigma = 0.5,
                    std::function<distribution(const state_class &)> pi = nullptr);
 
-    /// @return G_{τ:τ+n}, the Q(σ) return of the step at @param tau in @param episode
+    /**
+     * @return G_{τ:τ+n}, the Q(σ) return of the step at @param tau in @param episode,
+     *         with b(a_t | s_t) from @param b (one per link) if it is given, otherwise from `behaviour` now
+     */
     value_type n_step_return(const markov_chain & episode,
                              std::size_t tau,
-                             const policy<state_class,action_class,value_type> & policy_map) const;
+                             const policy<state_class,action_class,value_type> & policy_map,
+                             const std::vector<value_type> * b = nullptr) const;
 
     /**
      * @brief learn from an episode - @param policy_map will be modified
@@ -678,6 +740,40 @@ template <class state_class,
           class action_class,
           typename markov_chain,
           typename value_type>
+std::vector<value_type> behaviour_record<state_class,action_class,markov_chain,value_type
+                                        >::probabilities(const markov_chain & episode,
+                                                         const std::function<value_type(const state_class &, const action_class &)> & behaviour,
+                                                         bool terminated)
+{
+    // the links shared with the end of the last window: the next window adds one new link at its end,
+    // and the last one, at the end of the episode, adds none. So the first k links of the episode must be
+    // the last k links given before, with k exactly that: counting the matches instead would mistake a
+    // new link for an old one when the same state and action come again and again
+    const std::size_t shared = (terminated || episode.empty()) ? episode.size() : episode.size() - 1;
+    std::size_t carried = 0;
+    if (!ended && shared > 0 && shared <= links.size()) {
+        bool same = true;
+        for (std::size_t i = 0; i < shared && same; i++) {
+            same = (episode[i] == links[links.size() - shared + i]);
+        }
+        carried = same ? shared : 0;
+    }
+    std::vector<value_type> out(episode.size());
+    for (std::size_t i = 0; i < episode.size(); i++) {
+        // recorded when the link was first seen, or read now, before any update of this episode
+        out[i] = i < carried ? b[b.size() - carried + i]
+                             : behaviour(episode[i].state, episode[i].action);
+    }
+    links.assign(episode.begin(), episode.end());
+    b = out;
+    ended = terminated;
+    return out;
+}
+
+template <class state_class,
+          class action_class,
+          typename markov_chain,
+          typename value_type>
 n_step_expected_sarsa<state_class,action_class,markov_chain,value_type
                      >::n_step_expected_sarsa(value_type initial_alpha,
                                               value_type initial_gamma,
@@ -726,7 +822,8 @@ template <class state_class,
 value_type n_step_expected_sarsa<state_class,action_class,markov_chain,value_type
                                 >::importance_ratio(const markov_chain & episode,
                                                     std::size_t tau,
-                                                    const policy<state_class,action_class,value_type> & policy_map) const
+                                                    const policy<state_class,action_class,value_type> & policy_map,
+                                                    const std::vector<value_type> * b) const
 {
     if (!behaviour) {
         return value_type(1);
@@ -736,9 +833,9 @@ value_type n_step_expected_sarsa<state_class,action_class,markov_chain,value_typ
     value_type rho = 1;
     for (std::size_t k = tau + 1; k <= last; k++) {
         const auto & step = episode[k];
-        const auto b = behaviour(step.state, step.action);
-        assert(b > 0 && "the behaviour policy took an action it gives no probability to");
-        rho *= probability_of(target_policy(probabilities, step.state, policy_map), step.action) / b;
+        const auto b_k = b ? (*b)[k] : behaviour(step.state, step.action);
+        assert(b_k > 0 && "the behaviour policy took an action it gives no probability to");
+        rho *= probability_of(target_policy(probabilities, step.state, policy_map), step.action) / b_k;
     }
     return rho;
 }
@@ -753,6 +850,11 @@ void n_step_expected_sarsa<state_class,action_class,markov_chain,value_type
                                         bool terminated)
 {
     assert(n >= 1 && "n_step_expected_sarsa needs n >= 1");
+    // off-policy: b(a_t | s_t) as it was when each action was chosen, before any update below
+    std::vector<value_type> b;
+    if (behaviour) {
+        b = recorded.probabilities(episode, behaviour, terminated);
+    }
     // the steps learnt: all of them if the episode ended, otherwise those whose n rewards are known
     std::size_t learnt = episode.size();
     if (!terminated) {
@@ -761,7 +863,7 @@ void n_step_expected_sarsa<state_class,action_class,markov_chain,value_type
     for (std::size_t tau = 0; tau < learnt; tau++) {
         const auto & step = episode[tau];
         // ρ: 1 on-policy; off-policy, a step π would not have played teaches nothing about π
-        auto rho = importance_ratio(episode, tau, policy_map);
+        auto rho = importance_ratio(episode, tau, policy_map, behaviour ? &b : nullptr);
         if (rho == 0) {
             continue;
         }
@@ -818,7 +920,8 @@ template <class state_class,
 value_type off_policy_n_step_sarsa<state_class,action_class,markov_chain,value_type
                                   >::importance_ratio(const markov_chain & episode,
                                                       std::size_t tau,
-                                                      const policy<state_class,action_class,value_type> & policy_map) const
+                                                      const policy<state_class,action_class,value_type> & policy_map,
+                                                      const std::vector<value_type> * b) const
 {
     // ρ_{τ+1:τ+n}: the actions a_{τ+1} ... a_{τ+n}, including the one whose value ends the return,
     // but not after the last step of an episode that ended
@@ -826,9 +929,9 @@ value_type off_policy_n_step_sarsa<state_class,action_class,markov_chain,value_t
     value_type rho = 1;
     for (std::size_t k = tau + 1; k <= last; k++) {
         const auto & step = episode[k];
-        const auto b = behaviour(step.state, step.action);
-        assert(b > 0 && "the behaviour policy took an action it gives no probability to");
-        rho *= probability_of(target_policy(probabilities, step.state, policy_map), step.action) / b;
+        const auto b_k = b ? (*b)[k] : behaviour(step.state, step.action);
+        assert(b_k > 0 && "the behaviour policy took an action it gives no probability to");
+        rho *= probability_of(target_policy(probabilities, step.state, policy_map), step.action) / b_k;
     }
     return rho;
 }
@@ -844,6 +947,8 @@ void off_policy_n_step_sarsa<state_class,action_class,markov_chain,value_type
 {
     assert(n >= 1 && "off_policy_n_step_sarsa needs n >= 1");
     assert(behaviour && "off_policy_n_step_sarsa needs the behaviour policy b(a | s)");
+    // b(a_t | s_t) as it was when each action was chosen, before any update below
+    const auto b = recorded.probabilities(episode, behaviour, terminated);
     // the steps learnt: all of them if the episode ended, otherwise those whose n rewards are known
     std::size_t learnt = episode.size();
     if (!terminated) {
@@ -852,7 +957,7 @@ void off_policy_n_step_sarsa<state_class,action_class,markov_chain,value_type
     for (std::size_t tau = 0; tau < learnt; tau++) {
         const auto & step = episode[tau];
         // ρ_{τ+1:τ+n}: a step π would not have played teaches nothing about π
-        auto rho = importance_ratio(episode, tau, policy_map);
+        auto rho = importance_ratio(episode, tau, policy_map, &b);
         if (rho == 0) {
             continue;
         }
@@ -966,7 +1071,8 @@ template <class state_class,
 value_type n_step_q_sigma<state_class,action_class,markov_chain,value_type
                          >::n_step_return(const markov_chain & episode,
                                           std::size_t tau,
-                                          const policy<state_class,action_class,value_type> & policy_map) const
+                                          const policy<state_class,action_class,value_type> & policy_map,
+                                          const std::vector<value_type> * b) const
 {
     // where the return ends: after n rewards, at s_{τ+n}, or at the end of the episode if it is nearer
     const std::size_t end = std::min<std::size_t>(tau + n, episode.size());
@@ -992,9 +1098,9 @@ value_type n_step_q_sigma<state_class,action_class,markov_chain,value_type
         assert(s >= 0 && s <= 1 && "n_step_q_sigma needs 0 <= sigma <= 1");
         value_type rho = 1;
         if (behaviour) {
-            const auto b = behaviour(next.state, next.action);
-            assert(b > 0 && "the behaviour policy took an action it gives no probability to");
-            rho = pi_taken / b;
+            const auto b_next = b ? (*b)[k + 1] : behaviour(next.state, next.action);
+            assert(b_next > 0 && "the behaviour policy took an action it gives no probability to");
+            rho = pi_taken / b_next;
         }
         // G_{k:τ+n} = r_k + γ * V̄(s_{k+1}) + γ * (σ ρ + (1 - σ) π(a_{k+1} | s_{k+1})) * (G_{k+1:τ+n} - Q(s_{k+1}, a_{k+1}))
         const auto v_bar = expected_value_of(pi, next.state, policy_map);
@@ -1014,6 +1120,11 @@ void n_step_q_sigma<state_class,action_class,markov_chain,value_type
                                  bool terminated)
 {
     assert(n >= 1 && "n_step_q_sigma needs n >= 1");
+    // off-policy: b(a_t | s_t) as it was when each action was chosen, before any update below
+    std::vector<value_type> b;
+    if (behaviour) {
+        b = recorded.probabilities(episode, behaviour, terminated);
+    }
     // the steps learnt: all of them if the episode ended, otherwise those whose n rewards are known
     std::size_t learnt = episode.size();
     if (!terminated) {
@@ -1024,7 +1135,7 @@ void n_step_q_sigma<state_class,action_class,markov_chain,value_type
         // α: `alpha`, or the scheduled learning rate of this update of (s_τ, a_τ)
         auto rate = step_size(learning_rate, alpha, visits, step.state, step.action);
         // Q(s_τ,a_τ) = Q(s_τ,a_τ) + α * (G_{τ:τ+n} - Q(s_τ,a_τ))
-        auto G = n_step_return(episode, tau, policy_map);
+        auto G = n_step_return(episode, tau, policy_map, behaviour ? &b : nullptr);
         auto q = policy_map.value(step.state, step.action);
         policy_map.update(step.state, step.action, q + rate * (G - q));
     }

@@ -303,9 +303,17 @@ learner.probabilities = [&memory](const state & s) {
 auto r = games::play_online(game, agent, learner, memory, 1000, learner.n);
 ```
 
-Do bear in mind that `π` and `b` are worked out when each step is learnt: if they depend on the values (ε-Greedy on
-them, as above), they are the probabilities of that moment, as in the book's algorithms, not quite those the
-action was chosen with a few steps before.
+`π` is the policy being learnt, so it is worked out when each step is learnt, with the values of that moment, as in
+the book's algorithms. `b` is not: an importance sampling ratio needs the probability each action was *chosen* with,
+and if `b` depends on the values (ε-Greedy on them, as above), reading it again after an update gives another one.
+So the learners record `b(a_t | s_t)` for every step before they learn any of it: after an episode played to the end
+(`games::play`), that is the policy that played it. Learning online, each step's `b` is recorded when the learner
+first sees it, which is just after its action was chosen, and kept for the next `n` calls. This is what the book's
+algorithms do too, storing `ρ` when each action is chosen.
+
+__note__: `games::play_online` does not tell the learner that a new episode has started after one cut short, so a new
+episode starting with the very steps the last window ended with would keep their recorded `b`. This is rare, and
+harmless with a `b` that does not change.
 
 ### After the episode, or after every step
 
@@ -470,9 +478,9 @@ learner of this page, `n = 4`, α = 0.2, γ = 1, the agent ε-greedy with ε = 0
     n-step tree backup                  -21.6      20/20        0/20
   off-policy (π is greedy, b the ε-greedy policy played):
     tree backup, n = 1 (Q-Learning)     -49.6      20/20       20/20      0.0
-    off-policy n-step SARSA             -27.3      20/20        0/20      8.9
-    n-step Expected SARSA               -25.0      20/20        0/20      8.1
-    n-step Q(σ), σ = 0.5                -32.4      20/20        2/20      2.6
+    off-policy n-step SARSA             -26.2      20/20        0/20      8.7
+    n-step Expected SARSA               -25.4      20/20        0/20      9.6
+    n-step Q(σ), σ = 0.5                -32.8      20/20        1/20      3.7
     n-step tree backup                  -33.6      20/20        3/20      1.9
 ```
 
@@ -492,8 +500,9 @@ episodes with α = 0.1), but in the same 1000 episodes, the importance sampling 
 prefer the edge. n-step methods shine where the rewards are far apart, as in the [Dyna maze](#example-the-dyna-maze-figure-74).
 
 __note__: the numbers are GCC's; with Clang's standard library (libc++), whose random numbers differ, the errors are
-0.0, 7.5, 8.2, 3.0 and 1.4, in the same order. The program checks that order, and that on-policy, Q(σ) and tree
-backup earn more whilst exploring than n-step SARSA.
+0.0, 9.6, 8.2, 3.9 and 1.4, in the same order. n-step Expected SARSA and off-policy n-step SARSA swap places, so the
+program only checks that the errors of Q-Learning, tree backup, Q(σ) and off-policy n-step SARSA come in that order,
+and that on-policy, Q(σ) and tree backup earn more whilst exploring than n-step SARSA.
 
 ## Tests
 
@@ -516,6 +525,10 @@ backup earn more whilst exploring than n-step SARSA.
   on one small episode (on-policy and off-policy, with σ = 0.5, σ = 1, and σ chosen per step); and an episode cut short
 - that a step with a ratio of 0 is not learnt, nor counted as an update; that a greedy `π` cuts the tree backup's return
   at the first other action, and follows it whilst the actions were greedy
+- that `b` is the probability each action was chosen with: with a `b` that changes as the values are learnt, a state
+  visited twice keeps the `b` it had when it was played, after an episode and online (a `b` counting its calls gives
+  each step the number of the call it was first seen in); and off-policy n-step SARSA learnt online is the book's
+  algorithm, storing `b` when each action is chosen, to 1e-12 (ε-Greedy `b`, greedy `π`, `n` = 2 and 3)
 - cross-checks on random corridor episodes: off-policy n-step SARSA with `b = π` is `n_step_sarsa` to the last bit;
   Q(σ) with σ = 0 is tree backup, and with `n = 1` (any σ, on or off-policy) it is `expected_sarsa`, as is n-step
   Expected SARSA with `n = 1` (to 1e-12); and learning online is the same as learning after each episode, to the last bit
@@ -523,8 +536,8 @@ backup earn more whilst exploring than n-step SARSA.
   backup and Q(σ) (σ = 0.5 and 1) learn the values of the ε-greedy policy (worst error at most 0.157 over 10 seeds);
   off-policy, from an agent that moves right with 0.7 whatever it has learnt, all four learn `q*`, the values of the
   greedy policy (worst error at most 0.102)
-- every one of 13 mutations of the new learners (a wrong factor, a ratio of one factor too many or too few, σ and 1 - σ
-  swapped, the wrong end of the return, and so on) makes at least one of these tests fail
+- every one of 18 mutations of the new learners (a wrong factor, a ratio of one factor too many or too few, σ and 1 - σ
+  swapped, the wrong end of the return, `b` read again after the updates, and so on) makes at least one of these tests fail
 
 Each threshold was set from 10 seeds, with GCC's standard library and with Clang's (libc++).
 
