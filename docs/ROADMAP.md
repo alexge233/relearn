@@ -3,14 +3,15 @@
 relearn now has most of the tabular methods of Sutton and Barto's book [1]: from bandits and dynamic programming,
 through Monte Carlo, TD, n-step methods, planning and eligibility traces, to policy gradients, R-Learning and Monte
 Carlo Tree Search. Each one is tested against hand-worked steps and against the book's own figures. A few are still
-to come (tree backup, Q(σ) and true online TD(λ)), and they are the first part of this plan.
+to come (the off-policy n-step methods, tree backup and Q(σ), true online TD(λ) and a few more), and they are the
+first part of this plan.
 
 This page is where it goes next. It is a plan, not a promise: there are no dates, the order may change, and each
 step is only done once it has been implemented, tested, documented and reviewed, like everything before it.
 
 ```mermaid
 flowchart LR
-    classic["1. finish the classics<br/>function approximation,<br/>tree backup, true online TD(λ)"]
+    classic["1. finish the classics<br/>the tabular methods still to come,<br/>then function approximation"]
     games["2. the games<br/>verified, and a watch mode"]
     deep["3. DQN and its variants<br/>then deep policy gradients"]
     python["4. Python bindings"]
@@ -35,18 +36,49 @@ Whatever gets added, a few things don't change:
 
 ## 1. Finishing the classics
 
-The book has a few classic methods that relearn doesn't have yet:
+### The tabular methods still to come
 
-- **Function approximation** (Chapters 9 and 10). Instead of one value per state and action, the values come from a
-  function q̂(s, a, **w**) whose weights **w** are learnt, so that what is learnt about one state carries over to the
-  states near it. This is what makes continuous and very large state spaces possible:
-  - tile coding (Section 9.5.4), and the polynomial and Fourier bases (Sections 9.5.1 and 9.5.2)
-  - semi-gradient TD(0), on the 1000-state random walk (Example 9.1)
-  - episodic semi-gradient Sarsa and its n-step version, on Mountain Car (Example 10.1), which the `mountain_car`
-    example would then learn the book's way, next to the current one which cuts the state into boxes
-  - Fitted Q Iteration [7], which learns from a batch of experience with any regressor (trees, for example)
-- **Off-policy n-step methods**: tree backup and Q(σ) (Sections 7.5 and 7.6).
-- **True online TD(λ)** (Section 12.5), which learns after every step with eligibility traces.
+The book has a few more tabular methods that relearn doesn't have yet. In the order they would be done:
+
+1. **The rest of the n-step family** (Chapter 7), which shares the machinery of `n_step_sarsa`:
+   - n-step Expected Sarsa (Section 7.2)
+   - off-policy n-step Sarsa, which learns from another policy's play with importance sampling, and its
+     per-decision version with control variates (Sections 7.3 and 7.4)
+   - n-step tree backup, which learns off-policy without importance sampling (Section 7.5)
+   - n-step Q(σ), which unifies them all: σ = 1 is Sarsa, σ = 0 is tree backup (Section 7.6)
+2. **True online TD(λ) and true online Sarsa(λ)** (Sections 12.5 to 12.7), with Dutch traces. Today's TD(λ),
+   SARSA(λ) and Watkins's Q(λ) learn one whole episode at a time; these learn after every step, and still match the
+   λ-return exactly.
+3. **Actor-Critic with eligibility traces**, and **Actor-Critic for tasks that never end** (Sections 13.5 and 13.6).
+   Today's `actor_critic` is the one-step version, for episodes only.
+4. **Off-policy Monte Carlo prediction** (Section 5.5): ordinary against weighted importance sampling, on the
+   book's blackjack state (Example 5.4, Figure 5.3). Today's `off_policy_monte_carlo` is the weighted one, for
+   control only.
+
+And the smaller or rarer ones, after those:
+
+- truncated TD(λ) and the online λ-return algorithm (Sections 12.3 and 12.4), which true online TD(λ) supersedes
+- variable λ and γ, off-policy traces with control variates, and Tree-Backup(λ) (Sections 12.8 to 12.10)
+- real-time dynamic programming (Section 8.7), and trajectory sampling, heuristic search and rollout algorithms
+  (Sections 8.6, 8.9 and 8.10)
+- discounting-aware and per-decision importance sampling (Sections 5.8 and 5.9)
+
+### Function approximation
+
+Chapters 9 and 10. Instead of one value per state and action, the values come from a function q̂(s, a, **w**) whose
+weights **w** are learnt, so that what is learnt about one state carries over to the states near it. This is what
+makes continuous and very large state spaces possible:
+
+- tile coding (Section 9.5.4), and the polynomial and Fourier bases (Sections 9.5.1 and 9.5.2)
+- semi-gradient TD(0), on the 1000-state random walk (Example 9.1)
+- episodic semi-gradient Sarsa and its n-step version, on Mountain Car (Example 10.1), which the `mountain_car`
+  example would then learn the book's way, next to the current one which cuts the state into boxes
+- Fitted Q Iteration [7], which learns from a batch of experience with any regressor (trees, for example)
+- Gaussian policies for continuous actions (Section 13.7)
+
+Do bear in mind that a table is simply linear function approximation with one feature per state and action, all
+of them 0 but one. So the book gives true online TD(λ) and Sarsa(λ) with linear function approximation, and once that
+is in, they work with tables and with features alike.
 
 __note__: function approximation, bootstrapping and off-policy learning together can make the weights diverge (the
 book calls it the *deadly triad*, Section 11.3), so the control examples will use Sarsa, as the book does, and the
