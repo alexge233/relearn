@@ -1,4 +1,4 @@
-# Eligibility traces: TD(λ), SARSA(λ) and Watkins's Q(λ)
+# Eligibility traces: TD(λ), SARSA(λ), Watkins's Q(λ), and true online TD(λ)
 
 n-step methods (have a look at [n_step.md](n_step.md)) learn each step from the next `n` rewards,
 so they have to wait `n` steps before they can learn it. *Eligibility traces*, described by Sutton and Barto [1]
@@ -74,7 +74,8 @@ If the values are not changed during the episode (every `δ` worked out with the
 changes added up at its end), TD(λ) with these traces makes *exactly* the changes of the λ-return:
 every `V(s_t)` moving by `α (G^λ_t - V(s_t))`. This is the equivalence of the forward and the backward views,
 proved in the first edition of the book (Section 7.4), and relearn checks it to within `10⁻⁹` (have a look at the
-[tests](#tests)). Online, changing the values as it goes, TD(λ) is only close to it.
+[tests](#tests)). Online, changing the values as it goes, TD(λ) is only close to it (true online TD(λ),
+[below](#true-online-tdλ-and-sarsaλ), is exact online).
 
 __note__: the second edition's *offline λ-return algorithm* (equation 12.4) makes the same updates one after the other,
 each one seeing the ones before it, so a state visited twice in an episode learns a little differently from TD(λ) offline.
@@ -199,6 +200,77 @@ as in the book's pseudocode (its first edition, Figure 7.14). With `λ = 0` this
 When the agent explores a lot, the traces are cut often, and Q(λ) learns little more than Q-learning
 (the book's Section 12.10 discusses this, and other off-policy traces that avoid it).
 
+## True online TD(λ) and Sarsa(λ)
+
+TD(λ) learns online, after every step, but it only learns exactly what the λ-return algorithm learns offline, when the
+values do not change during the episode. Sutton and Barto's Section 12.4 asks what the λ-return *should* be online.
+After step `h`, the rewards known so far stop at `h`, so the λ-return can only be *truncated* at `h`:
+
+```math
+G^\lambda_{t:h} = (1 - \lambda) \sum_{n=1}^{h-t-1} \lambda^{n-1} \, G_{t:t+n} + \lambda^{h-t-1} \, G_{t:h}
+```
+
+where each n-step return `G_{t:t+n}` ends with the value of `s_{t+n}` as it was at step `t+n-1`. The *online λ-return
+algorithm* then works out, after every step `h`, every update of the episode so far again, from its start, each one with
+the λ-return truncated at `h`; the values after step `h` are those of the last of them. It is the ideal, but it costs
+more and more with every step: the whole episode so far, again, after each one.
+
+```mermaid
+flowchart LR
+    subgraph online ["the online λ-return algorithm, after step h"]
+        direction LR
+        w0["values at the<br/>start of the episode"] -- "update 0, with G^λ₀:ₕ" --> w1["..."] -- "update h-1, with G^λₕ₋₁:ₕ" --> wh["the values<br/>at step h"]
+    end
+    true["true online TD(λ):<br/>one step, after step h"] -- "the very same values" --> wh
+```
+
+*True online* TD(λ) (Section 12.5, from van Seijen and Sutton [2]) gets the very same values, after every step, at the cost
+of one step of TD(λ). It needs two changes to TD(λ). The trace is a *Dutch* trace, between accumulating and replacing:
+
+```math
+z(s_t) \leftarrow \gamma \lambda \, z(s_t) + 1 - \alpha \gamma \lambda \, z(s_t) \qquad \text{(the traces of the other states fade by } \gamma\lambda \text{, as before)}
+```
+
+and the update corrects for how much the value of the state reached changed in the step before:
+
+```math
+\delta_t = r_t + \gamma \, V' - V \qquad V(s) \leftarrow V(s) + \alpha \, (\delta_t + V - V_{old}) \, z(s) \quad \text{for every } s, \qquad V(s_t) \leftarrow V(s_t) - \alpha \, (V - V_{old})
+```
+
+with `V = V(s_t)` and `V' = V(s_{t+1})` read before the step changes anything, and `V_old`, the `V'` of the step before
+(0 at the start of an episode). For the example above, with `α = 0.5` as well (so `αγλ = 0.125`), the Dutch trace of `x`
+on its second visit is `0.0625 + 1 - 0.125 * 0.25 = 1.03125`, between the replacing trace, 1, and the accumulating one,
+1.0625. With `λ = 0` it is TD(0) again, and the exact equivalence holds for any `α`, `γ` and `λ`, which van Seijen et
+al [3] prove for linear function approximation; a table of values, as relearn's, is the case of one feature per state.
+
+True online *Sarsa(λ)* (Section 12.7) is the same, for state/action pairs, with SARSA's `Q(s_{t+1}, a_{t+1})`:
+
+```
+True online Sarsa(λ), for estimating Q of a policy (a table of values)
+
+parameters: learning rate α, discount rate γ, trace decay λ
+
+start with Q(s, a) = 0 for every pair
+
+for each episode:
+    z(s, a) ← 0 for every pair, and Q_old ← 0
+    s ← the start state, and a ← the action chosen in s (ε-greedy on Q, for instance)
+    repeat until the episode ends:
+        take a, and observe the reward r and the next state s'
+        choose a' in s' (ε-greedy on Q, for instance)
+        Q ← Q(s, a), and Q' ← Q(s', a')         (Q' ← 0 if s' ends the episode)
+        δ ← r + γ Q' - Q
+        z_old ← z(s, a)
+        z(x, b) ← γλ z(x, b) for every pair, then z(s, a) ← z(s, a) + 1 - αγλ z_old
+        Q(x, b) ← Q(x, b) + α (δ + Q - Q_old) z(x, b) for every pair
+        Q(s, a) ← Q(s, a) - α (Q - Q_old)
+        Q_old ← Q'
+        s ← s', and a ← a'
+```
+
+Learning online matters most for control, where what the agent learns during an episode changes how it plays the
+rest of it: have a look at the [mountain car](#example-mountain-car-learning-after-every-step) below.
+
 ## In relearn
 
 ```cpp
@@ -214,11 +286,16 @@ sarsa(episode, policy);
 // Watkins's Q(λ)
 relearn::watkins_q_lambda<state,action> q(0.1, 0.95, 0.9, true);  // α, γ, λ and replacing
 q(episode, policy);
+// true online Sarsa(λ), learning after every step
+relearn::true_online_sarsa_lambda<state,action> learner(0.5, 1.0, 0.9);  // α, γ and λ
+auto r = games::play_online(game, agent, learner, memory, 1000);
+// true online TD(λ): prediction, one action per state
+relearn::true_online_td_lambda<state,action> true_td(0.4, 1.0, 0.8);
 ```
 
 - As with the n-step learners, `td_lambda` is simply `sarsa_lambda` under the name of prediction: relearn keeps
   values for state/action pairs, so a prediction task has one action per state, and `V(s)` is the value of `(s, a)`.
-- **Each call learns one whole episode.** The traces start at 0, and every step of the episode is learnt in order,
+- **Each call of `td_lambda`, `sarsa_lambda` and `watkins_q_lambda` learns one whole episode.** The traces start at 0, and every step of the episode is learnt in order,
   exactly as the pseudocode does whilst the episode is played. So play the episode with `games::play`, then give it
   to the learner. Do not use `games::play_online`: it gives the learner one step at a time, and the traces would start
   again at every step, which is one-step SARSA. For prediction this makes no difference at all, since the agent's moves
@@ -236,8 +313,24 @@ q(episode, policy);
   if none is stored, exactly as in `q_learning`.
 - There is no `learning_rate` schedule: every pair learns with the same `α δ`, scaled by its trace.
 
-__note__: Section 12.5's *dutch* traces belong with *true online* TD(λ), which also changes the update itself;
-they are not here.
+`true_online_sarsa_lambda` (and so `true_online_td_lambda`, the same struct under the name of prediction) is different:
+
+- **It learns after every step**, with `games::play_online` (its window is 1, the default). `play_online` calls
+  `learner.start_episode()` before every game, and from then on the traces and `Q_old` are *kept* from one call to the
+  next, until the call that ends the episode (`terminated = true`). Each call gives it a step with the next state and
+  action, and it learns that step, exactly as the pseudocode above does.
+- It can also learn a whole episode at a time, after `games::play`. For prediction the values are then the very same,
+  to the last bit, as learning after every step; for control, the agent plays each episode with the values it had at
+  its start, so learning after every step is what you want.
+- Any call made without `start_episode()` first is a whole episode on its own, its traces and `Q_old` at 0, as for
+  `sarsa_lambda`, even after an episode cut short. So to learn an episode a step at a time without `play_online`, call
+  `learner.start_episode()` before its first step yourself. Do bear in mind that an episode learnt a step at a time and
+  cut short is still open until the next `start_episode()`: if you then give the same learner whole episodes, call
+  `learner.start_episode()` and end that episode first, or simply use another learner.
+- `learner.traces` has the Dutch traces of the episode being learnt, and `learner.q_old` its `Q_old`.
+
+__note__: `games::play_online` calls `start_episode()` on any learner that has one, so `actor_critic` (whose `I` it sets
+back to 1) is told too; the other learners start every call afresh, and have nothing to be told.
 
 ## Example: the random walk (Figure 12.6)
 
@@ -278,7 +371,57 @@ out from its definition, `G^λ_t` and all. They learn the very same values, to w
     the largest difference is 1.7e-16
 ```
 
+The third part is the same as the first, with true online TD(λ):
+
+```
+        α   λ =  0.000  0.400  0.800  0.900  0.950  0.975  0.990  1.000
+     0.05        0.53   0.51   0.47   0.42   0.39   0.39   0.41   0.50
+     0.10        0.51   0.48   0.40   0.35   0.33   0.35   0.41   0.55
+     0.20        0.47   0.43   0.31   0.27   0.30   0.37   0.47   0.63
+     0.30        0.44   0.38   0.26   0.27   0.32   0.40   0.51   0.67
+     0.40        0.41   0.34   0.24   0.28   0.35   0.44   0.55   0.70
+     0.60        0.37   0.28   0.27   0.32   0.40   0.49   0.59   0.74
+     0.80        0.34   0.27   0.31   0.37   0.44   0.52   0.63   0.77
+     1.00        0.38   0.30   0.36   0.41   0.48   0.56   0.66   0.79
+    lowest      0.341  0.264  0.243  0.265  0.303  0.350  0.410  0.498
+```
+
+At its best α every λ learns at least as well as with TD(λ) (`λ = 0` is TD(0) for both), and the larger λ, the larger
+the difference: 0.243 against 0.253 for `λ = 0.8`, and 0.498 against 0.591 for `λ = 1`, which now does better than not
+learning at all. Above all, nothing blows up: with `α = 1` and `λ = 0.95`, TD(λ)'s error is 1.00 and true online TD(λ)'s
+0.48. The program checks both, for every λ at its best α, and at `α = 1` for `λ` of 0.9 and above.
+
 The random walk's numbers are the same with GCC's and Clang's standard libraries.
+
+## Example: mountain car, learning after every step
+
+`examples/mountain_car_lambda.cpp` drives the mountain car (Example 10.1, with Gymnasium's physics, see
+`examples/games/mountain_car.hpp`), its position and velocity cut into a 20 x 20 grid, as in `examples/mountain_car.cpp`.
+Every step costs -1 until the car reaches the flag, with no step limit, and γ = 1. The agent is greedy, without random
+moves: every value starts at 0, so a move it has not tried looks better than any it has, and it explores by itself.
+It learns after every step with true online Sarsa(λ), α = 0.5, in 20 runs of 20 episodes:
+
+```
+    the steps to reach the flag, per episode:
+    λ                 first   2 to 20    all 20
+    0 (SARSA)         4040       951      1106
+    0.5               3324       884      1006
+    0.9               4185       669       845
+    0.95              4395       556       748
+```
+
+The first episode takes thousands of steps whatever λ is: the car has to find out, by trying, that rocking back and forth
+gets it up the hill. From then on, the longer the traces, the fewer the steps, with `λ = 0.95` taking little more than half
+of SARSA's. The program checks that `λ = 0.9` and `λ = 0.95` take fewer steps than SARSA, over all 20 episodes.
+
+Learning after every step is what makes this work. Learning after each episode instead (`sarsa_lambda` after `games::play`),
+the first episode is played with every value at 0, by an agent that picks at random between them, and nothing it does
+changes its mind until the episode is over: in a quick test (replacing traces, λ = 0 to 0.9, α = 0.1 to 0.5, and a cap of
+100000 steps), the first 20 episodes took over 60000 steps each on average.
+
+__note__: the numbers above are GCC's; with Clang's standard library (libc++), whose random numbers differ, the first
+episode takes 3467, 3311, 3932 and 4836 steps, episodes 2 to 20 take 986, 879, 684 and 511, and all 20 take 1110, 1001,
+846 and 727, in the same order.
 
 ## Example: the Dyna maze
 
@@ -352,6 +495,22 @@ moves with `std::uniform_int_distribution`, whose numbers differ between the two
 - control, against exact answers from `tests/solvers.hpp`, in a slippery corridor: SARSA(λ) with ε = 0.1 learns the values of the
   ε-greedy policy (worst error 0.012 to 0.121 over 10 seeds), and Q(λ) learns the optimal values `q*`, from ε-greedy play
   and from random play (worst error 0.014 to 0.072)
+- true online Sarsa(λ): its Dutch traces and values worked out by hand, on the same episode; and that after *every step*
+  it has exactly the values of the online λ-return algorithm, written from its definition (to within `10⁻¹²`, on 200
+  random episodes that come back to the same pairs, with random α, γ and λ, γ = 1 and λ = 1 too, a third of them cut short),
+  learning the episode at once giving the very same values, to the last bit
+- that with λ = 0, true online Sarsa(λ) is SARSA and true online TD(λ) is TD(0) (to within `10⁻¹²`); that an episode goes
+  on from one call to the next only after `start_episode()`, until it ends, and that any other call is a new episode, even
+  one starting with the very link an episode cut short ended with; and that `games::play_online` calls `start_episode()`
+  before every game, even after one cut short
+- the random walk: at its best α true online TD(λ) was better than TD(λ) on each of 10 seeds, by 0.007 to 0.010 (λ = 0.8)
+  and 0.012 to 0.016 (λ = 0.9); with α = 1, its error was 0.353 to 0.371 and 0.406 to 0.428, against 0.656 to 0.705 and
+  0.962 to 0.968 for TD(λ)
+- control: online, true online Sarsa(λ) with ε = 0.1 learns the values of the ε-greedy policy in the corridor (worst error
+  0.023 to 0.123 over 10 seeds)
+- every one of 15 mutations of true online Sarsa(λ) (accumulating or replacing traces instead of Dutch ones, the trace read
+  after it fades, the `Q - Q_old` correction left out, `Q_old` not kept, a new episode started at every call, or an episode
+  cut short going on into the next call, and so on) makes at least one of these tests fail
 - the Dyna maze: after one episode with replacing traces, the greedy path reaches the goal without a loop, for both learners,
   and in episodes 2 to 10, λ = 0.9 with replacing traces needs 20.6 to 23.0 moves, against 263 to 350 for λ = 0,
   and 82 to 132 for SARSA(λ) with accumulating traces (over 10 seeds)
@@ -362,6 +521,12 @@ Each threshold was set from 10 seeds, with GCC's standard library and with Clang
 
 1. Sutton, R.S. and Barto, A.G., 2018. [Reinforcement Learning: An Introduction](http://incompleteideas.net/book/the-book-2nd.html), 2nd edition. Cambridge, MA: MIT Press.
    Section 12.1 (the λ-return), Section 12.2 (TD(λ), Figure 12.6), Section 12.7 (SARSA(λ), and accumulating and replacing traces),
-   Section 12.10 (Watkins's Q(λ)), Example 7.1 (the 19-state random walk), Example 8.1 (the Dyna maze).
+   Section 12.4 (the online λ-return algorithm), Section 12.5 (true online TD(λ), and Dutch traces), Section 12.7 (true online
+   Sarsa(λ)), Section 12.10 (Watkins's Q(λ)), Example 7.1 (the 19-state random walk), Example 8.1 (the Dyna maze),
+   Example 10.1 (mountain car).
    The first edition (1998) proves the equivalence of offline TD(λ) and the λ-return in Section 7.4, and gives Watkins's Q(λ)
    in Figure 7.14.
+2. van Seijen, H. and Sutton, R.S., 2014. True online TD(λ). In *Proceedings of the 31st International Conference on Machine
+   Learning (ICML)*.
+3. van Seijen, H., Mahmood, A.R., Pilarski, P.M., Machado, M.C. and Sutton, R.S., 2016. True online temporal-difference learning.
+   *Journal of Machine Learning Research*, 17.

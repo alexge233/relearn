@@ -78,6 +78,24 @@ struct recorder
     }
 };
 
+/**
+ * @struct starter
+ * @brief the same, for a learner that keeps something from one call to the next, and is told when
+ *        a new episode starts (as `relearn::true_online_sarsa_lambda`): it records "start" too
+ */
+struct starter : recorder
+{
+    /// @brief record into @param shared
+    explicit starter(std::vector<std::string> & shared)
+    : recorder{shared}
+    {}
+
+    void start_episode()
+    {
+        log.push_back("start");
+    }
+};
+
 /// verifies the calls of a whole game: each step learnt once, from the next state and action chosen before learning
 TEST_CASE("play_online: what the learner is given, and when", "[play_online]")
 {
@@ -143,4 +161,24 @@ TEST_CASE("play_online: a game cut short", "[play_online]")
     for (unsigned int t = 0; t < 2; t++) {
         REQUIRE(r.episode[t].action.trait() == 10 + t);
     }
+}
+
+/// verifies that a learner with a start_episode() is told before every game, even after one cut short
+TEST_CASE("play_online: a learner that keeps its traces is told when a game starts", "[play_online]")
+{
+    std::vector<std::string> log;
+    starter learner(log);
+    types::policy memory;
+    corridor game;
+    auto agent = [](const unsigned int & s,
+                    const std::vector<unsigned int> &) {
+        return 10 + s;
+    };
+    games::play_online(game, agent, learner, memory, 2);
+    games::play_online(game, agent, learner, memory, 100);
+    const std::vector<std::string> expected = {
+        "start", "learn [(0, 10, 1)(1, 11, 0)] cut", "learn [(1, 11, 2)(2, 12, 0)] cut",
+        "start", "learn [(0, 10, 1)(1, 11, 0)] cut", "learn [(1, 11, 2)(2, 12, 0)] cut", "learn [(2, 12, 3)] terminated"
+    };
+    REQUIRE(log == expected);
 }

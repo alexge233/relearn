@@ -4,6 +4,7 @@
 #include "../examples/games/game.hpp"
 #include "../examples/games/random_walk.hpp"
 #include "../examples/games/dyna_maze.hpp"
+#include <algorithm>
 #include <cmath>
 #include <limits>
 #include <set>
@@ -13,11 +14,13 @@
 #include "catch.hpp"
 
 /**
- * Tests of the eligibility traces (Sutton & Barto, Chapter 12): `sarsa_lambda`, `td_lambda`
- * and `watkins_q_lambda`:
- * - traces and values worked out by hand, accumulating and replacing, and Watkins's cut
- * - λ = 0 is `sarsa`, `q_learning` and TD(0), and offline TD(λ) is the offline λ-return algorithm
- * - the 19-state random walk (Figure 12.6): an intermediate λ is best
+ * Tests of the eligibility traces (Sutton & Barto, Chapter 12): `sarsa_lambda`, `td_lambda`,
+ * `watkins_q_lambda`, and `true_online_sarsa_lambda` and `true_online_td_lambda`:
+ * - traces and values worked out by hand, accumulating, replacing and Dutch, and Watkins's cut
+ * - λ = 0 is `sarsa`, `q_learning` and TD(0), offline TD(λ) is the offline λ-return algorithm,
+ *   and true online Sarsa(λ) is the online λ-return algorithm, after every step
+ * - the 19-state random walk (Figure 12.6): an intermediate λ is best, and true online TD(λ)
+ *   learns at least as well as TD(λ), and much better with a large α
  * - control: the exact values in a slippery corridor, and the Dyna maze after one episode, and early on
  * Random number generators are seeded, so results are reproducible.
  */
@@ -64,6 +67,35 @@ double rms_error(const walk_type & walk,
 }
 
 /**
+ * @brief Figure 12.6: the RMS error of a TD(λ) learner on the 19-state walk, over its first 10 episodes
+ * @param lambda is λ
+ * @param seed seeds the walks of the runs (seed * 1000 + run)
+ * @return for each α = 0.05, 0.1, ... 1, the error after each of the first 10 walks,
+ *         averaged over them and over 50 runs
+ */
+template <class learner_type>
+std::vector<double> figure_12_6(double lambda,
+                                unsigned int seed)
+{
+    std::vector<double> errors;
+    for (int i = 1; i <= 20; i++) {
+        double error = 0;
+        for (unsigned int run = 0; run < 50; run++) {
+            walk_type walk(19, -1, 1, seed * 1000 + run);
+            walk_types::policy memory;
+            learner_type td(0.05 * i, 1.0, lambda);
+            for (unsigned int k = 0; k < 10; k++) {
+                auto r = games::play(walk, only_action, 100000);
+                td(r.episode, memory, r.terminated);
+                error += rms_error(walk, memory) / 500;
+            }
+        }
+        errors.push_back(error);
+    }
+    return errors;
+}
+
+/**
  * @brief Figure 12.6: the lowest RMS error of TD(λ) on the 19-state walk, over its first 10 episodes
  * @param lambda is λ
  * @param seed seeds the walks of the runs (seed * 1000 + run)
@@ -73,22 +105,8 @@ double rms_error(const walk_type & walk,
 double best_of_figure_12_6(double lambda,
                            unsigned int seed)
 {
-    double best = std::numeric_limits<double>::infinity();
-    for (int i = 1; i <= 20; i++) {
-        double error = 0;
-        for (unsigned int run = 0; run < 50; run++) {
-            walk_type walk(19, -1, 1, seed * 1000 + run);
-            walk_types::policy memory;
-            relearn::td_lambda<walk_types::state, walk_types::action> td(0.05 * i, 1.0, lambda);
-            for (unsigned int k = 0; k < 10; k++) {
-                auto r = games::play(walk, only_action, 100000);
-                td(r.episode, memory, r.terminated);
-                error += rms_error(walk, memory) / 500;
-            }
-        }
-        best = std::min(best, error);
-    }
-    return best;
+    auto errors = figure_12_6<relearn::td_lambda<walk_types::state, walk_types::action>>(lambda, seed);
+    return *std::min_element(errors.begin(), errors.end());
 }
 
 /**
@@ -134,6 +152,62 @@ void offline_lambda_return(const walk_types::episode & walk_episode,
         const auto & s = walk_episode[t];
         memory.update(s.state, s.action, memory.value(s.state, s.action) + alpha * (lambda_return - V(t)));
     }
+}
+
+/**
+ * @brief the online λ-return algorithm (Section 12.4), written from its definition, for one episode
+ * @param e is the episode: steps with integer states and actions, and their rewards
+ * @param start holds the values at the start of the episode
+ * @param alpha, @param gamma and @param lambda are α, γ and λ
+ * @param terminated is false for an episode cut short, whose last link is not a step
+ * @return the values after every step h = 0, 1, ..., T of the episode: element h is w_h
+ *
+ * After step h, every update of the episode is worked out again from its start, from the values `start`,
+ * each with the λ-return truncated at h:
+ * G^λ_{t:h} = (1 - λ) Σ_{n=1}^{h-t-1} λ^{n-1} G_{t:t+n} + λ^{h-t-1} G_{t:h}, where
+ * G_{t:t+n} = r_t + ... + γ^{n-1} r_{t+n-1} + γ^n Q(s_{t+n}, a_{t+n}), the value being the one at step t+n-1,
+ * w_{t+n-1} (none after the end of the episode). The values at h, w_h, are those of the last update.
+ */
+std::vector<policy> online_lambda_return(const episode & e,
+                                         const policy & start,
+                                         double alpha,
+                                         double gamma,
+                                         double lambda,
+                                         bool terminated)
+{
+    const std::size_t T = terminated ? e.size() : e.size() - 1;
+    std::vector<policy> w {start};
+    for (std::size_t h = 1; h <= T; h++) {
+        policy redone = start;
+        for (std::size_t t = 0; t < h; t++) {
+            // the n-step return G_{t:t+n}, bootstrapping from the values at step t+n-1
+            auto n_step = [&](std::size_t n) {
+                double G = 0;
+                double discount = 1;
+                for (std::size_t k = t; k < t + n; k++) {
+                    G += discount * e[k].state.reward();
+                    discount *= gamma;
+                }
+                if (t + n < e.size()) {
+                    G += discount * w[t + n - 1].value(e[t + n].state, e[t + n].action);
+                }
+                return G;
+            };
+            // G^λ_{t:h}: the n-step returns weighted by (1 - λ) λ^{n-1}, and the rest of the weight on G_{t:h}
+            double G = 0;
+            double weight = 1;
+            for (std::size_t n = 1; t + n < h; n++) {
+                G += (1 - lambda) * weight * n_step(n);
+                weight *= lambda;
+            }
+            G += weight * n_step(h - t);
+            // Q(s_t, a_t) moves by α (G^λ_{t:h} - Q(s_t, a_t))
+            double q = redone.value(e[t].state, e[t].action);
+            redone.update(e[t].state, e[t].action, q + alpha * (G - q));
+        }
+        w.push_back(redone);
+    }
+    return w;
 }
 
 /**
@@ -253,16 +327,18 @@ double worst_error(const corridor_types::policy & memory,
 }
 
 /**
- * @brief learn the corridor, one whole episode at a time
+ * @brief learn the corridor, one whole episode at a time, or after every step
  * @param learner is the learner to train
  * @param seed seeds the corridor and the agent
  * @param random_play is true for an agent that moves at random, false for ε-greedy on what it learns (ε = 0.1)
+ * @param online is true to learn after every step (`games::play_online`), false after each episode
  * @return the learnt policy, after 20000 episodes, with α = 0.1 * 1000 / (1000 + k) in episode k
  */
 template <class learner_type>
 corridor_types::policy learn_corridor(learner_type & learner,
                                       unsigned int seed,
-                                      bool random_play)
+                                      bool random_play,
+                                      bool online = false)
 {
     corridor game(seed);
     std::mt19937 prng(seed + 100);
@@ -277,8 +353,13 @@ corridor_types::policy learn_corridor(learner_type & learner,
     };
     for (int k = 1; k <= 20000; k++) {
         learner.alpha = 0.1 * 1000.0 / (1000.0 + k);
-        auto r = games::play(game, agent, 1000);
-        learner(r.episode, memory, r.terminated);
+        if (online) {
+            games::play_online(game, agent, learner, memory, 1000);
+        }
+        else {
+            auto r = games::play(game, agent, 1000);
+            learner(r.episode, memory, r.terminated);
+        }
     }
     return memory;
 }
@@ -707,4 +788,251 @@ TEST_CASE("eligibility traces: the maze is learnt faster with traces", "[eligibi
     REQUIRE(sarsa_repl < 0.2 * sarsa_zero);
     REQUIRE(q_repl < 0.2 * q_zero);
     REQUIRE(sarsa_repl < 0.5 * sarsa_accum);
+}
+
+/// verifies true online Sarsa(λ)'s Dutch traces and values worked out by hand
+TEST_CASE("true_online_sarsa_lambda: traces and values worked out by hand", "[eligibility_traces][true_online]")
+{
+    // the episode of the SARSA(λ) test above: γ = 0.5, λ = 0.5 (so γλ = 0.25, αγλ = 0.125), α = 0.5,
+    // (x, a) earns 1, (y, b) 0, then (x, a) again 2, and the episode ends. Q and Q' are read before each step
+    //    t = 0: Q = 0, Q' = Q(y, b) = 0, δ = 1,               z(x, a) = 1 - 0.125 * 0 = 1
+    //           Q(x, a) = 0 + 0.5 * (1 + 0 - 0) * 1 = 0.5, minus 0.5 * (0 - 0);  Q_old = 0
+    //    t = 1: Q = 0, Q' = Q(x, a) = 0.5, δ = 0 + 0.25 = 0.25, z(x, a) = 0.25, z(y, b) = 1
+    //           Q(x, a) = 0.5 + 0.125 * 0.25 = 0.53125, Q(y, b) = 0.125;  Q_old = 0.5
+    //    t = 2: Q = 0.53125, Q' = 0 (the end), δ = 2 - 0.53125 = 1.46875
+    //           z(y, b) = 0.25, z(x, a) = 0.25 * 0.25 + 1 - 0.125 * 0.25 = 1.03125 (between replacing, 1, and accumulating, 1.0625)
+    //           α (δ + Q - Q_old) = 0.5 * (1.46875 + 0.53125 - 0.5) = 0.75, so
+    //           Q(x, a) = 0.53125 + 0.75 * 1.03125 - 0.5 * (0.53125 - 0.5) = 1.2890625, Q(y, b) = 0.125 + 0.75 * 0.25 = 0.3125
+    auto twice = episode {{state(1, "x"), action("a")},
+                          {state(0, "y"), action("b")},
+                          {state(2, "x"), action("a")}};
+    relearn::true_online_sarsa_lambda<state,action> learner(0.5, 0.5, 0.5);
+    policy memory;
+    learner(twice, memory);
+    REQUIRE(memory.value(state("x"), action("a")) == Approx(1.2890625));
+    REQUIRE(memory.value(state("y"), action("b")) == Approx(0.3125));
+    REQUIRE(learner.traces.trace(state("x"), action("a")) == Approx(1.03125));
+    REQUIRE(learner.traces.trace(state("y"), action("b")) == Approx(0.25));
+    REQUIRE(learner.traces.entries().size() == 2);
+    REQUIRE(learner.q_old == Approx(0));
+}
+
+/// verifies the exact equivalence: after every step, true online Sarsa(λ) has the values of the online λ-return algorithm
+TEST_CASE("true_online_sarsa_lambda: after every step, it is the online lambda-return algorithm", "[eligibility_traces][true_online]")
+{
+    // random episodes of 4 states and 2 actions, which come back to the same pairs, from random values,
+    // with random α, γ and λ (γ = 1 and λ = 1 too), and a third of them cut short
+    std::mt19937 prng(5);
+    std::uniform_int_distribution<int> pick_state(0, 3);
+    std::uniform_int_distribution<int> pick_action(0, 1);
+    std::uniform_int_distribution<int> pick_reward(-2, 3);
+    std::uniform_int_distribution<std::size_t> pick_length(1, 12);
+    std::uniform_real_distribution<double> uniform(0, 1);
+    double largest = 0;
+    for (int trial = 0; trial < 200; trial++) {
+        const double alpha  = 0.05 + 0.9 * uniform(prng);
+        const double gamma  = trial % 5 == 0 ? 1.0 : uniform(prng);
+        const double lambda = trial % 7 == 0 ? 1.0 : uniform(prng);
+        const bool terminated = trial % 3 != 0;
+        episode e;
+        const std::size_t length = pick_length(prng);
+        for (std::size_t i = 0; i < length; i++) {
+            e.push_back({state(pick_reward(prng), "s" + std::to_string(pick_state(prng))),
+                         action("a" + std::to_string(pick_action(prng)))});
+        }
+        policy start;
+        for (int s = 0; s < 4; s++) {
+            for (int a = 0; a < 2; a++) {
+                start.update(state("s" + std::to_string(s)), action("a" + std::to_string(a)), uniform(prng) - 0.5);
+            }
+        }
+        auto expected = online_lambda_return(e, start, alpha, gamma, lambda, terminated);
+        // learnt after every step, as `games::play_online` gives it: (s_t, a_t) and the next link, then the last step alone
+        relearn::true_online_sarsa_lambda<state,action> online(alpha, gamma, lambda);
+        online.start_episode();
+        policy memory = start;
+        const std::size_t T = terminated ? e.size() : e.size() - 1;
+        for (std::size_t t = 0; t < T; t++) {
+            if (t + 1 < e.size()) {
+                online(episode {e[t], e[t + 1]}, memory, false);
+            }
+            else {
+                online(episode {e[t]}, memory, true);
+            }
+            for (int s = 0; s < 4; s++) {
+                for (int a = 0; a < 2; a++) {
+                    state s_k("s" + std::to_string(s));
+                    action a_k("a" + std::to_string(a));
+                    largest = std::max(largest, std::fabs(memory.value(s_k, a_k) - expected[t + 1].value(s_k, a_k)));
+                }
+            }
+        }
+        // and learnt in one call, it is the very same, to the last bit
+        relearn::true_online_sarsa_lambda<state,action> whole(alpha, gamma, lambda);
+        policy at_once = start;
+        whole(e, at_once, terminated);
+        for (int s = 0; s < 4; s++) {
+            for (int a = 0; a < 2; a++) {
+                state s_k("s" + std::to_string(s));
+                action a_k("a" + std::to_string(a));
+                REQUIRE(at_once.value(s_k, a_k) == memory.value(s_k, a_k));
+            }
+        }
+    }
+    INFO("the largest difference is " << largest);
+    REQUIRE(largest < 1e-12);
+}
+
+/// verifies that with λ = 0, true online Sarsa(λ) is SARSA, and true online TD(λ) is TD(0)
+TEST_CASE("true_online_sarsa_lambda: lambda = 0 is sarsa and TD(0)", "[eligibility_traces][true_online]")
+{
+    // the same corridor episodes, played at random, some of them cut short after 5 moves
+    // (agreeing to the last few bits only: α (δ + Q - Q_old) - α (Q - Q_old) is α δ, rounded differently)
+    corridor game(3);
+    std::mt19937 prng(4);
+    auto agent = [&](const int &,
+                     const std::vector<unsigned int> & legal) {
+        std::uniform_int_distribution<std::size_t> pick(0, legal.size() - 1);
+        return legal[pick(prng)];
+    };
+    using S = corridor_types::state;
+    using A = corridor_types::action;
+    relearn::sarsa<S,A> one_step(0.3, 0.9);
+    relearn::true_online_sarsa_lambda<S,A> zero(0.3, 0.9, 0.0);
+    corridor_types::policy one_memory, zero_memory;
+    for (int i = 0; i < 200; i++) {
+        auto r = games::play(game, agent, i % 2 == 0 ? 5 : 1000);
+        one_step(r.episode, one_memory, r.terminated);
+        zero(r.episode, zero_memory, r.terminated);
+    }
+    for (int s = 0; s < 4; s++) {
+        for (unsigned int a = 0; a < 2; a++) {
+            REQUIRE(zero_memory.value(S(s), A(a)) == Approx(one_memory.value(S(s), A(a))).epsilon(1e-12));
+        }
+    }
+    // true online TD(λ = 0) on the random walk is n-step TD with n = 1
+    walk_type walk(19, -1, 1, 6);
+    walk_types::policy td_memory, zero_td_memory;
+    relearn::n_step_td<walk_types::state, walk_types::action> td(0.4, 1.0, 1);
+    relearn::true_online_td_lambda<walk_types::state, walk_types::action> zero_td(0.4, 1.0, 0.0);
+    for (int i = 0; i < 50; i++) {
+        auto r = games::play(walk, only_action, 100000);
+        td(r.episode, td_memory, r.terminated);
+        zero_td(r.episode, zero_td_memory, r.terminated);
+    }
+    for (unsigned int s = 1; s <= 19; s++) {
+        REQUIRE(zero_td_memory.value(walk_types::state(s), walk_types::action(0)) ==
+                Approx(td_memory.value(walk_types::state(s), walk_types::action(0))).epsilon(1e-12).margin(1e-15));
+    }
+}
+
+/// verifies when an episode goes on from one call to the next, and when a new one starts
+TEST_CASE("true_online_sarsa_lambda: episodes cut short, and one call after another", "[eligibility_traces][true_online]")
+{
+    auto x = step {state(1, "x"), action("a")};
+    auto y = step {state(0, "y"), action("b")};
+    auto z = step {state(2, "z"), action("c")};
+    // an episode started with start_episode() and learnt a step at a time, as `games::play_online` gives it,
+    // is the episode learnt at once
+    relearn::true_online_sarsa_lambda<state,action> stepwise(0.5, 0.9, 0.8);
+    relearn::true_online_sarsa_lambda<state,action> at_once(0.5, 0.9, 0.8);
+    policy stepwise_memory, at_once_memory;
+    stepwise.start_episode();
+    stepwise(episode {x, y}, stepwise_memory, false);
+    stepwise(episode {y, z}, stepwise_memory, false);
+    stepwise(episode {z}, stepwise_memory, true);
+    at_once(episode {x, y, z}, at_once_memory, true);
+    for (const auto & link : {x, y, z}) {
+        REQUIRE(stepwise_memory.value(link.state, link.action) == at_once_memory.value(link.state, link.action));
+    }
+    REQUIRE(stepwise.traces.entries().size() == 3);
+    // after the end of an episode, the next call is a new one, its traces starting at 0,
+    // even if it starts with the very link the last one ended with
+    stepwise(episode {z}, stepwise_memory, true);
+    REQUIRE(stepwise.traces.entries().size() == 1);
+    REQUIRE(stepwise.traces.trace(state("x"), action("a")) == Approx(0));
+    // without start_episode(), the steps of an episode given one call at a time are learnt as episodes of their own
+    relearn::true_online_sarsa_lambda<state,action> unopened(0.5, 0.9, 0.8);
+    policy unopened_memory;
+    unopened(episode {x, y}, unopened_memory, false);
+    unopened(episode {y, z}, unopened_memory, false);
+    REQUIRE(unopened.traces.entries().size() == 1);
+    REQUIRE(unopened.traces.trace(state("x"), action("a")) == Approx(0));
+    // an episode cut short does not learn its last link: (s1, b) only gives Q' to the step before it.
+    // γ = λ = α = 1: δ = 1 + Q(s1, b) - Q(s0, a) = 4, so Q(s0, a) = 4, and (s1, b) has no trace
+    relearn::true_online_sarsa_lambda<state,action> cut(1.0, 1.0, 1.0);
+    policy memory;
+    memory.update(state("s1"), action("b"), 3);
+    cut(episode {{state(1, "s0"), action("a")}, {state(100, "s1"), action("b")}}, memory, false);
+    REQUIRE(memory.value(state("s0"), action("a")) == Approx(4));
+    REQUIRE(memory.value(state("s1"), action("b")) == Approx(3));
+    REQUIRE(cut.traces.entries().size() == 1);
+    REQUIRE(cut.q_old == Approx(3));
+    // the next whole episode is a new one, even if it starts with the very link the one cut short ended with:
+    // (s1, b) earns 5 and ends it, δ = 5 - 3 = 2, so Q(s1, b) = 5, and Q(s0, a) keeps its 4
+    cut(episode {{state(5, "s1"), action("b")}}, memory, true);
+    REQUIRE(memory.value(state("s1"), action("b")) == Approx(5));
+    REQUIRE(memory.value(state("s0"), action("a")) == Approx(4));
+    REQUIRE(cut.traces.entries().size() == 1);
+    REQUIRE(cut.traces.trace(state("s0"), action("a")) == Approx(0));
+    // and start_episode() starts a new one whatever the last call was
+    cut.start_episode();
+    cut(episode {{state(1, "s0"), action("a")}, {state(100, "s1"), action("b")}}, memory, false);
+    cut.start_episode();
+    REQUIRE(cut.traces.entries().empty());
+    REQUIRE(cut.q_old == Approx(0));
+}
+
+/// verifies the random walk: true online TD(λ) learns at least as well as TD(λ), and much better with a large α
+TEST_CASE("true_online_td_lambda: the 19-state walk, at least as good as TD(lambda), and steady with a large alpha", "[eligibility_traces][true_online][random_walk]")
+{
+    // the error over the first 10 walks, 50 runs, for α = 0.05 ... 1. Over 10 seeds (the same with libstdc++
+    // and with libc++), at its best α true online TD(λ) was better than TD(λ) every time, by 0.007 to 0.010
+    // (λ = 0.8) and 0.012 to 0.016 (λ = 0.9); with α = 1, its error was 0.353 to 0.371 (λ = 0.8) and 0.406 to 0.428
+    // (λ = 0.9), against 0.656 to 0.705 and 0.962 to 0.968 for TD(λ), whose values grow out of bounds
+    using td_type   = relearn::td_lambda<walk_types::state, walk_types::action>;
+    using true_type = relearn::true_online_td_lambda<walk_types::state, walk_types::action>;
+    for (double lambda : {0.8, 0.9}) {
+        auto td = figure_12_6<td_type>(lambda, 1);
+        auto true_online = figure_12_6<true_type>(lambda, 1);
+        const double best_td = *std::min_element(td.begin(), td.end());
+        const double best_true = *std::min_element(true_online.begin(), true_online.end());
+        INFO("λ = " << lambda << ": best TD(λ) " << best_td << ", best true online " << best_true
+             << "; with α = 1, TD(λ) " << td.back() << ", true online " << true_online.back());
+        REQUIRE(best_true < best_td);
+        REQUIRE(true_online.back() < 0.45);
+        REQUIRE(true_online.back() < td.back() - 0.2);
+    }
+}
+
+/// verifies true online Sarsa(λ) control, learning after every step: it learns the exact values of the ε-greedy policy
+TEST_CASE("true_online_sarsa_lambda: online, learns q of the epsilon-greedy policy in the corridor", "[eligibility_traces][true_online][convergence]")
+{
+    auto exact = corridor::model(0.9);
+    std::vector<std::vector<double>> pi(5, {0.05, 0.95});
+    auto v_epsilon = exact.policy_values(pi);
+    // over 10 seeds, with libstdc++ and with libc++, the worst errors were 0.023 to 0.123, for λ = 0.5 and 0.9
+    for (double lambda : {0.5, 0.9}) {
+        relearn::true_online_sarsa_lambda<corridor_types::state, corridor_types::action> learner(0.1, 0.9, lambda);
+        auto memory = learn_corridor(learner, 1, false, true);
+        INFO("λ = " << lambda);
+        REQUIRE(worst_error(memory, exact, v_epsilon) < 0.2);
+    }
+}
+
+/// verifies true online Sarsa(λ)'s constructor, and brace initialisation
+TEST_CASE("true_online_sarsa_lambda: constructors and brace initialisation", "[eligibility_traces][true_online]")
+{
+    relearn::true_online_sarsa_lambda<state,action> defaults;
+    REQUIRE(defaults.alpha == Approx(0.9));
+    REQUIRE(defaults.gamma == Approx(0.9));
+    REQUIRE(defaults.lambda == Approx(0.9));
+    REQUIRE(defaults.q_old == Approx(0));
+    REQUIRE(defaults.traces.entries().empty());
+    auto learner = relearn::true_online_sarsa_lambda<state,action>{0.1, 1.0, 0.8};
+    REQUIRE(learner.alpha == Approx(0.1));
+    REQUIRE(learner.gamma == Approx(1));
+    REQUIRE(learner.lambda == Approx(0.8));
+    relearn::true_online_td_lambda<state,action> td(0.3, 0.5, 0.4);
+    REQUIRE(td.lambda == Approx(0.4));
 }

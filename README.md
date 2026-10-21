@@ -34,6 +34,9 @@ Currently the library implements the following algorithms, each one explained in
 - **TD(λ)** (`td_lambda`), **SARSA(λ)** (`sarsa_lambda`) and **Watkins's Q(λ)** (`watkins_q_lambda`), whose
   eligibility traces share every TD error with the moves that led to it, accumulating or replacing,
   see [docs/eligibility_traces.md](docs/eligibility_traces.md)
+- **true online TD(λ)** (`true_online_td_lambda`) and **true online Sarsa(λ)** (`true_online_sarsa_lambda`), which learn
+  after every step with Dutch traces, and have after every step exactly the values of the online λ-return algorithm,
+  see [docs/eligibility_traces.md](docs/eligibility_traces.md)
 - **REINFORCE**, **REINFORCE with a baseline** and **one-step Actor-Critic** (`reinforce`, `reinforce_with_baseline`
   and `actor_critic`), which learn the policy itself, as a softmax over action preferences (`softmax_policy`),
   so that it can stay stochastic when that is best, see [docs/policy_gradient.md](docs/policy_gradient.md)
@@ -153,7 +156,7 @@ There is nothing to build! This is a header-only library, you only need the `src
 | `relearn/monte_carlo.hpp` | `monte_carlo` and `off_policy_monte_carlo` |
 | `relearn/mcts.hpp` | `mcts`, Monte Carlo Tree Search with UCT |
 | `relearn/n_step.hpp` | `n_step_sarsa`, and `n_step_td` (TD(0) when n = 1); `n_step_expected_sarsa`, `off_policy_n_step_sarsa`, `n_step_tree_backup` and `n_step_q_sigma` |
-| `relearn/eligibility_traces.hpp` | `sarsa_lambda`, `td_lambda` and `watkins_q_lambda`, and their `eligibility_traces` |
+| `relearn/eligibility_traces.hpp` | `sarsa_lambda`, `td_lambda` and `watkins_q_lambda`, and their `eligibility_traces`; `true_online_sarsa_lambda` and `true_online_td_lambda` |
 | `relearn/policy_gradient.hpp` | `softmax_policy`, `reinforce`, `reinforce_with_baseline` and `actor_critic` |
 | `relearn/r_learning.hpp` | `r_learning` and `differential_sarsa` |
 | `relearn/prioritized_sweeping.hpp` | `prioritized_sweeping` |
@@ -396,7 +399,8 @@ auto r = games::play_online(game, agent, learner, memory, 1000);
 
 The n-step learners need the last n steps after each step, not just the last one, so give `play_online` their n:
 `games::play_online(game, agent, learner, memory, 1000, learner.n)` (have a look at [docs/n_step.md](docs/n_step.md)).
-The learners with eligibility traces learn a whole episode at a time, so use `games::play` with them.
+The learners with eligibility traces learn a whole episode at a time, so use `games::play` with them; all but
+`true_online_sarsa_lambda` and `true_online_td_lambda`, which learn after every step with `games::play_online`.
 
 | Game | Source | Learnt with | What it shows |
 |---|---|---|---|
@@ -408,7 +412,7 @@ The learners with eligibility traces learn a whole episode at a time, so use `ga
 | `windy_gridworld` | S&B 6.5, Ex. 6.10 | both Q-Learnings | Steady wind: the 15-move path. Random wind: `q_probabilistic`, and `q_learning` with a learning rate that decays per pair, find the best policy, whereas `q_learning` with α = 0.5 does not |
 | `random_walk` | S&B 6.2, 7.1 | `q_probabilistic` | Prediction, with the learnt values next to the exact ones |
 | `random_walk_td` | S&B 6.2, 7.1 | `n_step_td`, `monte_carlo` | TD(0) learns faster than Monte Carlo (Example 6.2), and an intermediate n is best (Figure 7.2) |
-| `random_walk_lambda` | S&B 12.1, 12.2 | `td_lambda` | An intermediate λ is best (Figure 12.6), and offline TD(λ) learns exactly what the λ-return does |
+| `random_walk_lambda` | S&B 12.1, 12.2, 12.5 | `td_lambda`, `true_online_td_lambda` | An intermediate λ is best (Figure 12.6), offline TD(λ) learns exactly what the λ-return does, and true online TD(λ) learns at least as well as TD(λ), without blowing up at a large α |
 | `maximization_bias` | S&B 6.7 | `q_learning`, `double_q_learning` | Q-Learning's overestimation, which Double Q-Learning removes (Figure 6.5) |
 | `gamblers_problem` | S&B 4.3 | `q_probabilistic` | Values that match the exact solution |
 | `dynamic_programming` | S&B 4.1, 4.3, 4.4 | `dynamic_programming` | The 4 x 4 gridworld (`small_gridworld`, Figure 4.1) and the gambler's problem (Figure 4.3) solved from their models, by policy evaluation, policy iteration and value iteration |
@@ -416,6 +420,7 @@ The learners with eligibility traces learn a whole episode at a time, so use `ga
 | `dyna_maze_n_step` | S&B 7.2, 8.1 | `n_step_sarsa` | The first episode teaches n-step SARSA its last n moves (Figure 7.4), so a larger n learns the maze faster |
 | `cliff_walking_n_step` | S&B 6.6, 7.2 to 7.6 | `n_step_expected_sarsa`, `off_policy_n_step_sarsa`, `n_step_tree_backup`, `n_step_q_sigma` | Learning 4 steps at a time: on-policy, the expectations earn more whilst exploring; off-policy, the less importance sampling, the closer to the greedy policy's values |
 | `dyna_maze_lambda` | S&B 12.7, 12.10 | `sarsa_lambda`, `watkins_q_lambda` | With replacing traces, one episode is enough to find the goal again; accumulating traces get lost in the loops |
+| `mountain_car_lambda` | S&B 10.1, 12.7 | `true_online_sarsa_lambda` | Learning after every step: from the second episode on, the longer the traces, the fewer steps to the flag, little more than half of SARSA's with λ = 0.95 |
 | `short_corridor` | S&B 13.1 | `reinforce`, `reinforce_with_baseline`, `actor_critic` | Cells that look the same, where the best policy is stochastic: REINFORCE learns it (Figure 13.1), faster with a baseline (Figure 13.2), whereas Actor-Critic's critic misleads it |
 | `access_control` | S&B 1st ed. 6.7, 2nd ed. 10.2 | `r_learning`, `differential_sarsa` | A task that never ends: accept or reject customers to earn the most per step, against the exact optimal policy (Figures 6.17, 10.5) |
 | `dyna_maze_prioritized` | S&B 8.4 | `prioritized_sweeping`, `dyna_q` | In mazes of increasing size, prioritized sweeping needs far fewer updates than Dyna-Q to find a good path (Example 8.4) |

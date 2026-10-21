@@ -1,13 +1,16 @@
 /**
- * The 19-state random walk learnt with TD(λ) (Sutton & Barto, Example 7.1, Sections 12.1 and 12.2).
+ * The 19-state random walk learnt with TD(λ) (Sutton & Barto, Example 7.1, Sections 12.1, 12.2 and 12.5).
  *
  * 1. Figure 12.6: the error of TD(λ) over the first 10 walks, for each λ and learning rate α,
  *    averaged over 100 runs. An intermediate λ learns best, as an intermediate n does for n-step TD.
  * 2. Offline TD(λ), which changes the values only at the end of each walk, next to the λ-return
  *    algorithm worked out from its definition: with accumulating traces, they learn the same values.
+ * 3. The same as 1, with true online TD(λ). At its best α, every λ learns at least as well as with
+ *    TD(λ), and with a large α and a large λ, where TD(λ)'s values grow out of bounds, it still learns.
  *
- * The program succeeds if an intermediate λ (0.4 to 0.95) is best, and if offline TD(λ)
- * and the λ-return algorithm agree.
+ * The program succeeds if an intermediate λ (0.4 to 0.95) is best, if offline TD(λ)
+ * and the λ-return algorithm agree, and if true online TD(λ) is at least as good as TD(λ) at its
+ * best α for every λ, and better at α = 1 for λ = 0.9 and above.
  *
  * @see games/random_walk.hpp for the rules
  */
@@ -56,7 +59,9 @@ double rms_error(const game_type & walk,
  * @param lambda is λ
  * @param alpha is the learning rate
  * @return the error after each of the first 10 walks, averaged over them and over the runs
+ * The learner is `td_lambda`, or `true_online_td_lambda`.
  */
+template <class learner_type>
 double figure_12_6(double lambda,
                    double alpha)
 {
@@ -65,7 +70,7 @@ double figure_12_6(double lambda,
         // leaving on the left is worth -1, on the right +1, and every value starts at 0
         game_type walk(19, -1, 1, run);
         types::policy memory;
-        relearn::td_lambda<types::state, types::action> td(alpha, 1.0, lambda);
+        learner_type td(alpha, 1.0, lambda);
         for (unsigned int i = 0; i < 10; i++) {
             auto r = games::play(walk, only_action, 100000);
             td(r.episode, memory, r.terminated);
@@ -115,6 +120,43 @@ void lambda_return(const types::episode & walk_episode,
     }
 }
 
+/**
+ * @brief print the table of Figure 12.6, for each λ and α = 0.05, 0.1, ... 1
+ * @param lambdas are the λs, one column each
+ * @param lowest gets the lowest error of each λ, over every α
+ * @param at_one gets the error of each λ with α = 1
+ * The learner is `td_lambda`, or `true_online_td_lambda`.
+ */
+template <class learner_type>
+void print_figure_12_6(const std::vector<double> & lambdas,
+                       std::vector<double> & lowest,
+                       std::vector<double> & at_one)
+{
+    std::cout << "        α   λ =";
+    for (auto lambda : lambdas) {
+        std::cout << std::setprecision(3) << std::setw(7) << lambda;
+    }
+    std::cout << std::endl;
+    lowest.assign(lambdas.size(), std::numeric_limits<double>::infinity());
+    at_one.assign(lambdas.size(), 0);
+    for (int i = 1; i <= 20; i++) {
+        const double alpha = 0.05 * i;
+        std::cout << "    " << std::setprecision(2) << std::setw(5) << alpha << "     ";
+        for (std::size_t j = 0; j < lambdas.size(); j++) {
+            double error = figure_12_6<learner_type>(lambdas[j], alpha);
+            lowest[j] = std::min(lowest[j], error);
+            at_one[j] = error;
+            std::cout << std::setw(7) << error;
+        }
+        std::cout << std::endl;
+    }
+    std::cout << "    lowest    ";
+    for (std::size_t j = 0; j < lambdas.size(); j++) {
+        std::cout << std::setprecision(3) << std::setw(7) << lowest[j];
+    }
+    std::cout << std::endl;
+}
+
 int main()
 {
     std::cout << std::fixed;
@@ -122,31 +164,15 @@ int main()
     // 1. Figure 12.6: TD(λ) on the 19-state walk, for each λ and α
     std::cout << "Figure 12.6: the 19-state walk, TD(λ), the RMS error over the first 10 walks (100 runs)" << std::endl;
     const std::vector<double> lambdas = {0, 0.4, 0.8, 0.9, 0.95, 0.975, 0.99, 1};
-    std::cout << "        α   λ =";
-    for (auto lambda : lambdas) {
-        std::cout << std::setprecision(3) << std::setw(7) << lambda;
-    }
-    std::cout << std::endl;
-    std::vector<double> lowest(lambdas.size(), std::numeric_limits<double>::infinity());
-    for (int i = 1; i <= 20; i++) {
-        const double alpha = 0.05 * i;
-        std::cout << "    " << std::setprecision(2) << std::setw(5) << alpha << "     ";
-        for (std::size_t j = 0; j < lambdas.size(); j++) {
-            double error = figure_12_6(lambdas[j], alpha);
-            lowest[j] = std::min(lowest[j], error);
-            std::cout << std::setw(7) << error;
-        }
-        std::cout << std::endl;
-    }
-    std::cout << "    lowest    ";
+    std::vector<double> lowest, at_one;
+    print_figure_12_6<relearn::td_lambda<types::state, types::action>>(lambdas, lowest, at_one);
     std::size_t best = 0;
     for (std::size_t j = 0; j < lambdas.size(); j++) {
-        std::cout << std::setprecision(3) << std::setw(7) << lowest[j];
         if (lowest[j] < lowest[best]) {
             best = j;
         }
     }
-    std::cout << std::endl << "    the best λ is " << lambdas[best] << std::endl;
+    std::cout << "    the best λ is " << lambdas[best] << std::endl;
 
     // 2. offline TD(λ) and the λ-return algorithm, on the same 10 walks, with α = 0.1 and λ = 0.8
     game_type walk(19, -1, 1, 1);
@@ -173,7 +199,21 @@ int main()
     std::cout << std::scientific << std::setprecision(1)
               << "    the largest difference is " << largest << std::endl;
 
-    // an intermediate λ must be best, and offline TD(λ) must be the λ-return algorithm
-    bool learnt = (lambdas[best] >= 0.4 && lambdas[best] <= 0.95) && (largest < 1e-9);
+    // 3. the same as 1, with true online TD(λ)
+    std::cout << std::endl << std::fixed
+              << "True online TD(λ), the RMS error over the first 10 walks (100 runs)" << std::endl;
+    std::vector<double> true_lowest, true_at_one;
+    print_figure_12_6<relearn::true_online_td_lambda<types::state, types::action>>(lambdas, true_lowest, true_at_one);
+    // at its best α, at least as good as TD(λ) for every λ (to the third decimal); and better with α = 1 for λ ≥ 0.9
+    bool steady = true;
+    for (std::size_t j = 0; j < lambdas.size(); j++) {
+        steady = steady && (true_lowest[j] <= lowest[j] + 0.0005);
+        if (lambdas[j] >= 0.9) {
+            steady = steady && (true_at_one[j] < at_one[j]);
+        }
+    }
+
+    // an intermediate λ must be best, offline TD(λ) must be the λ-return algorithm, and true online TD(λ) as good or better
+    bool learnt = (lambdas[best] >= 0.4 && lambdas[best] <= 0.95) && (largest < 1e-9) && steady;
     return learnt ? EXIT_SUCCESS : EXIT_FAILURE;
 }
