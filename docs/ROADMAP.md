@@ -126,7 +126,9 @@ with RL, and STOKE [13] with a random search.
 - a target, such as `abs(x)`, `max(a, b)`, or swapping two registers without a third
 - the state: the program so far, and what it does to the registers on a few test inputs
 - an action: the next instruction, with the impossible ones masked out
-- the reward: how many test inputs give the right answer, minus the length of the program
+- the reward: how many test inputs give the right answer, minus 1 / (L + 1) for each instruction, L being the
+  longest program allowed; so one more right answer always outweighs any difference in length, and among the
+  programs that are right, the shortest wins
 
 Basically it is a puzzle with a tiny model of the world (the processor), so MCTS can solve it by planning, Q-Learning
 by trial and error on short programs, and linear function approximation once the programs get longer. Do bear in mind
