@@ -441,6 +441,9 @@ AI-generated contributions are welcome, as long as they have been reviewed and a
    - the window would use [raylib](https://www.raylib.com) (zlib licence, Linux and macOS), in an optional
      CMake sub-project which is off by default, so that `relearn.hpp` and the default build keep no dependencies
 
+For the longer-term plans (function approximation, DQN and its variants, Python bindings, simulators and game
+engines), have a look at the [roadmap](docs/ROADMAP.md).
+
 # References
 
 1. Sutton, R.S. and Barto, A.G., 2018. [Reinforcement Learning: An Introduction](http://incompleteideas.net/book/the-book-2nd.html), 2nd edition. Cambridge, MA: MIT Press.
