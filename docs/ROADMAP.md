@@ -1,8 +1,9 @@
 # Roadmap
 
-relearn now has every tabular method of Sutton and Barto's book [1]: from bandits and dynamic programming, through
-Monte Carlo, TD, n-step methods, planning and eligibility traces, to policy gradients, R-Learning and Monte Carlo
-Tree Search. Each one is tested against hand-worked steps and against the book's own figures.
+relearn now has most of the tabular methods of Sutton and Barto's book [1]: from bandits and dynamic programming,
+through Monte Carlo, TD, n-step methods, planning and eligibility traces, to policy gradients, R-Learning and Monte
+Carlo Tree Search. Each one is tested against hand-worked steps and against the book's own figures. A few are still
+to come (tree backup, Q(σ) and true online TD(λ)), and they are the first part of this plan.
 
 This page is where it goes next. It is a plan, not a promise: there are no dates, the order may change, and each
 step is only done once it has been implemented, tested, documented and reviewed, like everything before it.
@@ -73,7 +74,7 @@ network that is updated only every so often. Then the variants, each of which fi
 | n-step returns | learns from the next n rewards, as in Chapter 7 |
 | Noisy Nets | explores by learning noise in the weights, instead of ε-Greedy |
 | Distributional (C51, QR-DQN) | learns the whole distribution of the return, not just its mean |
-| Rainbow [4] | all of the above together |
+| Rainbow [4] | Double DQN, Dueling, prioritised replay, n-step returns, Noisy Nets and C51, together |
 
 The plan is for relearn to own the algorithm (the replay buffer, the targets, the target network, the schedules),
 and to leave the network itself to a **backend** behind a small interface, which works on batches:
