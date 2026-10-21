@@ -3,7 +3,8 @@
 relearn now has most of the tabular methods of Sutton and Barto's book [1]: from bandits and dynamic programming,
 through Monte Carlo, TD, n-step methods, planning and eligibility traces, to policy gradients, R-Learning and Monte
 Carlo Tree Search. Each one is tested against hand-worked steps and against the book's own figures. A few are still
-to come (true online TD(λ), Actor-Critic with traces, and a few more), and they are the first part of this plan.
+to come (Actor-Critic with traces, off-policy Monte Carlo prediction, and a few more), and they are the first part
+of this plan.
 
 This page is where it goes next. It is a plan, not a promise: there are no dates, the order may change, and each
 step is only done once it has been implemented, tested, documented and reviewed, like everything before it.
@@ -38,20 +39,19 @@ Whatever gets added, a few things don't change:
 ### The tabular methods still to come
 
 The book has a few more tabular methods that relearn doesn't have yet (the whole n-step family of Chapter 7 is
-now in, have a look at [n_step.md](n_step.md)). In the order they would be done:
+now in, have a look at [n_step.md](n_step.md), and so are true online TD(λ) and Sarsa(λ), in
+[eligibility_traces.md](eligibility_traces.md)). In the order they would be done:
 
-1. **True online TD(λ) and true online Sarsa(λ)** (Sections 12.5 to 12.7), with Dutch traces. Today's TD(λ),
-   SARSA(λ) and Watkins's Q(λ) learn one whole episode at a time; these learn after every step, and still match the
-   λ-return exactly.
-2. **Actor-Critic with eligibility traces**, and **Actor-Critic for tasks that never end** (Sections 13.5 and 13.6).
+1. **Actor-Critic with eligibility traces**, and **Actor-Critic for tasks that never end** (Sections 13.5 and 13.6).
    Today's `actor_critic` is the one-step version, for episodes only.
-3. **Off-policy Monte Carlo prediction** (Section 5.5): ordinary against weighted importance sampling, on the
+2. **Off-policy Monte Carlo prediction** (Section 5.5): ordinary against weighted importance sampling, on the
    book's blackjack state (Example 5.4, Figure 5.3). Today's `off_policy_monte_carlo` is the weighted one, for
    control only.
 
 And the smaller or rarer ones, after those:
 
 - truncated TD(λ) and the online λ-return algorithm (Sections 12.3 and 12.4), which true online TD(λ) supersedes
+  (the tests already write the online λ-return algorithm out, to check true online Sarsa(λ) against it)
 - variable λ and γ, off-policy traces with control variates, and Tree-Backup(λ) (Sections 12.8 to 12.10)
 - real-time dynamic programming (Section 8.7), and trajectory sampling, heuristic search and rollout algorithms
   (Sections 8.6, 8.9 and 8.10)
@@ -71,8 +71,8 @@ makes continuous and very large state spaces possible:
 - Gaussian policies for continuous actions (Section 13.7)
 
 Do bear in mind that a table is simply linear function approximation with one feature per state and action, all
-of them 0 but one. So the book gives true online TD(λ) and Sarsa(λ) with linear function approximation, and once that
-is in, they work with tables and with features alike.
+of them 0 but one. So relearn's true online TD(λ) and Sarsa(λ) are the table's case of the book's linear ones, and
+once function approximation is in, they will work with features too.
 
 __note__: function approximation, bootstrapping and off-policy learning together can make the weights diverge (the
 book calls it the *deadly triad*, Section 11.3), so the control examples will use Sarsa, as the book does, and the

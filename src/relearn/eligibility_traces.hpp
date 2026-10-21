@@ -17,7 +17,8 @@
  */
 /**
  * @file relearn/eligibility_traces.hpp
- * @brief eligibility traces: SARSA(λ) (`sarsa_lambda`), TD(λ) (`td_lambda`) and Watkins's Q(λ) (`watkins_q_lambda`)
+ * @brief eligibility traces: SARSA(λ) (`sarsa_lambda`), TD(λ) (`td_lambda`), Watkins's Q(λ) (`watkins_q_lambda`),
+ *        and true online TD(λ) and Sarsa(λ) (`true_online_td_lambda`, `true_online_sarsa_lambda`)
  */
 #include "core.hpp"
 #include <algorithm>
@@ -60,6 +61,10 @@ public:
     void visit(const state_class & s_t,
                const action_class & a_t,
                bool replacing);
+    /// @brief z(@param s_t, @param a_t) = z(s_t, a_t) + @param amount (the Dutch trace of `true_online_sarsa_lambda`)
+    void add(const state_class & s_t,
+             const action_class & a_t,
+             value_type amount);
     /// @brief Q(s,a) = Q(s,a) + @param step * z(s,a), for every pair with a trace, in @param policy_map
     void update(policy<state_class,action_class,value_type> & policy_map,
                 value_type step) const;
@@ -230,6 +235,114 @@ struct watkins_q_lambda
                     bool terminated = true);
 };
 
+/**
+ * @struct true_online_sarsa_lambda This is true online Sarsa(λ) (Sutton & Barto, Section 12.7),
+ *         and true online TD(λ) (Section 12.5)
+ * @brief Sarsa(λ) with Dutch traces, which learns after every step exactly what the online λ-return algorithm
+ *        (Section 12.4) would have learnt by then
+ * @param alpha is the learning rate
+ * @param gamma is the discount rate
+ * @param lambda is λ, how slowly the traces fade: 0 is SARSA
+ *
+ * Episode convention: same as `q_learning`, `s_t.reward()` is the reward r_t
+ * received after taking a_t in s_t.
+ *
+ * At every step t of the episode, in order, with Q = Q(s_t, a_t) and Q' = Q(s_{t+1}, a_{t+1})
+ * read before the step changes anything (Q' = 0 after the last step of an episode):
+ *
+ * δ = r_t + γ * Q' - Q
+ * z(s,a) = γλ * z(s,a) for every pair, then z(s_t,a_t) = z(s_t,a_t) + 1 - αγλ * z_old(s_t,a_t)
+ * Q(s,a) = Q(s,a) + α * (δ + Q - Q_old) * z(s,a) for every pair, then Q(s_t,a_t) = Q(s_t,a_t) - α * (Q - Q_old)
+ * Q_old = Q'
+ *
+ * where z_old(s_t,a_t) is the trace of the pair before it fades, and every trace z, and Q_old,
+ * start at 0 in every episode. This is the book's algorithm with one feature per state/action
+ * pair (tabular): the trace is a *Dutch* trace, between accumulating and replacing.
+ *
+ * What makes it *true online*: TD(λ) (`sarsa_lambda`) learns roughly what the λ-return algorithm
+ * learns, but only exactly so offline, if the values do not change during the episode. The online
+ * λ-return algorithm (Section 12.4) works out, after every step h, every update of the episode so far
+ * again from its start, each with the λ-return truncated at h, and the values at h are those of the
+ * last of them. True online Sarsa(λ) gives the very same values, after every step, at the cost of
+ * one step of TD(λ) (van Seijen and Sutton, 2014; van Seijen et al, 2016).
+ * With a single action per state (a prediction task, as `games::random_walk`) this is
+ * true online TD(λ): `true_online_td_lambda`.
+ *
+ * It learns online with `games::play_online` (window 1), after every step, or a whole episode
+ * at a time after `games::play`, which for a prediction task gives the very same values.
+ * Each call learns every step of the episode given, but the last link if the episode is cut short
+ * (`terminated` false): that link is the state reached and the action chosen next, which is not a step.
+ * Unlike `sarsa_lambda`, the traces are *kept* from one call to the next, whilst an episode goes on:
+ * a call continues the episode of the last one if that one did not end it (`terminated` false) and
+ * if it starts with the link the last one ended with, the step it did not learn yet. Otherwise it
+ * starts a new episode. `games::play_online` calls `start_episode()` before every game, which starts
+ * a new episode whatever the last call was; after an episode cut short and learnt with `games::play`,
+ * call it yourself, in case the next episode starts with the same state and action.
+ */
+template <class state_class,
+          class action_class,
+          typename markov_chain = std::deque<link<state_class,action_class>>,
+          typename value_type = double>
+struct true_online_sarsa_lambda
+{
+    /// learning rate - you may change this as you process episodes
+    value_type alpha = 0.9;
+    /// discount rate - you may change this as you process episodes
+    value_type gamma = 0.9;
+    /// λ: how slowly the traces fade, 0 ... 1 (0 is SARSA)
+    value_type lambda = 0.9;
+    /// the Dutch traces z(s, a) of the episode being learnt
+    eligibility_traces<state_class,action_class,value_type> traces;
+    /// Q_old: the value of the pair reached by the last step learnt, as it was before that step
+    value_type q_old = 0;
+
+    /**
+     * @brief ctor with a learning rate @param initial_alpha, a discount rate @param initial_gamma
+     *        and @param initial_lambda, all 0.9 by default
+     */
+    true_online_sarsa_lambda(value_type initial_alpha = 0.9,
+                             value_type initial_gamma = 0.9,
+                             value_type initial_lambda = 0.9);
+
+    /// @brief start a new episode: every trace, and Q_old, back to 0
+    void start_episode();
+
+    /**
+     * @brief learn the steps of @param episode, going on from the last call if it is the same episode
+     *        - @param policy_map will be modified
+     * @param terminated true if the episode really ended after its last link.
+     *        Pass false for an episode cut short, or for the last steps of one still being played
+     *        (as `games::play_online` does): its last link is then not learnt yet, and only gives the
+     *        next state and action of the step before it.
+     */
+    void operator()(markov_chain episode,
+                    policy<state_class,action_class,value_type> & policy_map,
+                    bool terminated = true);
+
+private:
+    // true if an episode is being learnt, which the next call may go on with
+    bool going_on_ = false;
+    // the link the last call ended with, not learnt yet: the next call goes on from it
+    std::vector<link<state_class,action_class>> next_;
+};
+
+/**
+ * @brief true online TD(λ) (Sutton & Barto, Section 12.5): `true_online_sarsa_lambda` for a prediction task
+ *
+ * As for `td_lambda`, a prediction task has a single action per state, and V(s) is the value of
+ * (s, that action). True online TD(λ)'s update,
+ *
+ * δ = r_t + γ * V' - V,  z(s) = γλ * z(s) + (1 - αγλ * z(s_t)) * [s = s_t],
+ * V(s) = V(s) + α * (δ + V - V_old) * z(s) - α * (V - V_old) * [s = s_t],  V_old = V'
+ *
+ * is then exactly true online Sarsa(λ)'s.
+ */
+template <class state_class,
+          class action_class,
+          typename markov_chain = std::deque<link<state_class,action_class>>,
+          typename value_type = double>
+using true_online_td_lambda = true_online_sarsa_lambda<state_class,action_class,markov_chain,value_type>;
+
 /********************************************************************************
  ***********               Template Implementations
  ********************************************************************************/
@@ -266,6 +379,25 @@ void eligibility_traces<state_class,action_class,value_type
     }
     // a pair visited for the first time this episode: its trace was 0
     entries_.push_back({s_t, a_t, value_type(1)});
+}
+
+template <class state_class,
+          class action_class,
+          typename value_type>
+void eligibility_traces<state_class,action_class,value_type
+                       >::add(const state_class & s_t,
+                              const action_class & a_t,
+                              value_type amount)
+{
+    // a pair with a trace: it goes up by the amount
+    for (auto & e : entries_) {
+        if (e.state == s_t && e.action == a_t) {
+            e.trace += amount;
+            return;
+        }
+    }
+    // a pair without one: its trace was 0
+    entries_.push_back({s_t, a_t, amount});
 }
 
 template <class state_class,
@@ -427,6 +559,78 @@ void watkins_q_lambda<state_class,action_class,markov_chain,value_type
         traces.update(policy_map, alpha * delta);
         // the traces will fade by γλ as long as the agent is greedy, and are cut after an exploring move
         fade = greedy ? gamma * lambda : value_type(0);
+    }
+}
+template <class state_class,
+          class action_class,
+          typename markov_chain,
+          typename value_type>
+true_online_sarsa_lambda<state_class,action_class,markov_chain,value_type
+                        >::true_online_sarsa_lambda(value_type initial_alpha,
+                                                    value_type initial_gamma,
+                                                    value_type initial_lambda)
+: alpha(initial_alpha),
+  gamma(initial_gamma),
+  lambda(initial_lambda)
+{}
+
+template <class state_class,
+          class action_class,
+          typename markov_chain,
+          typename value_type>
+void true_online_sarsa_lambda<state_class,action_class,markov_chain,value_type>::start_episode()
+{
+    traces.clear();
+    q_old = 0;
+    going_on_ = false;
+    next_.clear();
+}
+
+template <class state_class,
+          class action_class,
+          typename markov_chain,
+          typename value_type>
+void true_online_sarsa_lambda<state_class,action_class,markov_chain,value_type
+                             >::operator()(markov_chain episode,
+                                           policy<state_class,action_class,value_type> & policy_map,
+                                           bool terminated)
+{
+    // the same episode as the last call if that one did not end it, and if this one starts with
+    // the link it ended with; otherwise a new episode, whose traces and Q_old start at 0
+    const bool same = going_on_ && !episode.empty() && !next_.empty() && episode[0] == next_[0];
+    if (!same) {
+        start_episode();
+    }
+    // a cut-short episode does not learn its last link (yet): it is not a step
+    const std::size_t learnt = (terminated || episode.size() == 0) ? episode.size()
+                                                                   : episode.size() - 1;
+    const value_type fade = gamma * lambda;
+    for (std::size_t t = 0; t < learnt; t++) {
+        const auto & step = episode[t];
+        // Q and Q', read before this step changes anything; nothing after the last step of an episode
+        const value_type q = policy_map.value(step.state, step.action);
+        value_type q_next = 0;
+        if (t + 1 < episode.size()) {
+            const auto & next = episode[t + 1];
+            q_next = policy_map.value(next.state, next.action);
+        }
+        // δ = r_t + γ Q' - Q
+        const value_type delta = step.state.reward() + gamma * q_next - q;
+        // the Dutch trace: z = γλ z, then z(s_t, a_t) = z(s_t, a_t) + 1 - αγλ z_old(s_t, a_t)
+        const value_type z_old = traces.trace(step.state, step.action);
+        traces.decay(fade);
+        traces.add(step.state, step.action, value_type(1) - alpha * fade * z_old);
+        // Q(s,a) = Q(s,a) + α (δ + Q - Q_old) z(s,a), for every pair, then Q(s_t,a_t) = Q(s_t,a_t) - α (Q - Q_old)
+        traces.update(policy_map, alpha * (delta + q - q_old));
+        policy_map.update(step.state, step.action,
+                          policy_map.value(step.state, step.action) - alpha * (q - q_old));
+        q_old = q_next;
+    }
+    // an episode that goes on: the next call starts with the link this one ended with
+    going_on_ = !terminated && !episode.empty();
+    next_.clear();
+    if (going_on_) {
+        next_.push_back(episode.back());
     }
 }
 } // end of namespace

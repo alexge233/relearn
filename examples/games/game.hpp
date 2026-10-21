@@ -142,6 +142,21 @@ episode_type last_steps(const episode_type & steps,
 }
 
 /**
+ * @brief a learner that keeps something from one call to the next (as `relearn::true_online_sarsa_lambda`
+ *        its traces) is told that a new episode starts: `learner.start_episode()`
+ */
+template <class learner_type>
+auto start_episode(learner_type & learner, int) -> decltype(learner.start_episode(), void())
+{
+    learner.start_episode();
+}
+
+/// @brief the other learners start every call afresh, and have nothing to be told
+template <class learner_type>
+void start_episode(learner_type &, long)
+{}
+
+/**
  * @brief play one episode of @param game, learning after every step (online)
  * @param choose is called as `choose(state, legal_actions)` and returns an action
  * @param learner is any relearn learner: `q_learning`, `sarsa`, `expected_sarsa`
@@ -158,6 +173,8 @@ episode_type last_steps(const episode_type & steps,
  * It learns step t from the next state and action, and not yet step t+1.
  * The next action is chosen before learning, as in the book's SARSA.
  * When the game ends, the last step is learnt alone, as the end of the game.
+ * A learner with a `start_episode()` (as `relearn::true_online_sarsa_lambda`) is told before
+ * the game starts, even after a game cut short.
  *
  * With a @param window of n, the learner is given the last n steps (fewer at the
  * start) and then (s_{t+1}, a_{t+1}), so that an n-step learner learns step t-n+1;
@@ -182,7 +199,8 @@ played<game_type> play_online(game_type & game,
     using action  = typename types<game_type>::action;
     using episode = typename types<game_type>::episode;
     played<game_type> result;
-    // start a new game, and choose the first action
+    // start a new game, and choose the first action; a learner that keeps traces starts them again
+    start_episode(learner, 0);
     auto s_t = game.reset();
     auto a_t = choose(s_t, game.actions(s_t));
     while (result.steps < max_steps) {
