@@ -446,6 +446,9 @@ Las contribuciones generadas con IA son bienvenidas, siempre que una persona las
    - la ventana usaría [raylib](https://www.raylib.com) (licencia zlib, Linux y macOS), en un subproyecto de CMake
      opcional y desactivado por defecto, para que `relearn.hpp` y la compilación por defecto sigan sin dependencias
 
+Para los planes a más largo plazo (aproximación de funciones, DQN y sus variantes, bindings para Python, simuladores
+y motores de juego), échale un vistazo a la [hoja de ruta](docs/ROADMAP.md).
+
 # Referencias
 
 1. Sutton, R.S. y Barto, A.G., 2018. [Reinforcement Learning: An Introduction](http://incompleteideas.net/book/the-book-2nd.html), 2.ª edición. Cambridge, MA: MIT Press.
