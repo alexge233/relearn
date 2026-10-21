@@ -254,6 +254,10 @@ TEST_CASE("dyna_q+: the bonus grows with the steps since a move was tried", "[dy
         learner(episode {{state(0, "s1"), action("b")}}, memory);
     }
     REQUIRE(learner.steps() == 4);
+    // the bonus is for planning only (Section 8.3): the real steps learnt r = 0, with no bonus,
+    // even though (s1, b) had waited a step before its second and third tries
+    REQUIRE(memory.value(state("s0"), action("a")) == Approx(0));
+    REQUIRE(memory.value(state("s1"), action("b")) == Approx(0));
     learner.planning_steps = 50;
     learner.plan(memory);
     REQUIRE(memory.value(state("s0"), action("a")) == Approx(0.1 * std::sqrt(3.0)));

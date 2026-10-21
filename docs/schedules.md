@@ -105,7 +105,8 @@ for each update of Q(s, a) towards a target:
 
 ### In relearn
 
-`q_learning`, `sarsa`, `expected_sarsa` and `double_q_learning` have an optional `learning_rate`.
+`q_learning`, `sarsa`, `expected_sarsa`, `double_q_learning` and `monte_carlo` have an optional `learning_rate`
+(for `monte_carlo`, it is `1/n` unless you set it).
 When it is set, the `n`-th update of each pair uses `learning_rate(n)` instead of `alpha`:
 
 ```cpp

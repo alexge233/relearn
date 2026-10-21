@@ -95,11 +95,11 @@ struct dyna_q
            unsigned int prng_seed = 0);
     /// @brief the update rule of Q-learning, for the real step at @param index
     triplet q_value(markov_chain & episode,
-                    unsigned int index,
+                    std::size_t index,
                     policy<state_class,action_class,value_type> & policy_map);
     /// @brief remember in the model what happened in the real step at @param index
     void remember(markov_chain & episode,
-                  unsigned int index);
+                  std::size_t index);
     /// @brief learn from `planning_steps` imagined steps - @param policy_map will be modified
     void plan(policy<state_class,action_class,value_type> & policy_map);
 
@@ -181,7 +181,7 @@ template <class state_class,
 typename dyna_q<state_class,action_class,markov_chain,value_type>::triplet
             dyna_q<state_class,action_class,markov_chain,value_type
                   >::q_value(markov_chain & episode,
-                             unsigned int index,
+                             std::size_t index,
                              policy<state_class,action_class,value_type> & policy_map)
 {
     auto step = episode[index];
@@ -189,7 +189,7 @@ typename dyna_q<state_class,action_class,markov_chain,value_type>::triplet
     auto q = policy_map.value(step.state, step.action);
     auto r = step.state.reward();
     // the last decision of an episode has no next state to bootstrap from
-    if (index == episode.size() - 1) {
+    if (index + 1 == episode.size()) {
         return std::make_tuple(step.state, step.action, q + alpha * (r - q));
     }
     // Q(s_t,a_t) = Q(s_t,a_t) + α * (r_t + γ * max(Q(s_{t+1}, a)) - Q(s_t, a_t))
@@ -205,11 +205,11 @@ template <class state_class,
           typename value_type>
 void dyna_q<state_class,action_class,markov_chain,value_type
            >::remember(markov_chain & episode,
-                       unsigned int index)
+                       std::size_t index)
 {
     auto step = episode[index];
     // what happened: the reward, and the state reached (the last link of an episode ends it)
-    const bool terminal = index == episode.size() - 1;
+    const bool terminal = index + 1 == episode.size();
     outcome happened = {static_cast<value_type>(step.state.reward()),
                         terminal ? step.state : episode[index + 1].state,
                         terminal,
