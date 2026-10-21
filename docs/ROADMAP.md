@@ -12,7 +12,7 @@ step is only done once it has been implemented, tested, documented and reviewed,
 ```mermaid
 flowchart LR
     classic["1. finish the classics<br/>the tabular methods still to come,<br/>then function approximation"]
-    games["2. the games<br/>verified, and a watch mode"]
+    games["2. the games<br/>verified, a watch mode,<br/>and new ones"]
     deep["3. DQN and its variants<br/>then deep policy gradients"]
     python["4. Python bindings"]
     sims["5. simulators and<br/>game engines"]
@@ -92,6 +92,50 @@ docs will explain why.
   - in a window, as retro pixel art, with [raylib](https://www.raylib.com) in an optional sub-project
   - the learning shown in the same style: a pixel learning curve, Q values as tile colours, and a status line
 
+### New games, to show each algorithm at its best
+
+Every algorithm already has a game, but some of them deserve one that shows what they are really good at. These
+would all be written from scratch in C++, header-only, in `examples/games/`, like the current ones (the ones that
+come from Gymnasium included, as FrozenLake was), and drawable in the watch mode. In the order of the roadmap:
+
+| Game | What it shows | Learnt with | Source |
+|---|---|---|---|
+| Drifting bandit | arms whose values drift over time: a constant step size against sample averages | ε-Greedy, UCB, gradient bandit | Exercise 2.5 [1] |
+| Jack's car rental | dynamic programming on a model with thousands of transitions (Figure 4.2) | policy iteration, value iteration | Example 4.2 [1] |
+| Racetrack | learning to drive round a bend from another policy's play, then planning it in real time | off-policy Monte Carlo, real-time DP | Exercise 5.12, Example 8.6 [1] |
+| Taxi | a pick-up and a drop-off, with wrong moves punished: a small test bench for the whole n-step family | Q-Learning, Sarsa, tree backup, Q(σ) | [14] |
+| Superoptimiser | writing the shortest program, below, step by step | MCTS, Q-Learning, linear function approximation | [12], [13] |
+| Connect Four | a game too big for a table, played by planning alone | MCTS | |
+| Mountain Car, the book's way | tile coding, and traces that make a slow task fast (Figures 10.1 and 12.10) | semi-gradient Sarsa, Sarsa(λ), true online Sarsa(λ) | Example 10.1 [1] |
+| Acrobot | a harder swing-up, with four continuous variables | semi-gradient Sarsa, then DQN | Gymnasium |
+| Pac-Man, small | a few hand-made features (the nearest ghost, the nearest pellet) instead of a table | linear function approximation | |
+| Snake | learning from the whole grid, in retro pixels | DQN and its variants | |
+| Lunar Lander | landing softly, with discrete then continuous thrust | DQN, then SAC | Gymnasium |
+| Pendulum | a continuous action: how hard to push | Gaussian policies, DDPG, TD3, SAC | Gymnasium |
+| Drone, in 2D | hovering and landing in random wind, so that the policy copes with a world it hasn't seen | PPO, SAC, domain randomisation | |
+| Boat, in 2D | docking in a current, with noisy sensors | PPO, SAC | |
+| Arithmetic | a tiny language model learning to add, rewarded only when it is right | GRPO, RL with verifiable rewards | [10] |
+
+### The superoptimiser game
+
+A game where the agent writes a program, one instruction at a time, and is rewarded for getting the answer right with
+as few instructions as possible: an idea from *superoptimisation*, which AlphaDev [12] took to real sorting routines
+with RL, and STOKE [13] with a random search.
+
+- a toy processor: 4 registers, about 10 instructions (`mov`, `add`, `sub`, `cmp`, `cmov`, ...)
+- a target, such as `abs(x)`, `max(a, b)`, or swapping two registers without a third
+- the state: the program so far, and what it does to the registers on a few test inputs
+- an action: the next instruction, with the impossible ones masked out
+- the reward: how many test inputs give the right answer, minus 1 / (L + 1) for each instruction, L being the
+  longest program allowed; so one more right answer always outweighs any difference in length, and among the
+  programs that are right, the shortest wins
+
+Basically it is a puzzle with a tiny model of the world (the processor), so MCTS can solve it by planning, Q-Learning
+by trial and error on short programs, and linear function approximation once the programs get longer. Do bear in mind
+that the features matter more than anything here: "instruction X at position i" can't tell that a register written at
+one step is read at another, whereas features from the program's data flow (which registers are written, read, still
+needed) can. Showing that difference is half the point of the game.
+
 ## 3. DQN and its variants
 
 Deep Q-Networks [2] replace the table with a neural network, and add the two things that make that stable: a
@@ -138,7 +182,23 @@ so no algorithm ever depends on a particular simulator. Each one would be its ow
 - **the Arcade Learning Environment** [8] (Atari 2600 games), which has its own C++ interface
 - **MuJoCo**, for physics and robotics
 - **Gazebo and ROS 2**, for robots, and **PX4** or **ArduPilot** in simulation, for drones
-- **game engines**: Unreal Engine, Unity and Godot, so that a game's own world can be the environment
+- **CARLA**, the open driving simulator built on Unreal Engine
+
+### Game engines
+
+A game engine's world can be the environment: the engine steps the physics, and relearn chooses the actions. Each
+engine would get a thin adapter, run headless and faster than real time for training, and with graphics to watch
+the agent play. In order:
+
+| Engine | Why | How relearn would plug in |
+|---|---|---|
+| [Godot](https://godotengine.org) | open source (MIT), small, and extended in C++ | a GDExtension: relearn compiled straight into the game |
+| [Unreal Engine](https://www.unrealengine.com) | C++ throughout, and the engine behind CARLA | a plugin module, next to its own Learning Agents plugin |
+| [Unity](https://unity.com) | the most used, and home of ML-Agents | a native plugin (relearn behind a small C interface, called from C#) |
+| [O3DE](https://o3de.org) | open source (Apache 2.0), C++, with ROS 2 support for robots | a Gem (O3DE's name for a module) |
+
+The [raylib](https://www.raylib.com) window of the watch mode is not an engine, just a library for drawing, which is
+why it is enough for relearn's own games.
 
 ## 6. RL for language models (exploratory)
 
@@ -169,3 +229,6 @@ models through the same backends as DQN, so that they can be studied and underst
 9. Ouyang, L. et al., 2022. Training language models to follow instructions with human feedback. *NeurIPS*.
 10. Shao, Z. et al., 2024. DeepSeekMath: pushing the limits of mathematical reasoning in open language models. arXiv:2402.03300.
 11. Rafailov, R. et al., 2023. Direct preference optimization: your language model is secretly a reward model. *NeurIPS*.
+12. Mankowitz, D.J. et al., 2023. Faster sorting algorithms discovered using deep reinforcement learning. *Nature*, 618, pp. 257 to 263.
+13. Schkufza, E., Sharma, R. and Aiken, A., 2013. Stochastic superoptimization. *ASPLOS*.
+14. Dietterich, T.G., 2000. Hierarchical reinforcement learning with the MAXQ value function decomposition. *Journal of Artificial Intelligence Research*, 13, pp. 227 to 303.
