@@ -1,10 +1,13 @@
-# TD(0), n-step TD and n-step SARSA
+# TD(0) and the n-step methods
 
 Sutton and Barto [1] introduce *temporal difference* learning in Chapter 6 with its simplest form, TD(0),
 and in Chapter 7 they stretch it: instead of learning from one reward and the value of the next state,
 an *n-step* method learns from the next `n` rewards, and the value of the state reached after them.
 With `n = 1` this is TD(0) (or SARSA, for control), and when `n` reaches past the end of the episode
 it is Monte Carlo. Basically, `n` slides between the two, and the best `n` is usually somewhere in the middle.
+
+This page has all of Chapter 7: n-step TD and n-step SARSA, n-step Expected SARSA, off-policy n-step SARSA
+(importance sampling), the tree backup algorithm, and Q(σ), which unifies them all.
 
 ```mermaid
 flowchart LR
@@ -169,9 +172,94 @@ Why bother? One-step SARSA only learns about the move it has just made. In a maz
 rewarded, the first episode teaches it a single move, the one that reached the goal, whereas n-step SARSA
 learns the last `n` moves of the path at once (have a look at the [example below](#example-the-dyna-maze-figure-74)).
 
+## n-step Expected SARSA
+
+Expected SARSA (Section 6.6, have a look at [sarsa.md](sarsa.md)) replaces the action taken next by the value the next
+state is *expected* to have, under the policy `π`. Its n-step version does the same at the end of the return
+(Section 7.2): the `n` rewards, and then the expected value of the state reached, instead of the value of the pair:
+
+```math
+G_{t:t+n} = r_t + \gamma \, r_{t+1} + \dots + \gamma^{n-1} \, r_{t+n-1} + \gamma^n \, \bar{V}(s_{t+n}),
+\qquad \bar{V}(s) = \sum_a \pi(a \mid s) \, Q(s, a)
+```
+
+With `n = 1` it is Expected SARSA, and like it, it removes the randomness of the last action chosen.
+
+## Off-policy: importance sampling
+
+All of the above learn the values of the policy the agent *plays*. Off-policy learning (Section 7.3) learns the
+values of another policy, the *target* policy `π` (typically greedy), from episodes played by a *behaviour* policy
+`b` (typically ε-Greedy, which explores). The rewards along the episode are the ones `b`'s actions earned, so each
+update is weighted by how much more (or less) likely `π` was to take those actions than `b` was, the *importance
+sampling ratio* (equations 7.10 and 7.11):
+
+```math
+\rho_{t+1:t+n} = \prod_{k=t+1}^{\min(t+n,\,T-1)} \frac{\pi(a_k \mid s_k)}{b(a_k \mid s_k)}
+\qquad
+Q(s_t,a_t) \leftarrow Q(s_t,a_t) + \alpha \, \rho_{t+1:t+n} \left[ G_{t:t+n} - Q(s_t,a_t) \right]
+```
+
+The first action, `aₜ`, is not in the ratio: `Q(sₜ, aₜ)` is the value of taking it, whoever chose it. Off-policy
+n-step Expected SARSA uses one factor less, `ρ_{t+1:t+n-1}`, since the action taken in `s_{t+n}` doesn't matter to its
+return. With a greedy `π`, the ratio is 0 as soon as the agent explored, and the step teaches nothing; and when `b`
+rarely takes the actions `π` prefers, the ratio is large, and the updates vary a lot. That is why it usually needs a
+smaller learning rate (in the tests below, `α ρ` has to stay below 1).
+
+## Tree backup
+
+The n-step tree backup algorithm (Section 7.5, from Precup, Sutton and Singh [2]) learns off-policy *without* importance sampling. At every step of
+the return, it takes the values of the actions the agent did *not* take, weighted by their probability under `π`,
+and carries on along the action it did take, weighted by its probability too (equation 7.16):
+
+```math
+G_{k:t+n} = r_k + \gamma \sum_{a \neq a_{k+1}} \pi(a \mid s_{k+1}) \, Q(s_{k+1}, a) + \gamma \, \pi(a_{k+1} \mid s_{k+1}) \, G_{k+1:t+n}
+```
+
+and after the `n` rewards, it ends with the expected value, `G_{t+n-1:t+n} = r_{t+n-1} + γ V̄(s_{t+n})`. Basically each
+update is a *tree*: the actions not taken are its leaves, and the actions taken its trunk, which goes on only for as
+long as `π` would have taken them.
+
+```mermaid
+flowchart TB
+    s0(("sₜ")) -- "aₜ, rₜ" --> s1(("sₜ₊₁"))
+    s1 -. "π(a | sₜ₊₁) Q(sₜ₊₁, a)" .-> l1["the actions<br/>not taken"]
+    s1 -- "aₜ₊₁ taken, × π(aₜ₊₁ | sₜ₊₁), rₜ₊₁" --> s2(("sₜ₊₂"))
+    s2 -. "π(a | sₜ₊₂) Q(sₜ₊₂, a)" .-> l2["every action:<br/>V̄(sₜ₊₂)"]
+```
+
+It never needs `b`: an action `π` would not take has `π(aₖ₊₁ | sₖ₊₁) = 0`, which simply cuts the return there.
+With a greedy `π` it is Q-Learning's target, followed for as long as the agent kept to the greedy actions; with `n = 1`
+it is Expected SARSA.
+
+## Q(σ): one algorithm for all of them
+
+n-step SARSA *samples* every action of its return (it uses the ones taken), tree backup takes the *expectation* over
+them. Q(σ) (Section 7.6, from De Asis et al. [3]) chooses, at every step, how much to do of each: `σ = 1` samples, `σ = 0` takes the
+expectation, and anything in between mixes them (equation 7.17):
+
+```math
+G_{k:t+n} = r_k + \gamma \, \bar{V}(s_{k+1}) + \gamma \left( \sigma_{k+1} \, \rho_{k+1} + (1 - \sigma_{k+1}) \, \pi(a_{k+1} \mid s_{k+1}) \right) \left[ G_{k+1:t+n} - Q(s_{k+1}, a_{k+1}) \right]
+```
+
+ending with `G_{t+n:t+n} = Q(s_{t+n}, a_{t+n})` (or the last reward, if the episode ends first), and with
+`ρₖ = π(aₖ | sₖ) / b(aₖ | sₖ)` (1 on-policy). Then the usual `Q(sₜ,aₜ) ← Q(sₜ,aₜ) + α [G - Q(sₜ,aₜ)]`.
+
+- `σ = 0` everywhere is exactly tree backup
+- `σ = 1` everywhere is n-step SARSA with *per-decision control variates* (Section 7.4, equation 7.14): it samples every
+  action taken, as n-step SARSA does, and adds `V̄(s) - Q(s, a)` at each one, which is 0 on average. So on-policy it
+  learns the same values as n-step SARSA; and off-policy, each importance sampling factor weighs its own step only
+- with `n = 1`, whatever `σ` is, it is Expected SARSA: the last action of a return is always taken in expectation
+
+```mermaid
+flowchart LR
+    sarsa["n-step SARSA<br/>samples every action"] --- cv["Q(σ), σ = 1<br/>samples, with<br/>control variates"]
+    cv --- mix["Q(σ), 0 < σ < 1<br/>a mix"]
+    mix --- tree["Q(σ), σ = 0<br/>= tree backup:<br/>every action in expectation"]
+```
+
 ## In relearn
 
-There is one learner, `n_step_sarsa`. Since a prediction task has one action per state, n-step TD's update is
+For n-step TD and n-step SARSA there is one learner, `n_step_sarsa`. Since a prediction task has one action per state, n-step TD's update is
 exactly n-step SARSA's, so `n_step_td` is simply `n_step_sarsa` under the name of prediction
 (with several actions per state, it learns `q_π`, the value of each pair under the policy that played).
 
@@ -188,6 +276,44 @@ learner(episode, policy);
 
 or in short, `auto learner = relearn::n_step_sarsa<state,action>{0.1, 0.95, 4};`.
 As with `sarsa`, `learning_rate` can give each pair its own rate (have a look at [schedules.md](schedules.md)).
+
+### The rest of the family
+
+The other n-step methods are learners of their own, all called the same way, and all learnt online the same way
+(with `games::play_online(..., learner.n)`):
+
+| learner | what it is | needs |
+|---|---|---|
+| `n_step_expected_sarsa` | n-step Expected SARSA; off-policy if `behaviour` is set | `probabilities` (π) |
+| `off_policy_n_step_sarsa` | n-step SARSA with importance sampling | `probabilities` (π) and `behaviour` (b) |
+| `n_step_tree_backup` | tree backup: off-policy, no importance sampling | `probabilities` (π) |
+| `n_step_q_sigma` | Q(σ), with `sigma` (0.5 by default), or `sigma_of(s, a)` for each step; off-policy if `behaviour` is set | `probabilities` (π) |
+
+`probabilities(s)` returns each action `π` may take in `s`, with its probability, exactly as for `expected_sarsa`;
+if it is not set, `π` is the greedy policy on the values learnt (the actions stored for `s`, those of highest value
+sharing the probability). `behaviour(s, a)` returns `b(a | s)`, the probability that the policy which played took `a` in `s`,
+as for `off_policy_monte_carlo`. For instance, to learn the greedy policy from an ε-Greedy agent with tree backup:
+
+```cpp
+relearn::n_step_tree_backup<state,action> learner(0.2, 1.0, 4);      // α, γ and n
+learner.probabilities = [&memory](const state & s) {
+    // π: greedy on the values learnt (ε = 0), over the legal moves
+    return games::epsilon_greedy_probabilities<game_type>(memory, s.trait(), game.actions(s.trait()), 0.0);
+};
+auto r = games::play_online(game, agent, learner, memory, 1000, learner.n);
+```
+
+`π` is the policy being learnt, so it is worked out when each step is learnt, with the values of that moment, as in
+the book's algorithms. `b` is not: an importance sampling ratio needs the probability each action was *chosen* with,
+and if `b` depends on the values (ε-Greedy on them, as above), reading it again after an update gives another one.
+So the learners record `b(a_t | s_t)` for every step before they learn any of it: after an episode played to the end
+(`games::play`), that is the policy that played it. Learning online, each step's `b` is recorded when the learner
+first sees it, which is just after its action was chosen, and kept for the next `n` calls. This is what the book's
+algorithms do too, storing `ρ` when each action is chosen.
+
+__note__: `games::play_online` does not tell the learner that a new episode has started after one cut short, so a new
+episode starting with the very steps the last window ended with would keep their recorded `b`. This is rare, and
+harmless with a `b` that does not change.
 
 ### After the episode, or after every step
 
@@ -338,6 +464,46 @@ to find out, and the larger `n`, the sooner it settles on the first good path it
 __note__: the random walk's numbers are the same with GCC's and Clang's standard libraries, but the maze's are not:
 `games::epsilon_greedy` draws its random moves with `std::uniform_int_distribution`, whose numbers differ between the two.
 
+## Example: Cliff Walking, 4 steps at a time
+
+`examples/cliff_walking_n_step.cpp` plays Cliff Walking (Example 6.6, have a look at [sarsa.md](sarsa.md)) with every
+learner of this page, `n = 4`, α = 0.2, γ = 1, the agent ε-greedy with ε = 0.1, in 20 runs of 1000 episodes:
+
+```
+    learner                         exploring   reached   the edge    error
+  on-policy (π is the ε-greedy policy played):
+    n-step SARSA                        -26.6      20/20        0/20
+    n-step Expected SARSA               -25.9      19/20        0/20
+    n-step Q(σ), σ = 0.5                -22.7      20/20        0/20
+    n-step tree backup                  -21.6      20/20        0/20
+  off-policy (π is greedy, b the ε-greedy policy played):
+    tree backup, n = 1 (Q-Learning)     -49.6      20/20       20/20      0.0
+    off-policy n-step SARSA             -26.2      20/20        0/20      8.7
+    n-step Expected SARSA               -25.4      20/20        0/20      9.6
+    n-step Q(σ), σ = 0.5                -32.8      20/20        1/20      3.7
+    n-step tree backup                  -33.6      20/20        3/20      1.9
+```
+
+*exploring* is the average return whilst exploring (episodes 101 to 1000), *reached* the runs whose greedy policy
+reaches the goal, *the edge* those whose greedy policy takes the shortest path, right along the cliff (13 moves),
+and *error* the average `|Q - q*|` of the 13 moves of that path, for the learners of `q*`.
+
+On-policy, all of them learn a safe path away from the edge, as one-step SARSA does, and the more a learner uses
+expectations instead of the actions taken, the more it earns whilst exploring: Q(σ) and tree backup earn the most.
+
+Off-policy, the less importance sampling, the closer to `q*`: tree backup (none at all) is nearest, then Q(σ) (on half
+of each step), then n-step Expected SARSA and off-policy n-step SARSA, whose updates are cut each time the agent
+explored. None of them is as quick here as one-step Q-Learning, which has learnt `q*` along the edge in every run:
+every move costs -1, so looking 4 rewards ahead brings little, whereas cutting the return at every exploring move
+costs a lot. Given enough episodes they all get there (tree backup has `q*` along the edge exactly after 20000
+episodes with α = 0.1), but in the same 1000 episodes, the importance sampling learners haven't even started to
+prefer the edge. n-step methods shine where the rewards are far apart, as in the [Dyna maze](#example-the-dyna-maze-figure-74).
+
+__note__: the numbers are GCC's; with Clang's standard library (libc++), whose random numbers differ, the errors are
+0.0, 9.6, 8.2, 3.9 and 1.4, in the same order. n-step Expected SARSA and off-policy n-step SARSA swap places, so the
+program only checks that the errors of Q-Learning, tree backup, Q(σ) and off-policy n-step SARSA come in that order,
+and that on-policy, Q(σ) and tree backup earn more whilst exploring than n-step SARSA.
+
 ## Tests
 
 `tests/n_step_test.cpp` checks:
@@ -355,6 +521,23 @@ __note__: the random walk's numbers are the same with GCC's and Clang's standard
   exact values of the ε-greedy policy, worked out by `tests/solvers.hpp` (worst error at most 0.152 over 10 seeds)
 - the Dyna maze: after the first episode, exactly the pairs of the last `n` moves have a value (Figure 7.4), and in
   episodes 2 to 10, 4-step and 8-step SARSA need at most 0.61 of the moves of one-step SARSA (over 10 seeds)
+- n-step Expected SARSA, off-policy n-step SARSA, tree backup and Q(σ): returns, ratios and updates worked out by hand,
+  on one small episode (on-policy and off-policy, with σ = 0.5, σ = 1, and σ chosen per step); and an episode cut short
+- that a step with a ratio of 0 is not learnt, nor counted as an update; that a greedy `π` cuts the tree backup's return
+  at the first other action, and follows it whilst the actions were greedy
+- that `b` is the probability each action was chosen with: with a `b` that changes as the values are learnt, a state
+  visited twice keeps the `b` it had when it was played, after an episode and online (a `b` counting its calls gives
+  each step the number of the call it was first seen in); and off-policy n-step SARSA learnt online is the book's
+  algorithm, storing `b` when each action is chosen, to 1e-12 (ε-Greedy `b`, greedy `π`, `n` = 2 and 3)
+- cross-checks on random corridor episodes: off-policy n-step SARSA with `b = π` is `n_step_sarsa` to the last bit;
+  Q(σ) with σ = 0 is tree backup, and with `n = 1` (any σ, on or off-policy) it is `expected_sarsa`, as is n-step
+  Expected SARSA with `n = 1` (to 1e-12); and learning online is the same as learning after each episode, to the last bit
+- control, against exact answers, in the slippery corridor: on-policy, ε-Greedy (ε = 0.1), n-step Expected SARSA, tree
+  backup and Q(σ) (σ = 0.5 and 1) learn the values of the ε-greedy policy (worst error at most 0.157 over 10 seeds);
+  off-policy, from an agent that moves right with 0.7 whatever it has learnt, all four learn `q*`, the values of the
+  greedy policy (worst error at most 0.102)
+- every one of 18 mutations of the new learners (a wrong factor, a ratio of one factor too many or too few, σ and 1 - σ
+  swapped, the wrong end of the return, `b` read again after the updates, and so on) makes at least one of these tests fail
 
 Each threshold was set from 10 seeds, with GCC's standard library and with Clang's (libc++).
 
@@ -362,4 +545,10 @@ Each threshold was set from 10 seeds, with GCC's standard library and with Clang
 
 1. Sutton, R.S. and Barto, A.G., 2018. [Reinforcement Learning: An Introduction](http://incompleteideas.net/book/the-book-2nd.html), 2nd edition. Cambridge, MA: MIT Press.
    Section 6.1 (TD(0) prediction), Section 6.2 and Example 6.2 (the random walk, and its two plots), Section 7.1
-   (n-step TD prediction, Example 7.1 and Figure 7.2), Section 7.2 (n-step SARSA, Figure 7.4), Example 8.1 (the Dyna maze).
+   (n-step TD prediction, Example 7.1 and Figure 7.2), Section 7.2 (n-step SARSA and n-step Expected SARSA, Figure 7.4),
+   Section 7.3 (off-policy learning by importance sampling), Section 7.4 (per-decision methods with control variates),
+   Section 7.5 (the tree backup algorithm), Section 7.6 (Q(σ)), Example 6.6 (Cliff Walking), Example 8.1 (the Dyna maze).
+2. Precup, D., Sutton, R.S. and Singh, S., 2000. Eligibility traces for off-policy policy evaluation. *ICML*, where the
+   tree backup algorithm comes from.
+3. De Asis, K., Hernandez-Garcia, J.F., Holland, G.Z. and Sutton, R.S., 2018. Multi-step reinforcement learning: a unifying
+   algorithm. *AAAI*, where Q(σ) comes from.
