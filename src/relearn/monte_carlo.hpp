@@ -34,6 +34,9 @@ namespace relearn
  * @brief Monte Carlo learns from whole episodes: each value moves towards the return that followed it
  * @param gamma is the discount rate
  * @param first_visit is true for first-visit Monte Carlo, false for every-visit
+ * @warning it learns whole episodes: play them with `games::play`, then learn. `games::play_online`
+ *          hands the learner one step at a time, which it ignores, and then the last step alone,
+ *          which it would learn as a whole episode
  *
  * Episode convention: same as `q_learning`, `s_t.reward()` is the reward r_t
  * received after taking a_t in s_t.
@@ -90,6 +93,7 @@ struct monte_carlo
  * @brief learns the greedy policy from episodes played by another policy, with weighted importance sampling
  * @param gamma is the discount rate
  * @param behaviour gives b(a | s), the probability that the policy which played the episodes took a in s
+ * @warning like `monte_carlo`, it learns whole episodes: use `games::play`, not `games::play_online`
  *
  * The agent plays by a *behaviour* policy b, which explores (e.g. ε-greedy, or at random),
  * whilst the *target* policy π being learnt is greedy on Q. Walking the episode backwards,

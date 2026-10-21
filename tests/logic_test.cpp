@@ -81,3 +81,25 @@ SCENARIO("non-deterministic Q-probabilistic", "[train_test_2]")
         }
     }
 }
+
+/// pins how relearn takes max Q(s', a): over the actions stored for s' only (have a look at docs/q_learning.md)
+TEST_CASE("q_learning: the maximum counts only the actions stored", "[regression]")
+{
+    using state  = relearn::state<std::string>;
+    using action = relearn::action<std::string>;
+    using link   = relearn::link<state,action>;
+    // α = 1, γ = 0.9. In s1, only y is stored, worth -1; x has never been tried there.
+    // (s0, a) earns 0 and leads to s1: Q(s0, a) = 0 + 0.9 * max Q(s1, .) = 0.9 * -1 = -0.9,
+    // where the book, which starts x at 0, would learn 0.9 * max(0, -1) = 0
+    relearn::policy<state,action> memory;
+    memory.update(state("s1"), action("y"), -1);
+    relearn::q_learning<state,action> learner(1.0, 0.9);
+    std::deque<link> episode = {{state(0, "s0"), action("a")},
+                                {state(0, "s1"), action("y")}};
+    learner(episode, memory, false);
+    REQUIRE(memory.value(state("s0"), action("a")) == Approx(-0.9));
+    // a state with nothing stored counts 0
+    relearn::policy<state,action> empty;
+    learner(episode, empty, false);
+    REQUIRE(empty.value(state("s0"), action("a")) == Approx(0));
+}

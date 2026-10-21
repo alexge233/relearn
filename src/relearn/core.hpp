@@ -31,6 +31,7 @@
 #include <utility>
 #include <random>
 #include <vector>
+#include <cstddef>
 #if USING_BOOST_SERIALIZATION
 #include "serialize.tpl"
 #endif
