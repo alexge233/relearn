@@ -2,8 +2,12 @@
 // without relying on headers pulled in by the includer.
 #include "relearn.hpp"
 #include "../examples/games/short_corridor.hpp"
+#include "../examples/games/random_walk.hpp"
+#include "../examples/games/access_control.hpp"
 #include <algorithm>
 #include <cmath>
+#include <map>
+#include <random>
 #include <string>
 #define CATCH_CONFIG_MAIN
 #include "catch.hpp"
@@ -15,6 +19,10 @@
  *   including the γ^t factor
  * - the short corridor (Example 13.1): REINFORCE (Figure 13.1), REINFORCE with a baseline
  *   (Figure 13.2), and Actor-Critic, against the exact value of the policy learnt
+ * - `actor_critic_lambda` and `continuing_actor_critic`: updates worked out by hand, the book's
+ *   pseudocode written out here step by step, λ = 0 against `actor_critic`, the critic against
+ *   `td_lambda` and `differential_sarsa`, and the actor against `reinforce`; the short corridor
+ *   where one-step Actor-Critic fails, and the access-control queue against its optimal policy
  * Random number generators are seeded, so results are reproducible.
  */
 
@@ -37,6 +45,7 @@ using corridor_types = games::types<corridor>;
 using corridor_reinforce = relearn::reinforce<corridor_types::state, corridor_types::action>;
 using corridor_baseline  = relearn::reinforce_with_baseline<corridor_types::state, corridor_types::action>;
 using corridor_critic    = relearn::actor_critic<corridor_types::state, corridor_types::action>;
+using corridor_lambda    = relearn::actor_critic_lambda<corridor_types::state, corridor_types::action>;
 
 /// @return the legal actions of the short corridor, for the learners: left and right, everywhere
 std::vector<corridor_types::action> corridor_actions(const corridor_types::state &)
@@ -77,6 +86,19 @@ template <class chooser>
 games::played<corridor> learn_episode(corridor & game,
                                       chooser && agent,
                                       corridor_critic & learner,
+                                      corridor_types::policy & preferences)
+{
+    return games::play_online_actor_critic(game, agent, learner, preferences, 1000);
+}
+
+/**
+ * @brief Actor-Critic with traces: play an episode, learning after every step
+ * @return the played episode
+ */
+template <class chooser>
+games::played<corridor> learn_episode(corridor & game,
+                                      chooser && agent,
+                                      corridor_lambda & learner,
                                       corridor_types::policy & preferences)
 {
     return games::play_online_actor_critic(game, agent, learner, preferences, 1000);
@@ -482,4 +504,565 @@ TEST_CASE("actor_critic: the short corridor, with the cells looking the same", "
         REQUIRE(learnt.right[run] > 0.99);
         REQUIRE(learnt.values[run] < -500);
     }
+}
+
+namespace
+{
+/// the book's parameters of an Actor-Critic with traces, for the reference below
+struct book_parameters
+{
+    double alpha_theta;
+    double alpha_w;
+    double gamma;
+    double lambda_theta;
+    double lambda_w;
+    /// the step size of the average reward, for the continuing one
+    double beta;
+    /// true for the continuing one (Section 13.6), false for the episodic one (Section 13.5)
+    bool continuing;
+};
+
+/**
+ * @struct book_actor_critic
+ * @brief Sutton & Barto's pseudocode of Actor-Critic with eligibility traces (Sections 13.5 and 13.6), written
+ *        out here plainly with maps, one feature per state for v̂ and per state/action for the preferences,
+ *        and its own softmax: the reference the learners are checked against, step by step
+ */
+struct book_actor_critic
+{
+    book_parameters p;
+    std::map<std::string,double> w;
+    std::map<std::pair<std::string,std::string>,double> theta;
+    std::map<std::string,double> z_w;
+    std::map<std::pair<std::string,std::string>,double> z_theta;
+    double I = 1;
+    double R_bar = 0;
+
+    /// @brief a new episode: z^w = 0, z^θ = 0, I = 1
+    void start()
+    {
+        z_w.clear();
+        z_theta.clear();
+        I = 1;
+    }
+
+    /// @return π(a | s) for the legal actions a of s, the softmax of their preferences: left and right, but only left in s3
+    std::map<std::string,double> pi(const std::string & s) const
+    {
+        auto h = [&](const std::string & a) {
+            auto found = theta.find({s, a});
+            return found == theta.end() ? 0.0 : found->second;
+        };
+        if (s == "s3") {
+            return {{"left", 1.0}};
+        }
+        const double left = std::exp(h("left"));
+        const double right = std::exp(h("right"));
+        return {{"left", left / (left + right)}, {"right", right / (left + right)}};
+    }
+
+    /// @brief one step: in s, take a, receive r and reach s_next (none if the episode ended)
+    void step(const std::string & s,
+              const std::string & a,
+              double r,
+              const std::string * s_next)
+    {
+        const double v_next = s_next ? w[*s_next] : 0.0;
+        const double discount = p.continuing ? 1.0 : p.gamma;
+        double delta = r + discount * v_next - w[s];
+        if (p.continuing) {
+            delta = r - R_bar + v_next - w[s];
+            R_bar += p.beta * delta;
+        }
+        // z^w = γλ^w z^w + ∇v̂(S, w),   z^θ = γλ^θ z^θ + I ∇ ln π(A | S, θ)   (no γ and no I when continuing)
+        for (auto & z : z_w) {
+            z.second *= discount * p.lambda_w;
+        }
+        z_w[s] += 1;
+        const auto probabilities = pi(s);
+        for (auto & z : z_theta) {
+            z.second *= discount * p.lambda_theta;
+        }
+        for (const auto & b : probabilities) {
+            z_theta[{s, b.first}] += (p.continuing ? 1.0 : I) * ((b.first == a ? 1.0 : 0.0) - b.second);
+        }
+        // w = w + α^w δ z^w,   θ = θ + α^θ δ z^θ
+        for (const auto & z : z_w) {
+            w[z.first] += p.alpha_w * delta * z.second;
+        }
+        for (const auto & z : z_theta) {
+            theta[z.first] += p.alpha_theta * delta * z.second;
+        }
+        I *= p.gamma;
+    }
+};
+
+/// @return the legal actions of the pseudocode test: left and right, but only left in s3
+std::vector<action> mostly_left_right(const state & s)
+{
+    return s.trait() == "s3" ? std::vector<action> {action("left")} : left_right(s);
+}
+
+/**
+ * @return a random episode of 1 to 12 steps over the states s0 ... s3, which come back often, and the actions
+ *         left and right (only left in s3, where it is the only legal action of `mostly_left_right`)
+ */
+episode random_episode(std::mt19937 & prng)
+{
+    std::uniform_int_distribution<int> pick_state(0, 3);
+    std::uniform_int_distribution<int> pick_action(0, 1);
+    std::uniform_int_distribution<int> pick_reward(-2, 3);
+    std::uniform_int_distribution<int> pick_length(1, 12);
+    episode e;
+    const int length = pick_length(prng);
+    for (int i = 0; i < length; i++) {
+        const std::string s = "s" + std::to_string(pick_state(prng));
+        const bool left = pick_action(prng) == 0 || s == "s3";
+        e.push_back({state(pick_reward(prng), s), action(left ? "left" : "right")});
+    }
+    return e;
+}
+
+/**
+ * @brief the largest difference between a learner's values and preferences and the reference's
+ * @param learner is `actor_critic_lambda` or `continuing_actor_critic`
+ */
+template <class learner_type>
+double largest_difference(const learner_type & learner,
+                          const policy & preferences,
+                          const book_actor_critic & book)
+{
+    double largest = 0;
+    for (int k = 0; k < 4; k++) {
+        const std::string s = "s" + std::to_string(k);
+        auto found = book.w.find(s);
+        largest = std::max(largest, std::fabs(learner.value(state(s)) - (found == book.w.end() ? 0.0 : found->second)));
+        for (const auto & a : {"left", "right"}) {
+            auto h = book.theta.find({s, a});
+            largest = std::max(largest, std::fabs(preferences.value(state(s), action(a)) - (h == book.theta.end() ? 0.0 : h->second)));
+        }
+    }
+    return largest;
+}
+
+using walk_type  = games::random_walk;
+using walk_types = games::types<walk_type>;
+using queue_type  = games::access_control;
+using queue_types = games::types<queue_type>;
+
+/// @return the legal actions of the queue, for the learners: reject, and accept if a server is free
+std::vector<queue_types::action> queue_actions(const queue_types::state & s)
+{
+    queue_type rules;
+    std::vector<queue_types::action> legal;
+    for (auto a : rules.actions(s.trait())) {
+        legal.push_back(queue_types::action(a));
+    }
+    return legal;
+}
+} // namespace
+
+/// verifies Actor-Critic with traces, episodic, worked out by hand
+TEST_CASE("actor_critic_lambda: one episode by hand", "[policy_gradient][actor_critic_lambda]")
+{
+    // α^θ = α^w = 0.5, γ = 0.5, λ^θ = λ^w = 0.5 (so γλ = 0.25): (x, right) earns 1, (y, left) 0, then (x, right) 2 and ends.
+    //    t = 0: I = 1,    δ = 1,                          z^w(x) = 1,  v(x) = 0.5
+    //           z^θ(x, right) = 1 * (1 - 0.5) = 0.5, z^θ(x, left) = -0.5, so h(x, right) = 0.25, h(x, left) = -0.25
+    //    t = 1: I = 0.5,  δ = 0 + 0.5 v(x) - v(y) = 0.25, z^w(x) = 0.25, z^w(y) = 1: v(x) = 0.53125, v(y) = 0.125
+    //           z^θ(x, ·) = ±0.125, z^θ(y, left) = 0.5 * 0.5 = 0.25, z^θ(y, right) = -0.25, α^θ δ = 0.125:
+    //           h(x, right) = 0.265625, h(y, left) = 0.03125
+    //    t = 2: I = 0.25, δ = 2 - v(x) = 1.46875,         z^w(x) = 1.0625, z^w(y) = 0.25: v(x) = 1.3115234375, v(y) = 0.30859375
+    //           (the very values of SARSA(λ)'s test with accumulating traces: the critic is TD(λ)),
+    //           π(right | x) = 1 / (1 + e^-0.53125), z^θ(x, right) = 0.03125 + 0.25 (1 - π(right | x)),
+    //           z^θ(y, left) = 0.0625; h(x, right) = 0.265625 + 0.734375 z^θ(x, right), h(y, left) = 0.03125 + 0.734375 * 0.0625
+    // (the expected numbers were worked out apart from relearn, in a few lines of Python)
+    relearn::actor_critic_lambda<state,action> learner(0.5, 0.5, 0.5, 0.5, 0.5, left_right);
+    policy preferences;
+    learner(episode {{state(1, "x"), action("right")},
+                     {state(0, "y"), action("left")},
+                     {state(2, "x"), action("right")}}, preferences);
+    REQUIRE(learner.value(state("x")) == Approx(1.3115234375));
+    REQUIRE(learner.value(state("y")) == Approx(0.30859375));
+    REQUIRE(learner.critic_trace(state("x")) == Approx(1.0625));
+    REQUIRE(learner.critic_trace(state("y")) == Approx(0.25));
+    REQUIRE(learner.actor_traces.trace(state("x"), action("right")) == Approx(0.12380634814889666));
+    REQUIRE(learner.actor_traces.trace(state("y"), action("left")) == Approx(0.0625));
+    REQUIRE(preferences.value(state("x"), action("right")) == Approx(0.35654528692184595));
+    REQUIRE(preferences.value(state("x"), action("left")) == Approx(-0.35654528692184595));
+    REQUIRE(preferences.value(state("y"), action("left")) == Approx(0.0771484375));
+    REQUIRE(preferences.value(state("y"), action("right")) == Approx(-0.0771484375));
+    // the episode ended: I is 1 again
+    REQUIRE(learner.discount() == 1);
+}
+
+/// verifies Actor-Critic with traces for a task that never ends, worked out by hand
+TEST_CASE("continuing_actor_critic: three steps by hand", "[policy_gradient][continuing_actor_critic]")
+{
+    // α^θ = α^w = β = 0.5, λ^θ = λ^w = 0.5, R̄ = 0: (x, right) earns 2, (y, left) 0, (x, left) 1, then y is reached.
+    //    t = 0: δ = 2 - 0 + 0 - 0 = 2, R̄ = 1; z^w(x) = 1, v(x) = 1; z^θ(x, right) = 0.5, so h(x, right) = 0.5
+    //    t = 1: δ = 0 - 1 + v(x) - v(y) = 0, R̄ = 1: nothing moves, the traces fade by λ = 0.5 and z^w(y) = 1
+    //    t = 2: π(left | x) = 1 / (1 + e) = 0.2689, δ = 1 - 1 + v(y) - v(x) = -1, R̄ = 0.5;
+    //           z^w(x) = 1.25, z^w(y) = 0.5, so v(x) = 0.375, v(y) = -0.25; z^θ(x, left) = -0.125 + 0.7311 = 0.6061
+    // (worked out apart from relearn, in a few lines of Python)
+    relearn::continuing_actor_critic<state,action> learner(0.5, 0.5, 0.5, 0.5, 0.5, left_right);
+    policy preferences;
+    learner(episode {{state(2, "x"), action("right")},
+                     {state(0, "y"), action("left")},
+                     {state(1, "x"), action("left")},
+                     {state(0, "y"), action("right")}}, preferences);
+    REQUIRE(learner.rho == Approx(0.5));
+    REQUIRE(learner.value(state("x")) == Approx(0.375));
+    REQUIRE(learner.value(state("y")) == Approx(-0.25));
+    REQUIRE(learner.critic_trace(state("x")) == Approx(1.25));
+    REQUIRE(learner.critic_trace(state("y")) == Approx(0.5));
+    REQUIRE(learner.actor_traces.trace(state("x"), action("left")) == Approx(0.6060585786300049));
+    REQUIRE(preferences.value(state("x"), action("right")) == Approx(0.8030292893150024));
+    REQUIRE(preferences.value(state("y"), action("right")) == Approx(0.125));
+    // the last link, y, is only the state reached: it has no trace of its own yet, and it goes on from here
+    learner(episode {{state(0, "y"), action("right")},
+                     {state(0, "x"), action("left")}}, preferences);
+    REQUIRE(learner.critic_trace(state("y")) == Approx(1.25));
+}
+
+/// verifies both learners against the book's pseudocode, written out here, after every step
+TEST_CASE("actor_critic_lambda and continuing_actor_critic: the book's pseudocode, step by step", "[policy_gradient][actor_critic_lambda][continuing_actor_critic]")
+{
+    // 300 pairs of random episodes that come back to the same states, with random step sizes, γ and λs (γ = 1 and
+    // λ = 1 too), each pair learnt one after the other by the same learner, some ending and some cut short, and a state,
+    // s3, with a single legal action. Learnt one step at a time (as `games::play_online_actor_critic` gives them) and
+    // in one call per episode: after every step, the values, preferences and R̄ are those of the pseudocode.
+    // For the task that never ends, an episode cut short goes on in the next one (which starts with its last link),
+    // and one that ends starts its traces again, keeping R̄ and the values
+    std::mt19937 prng(7);
+    std::uniform_real_distribution<double> uniform(0, 1);
+    double largest = 0;
+    for (int trial = 0; trial < 300; trial++) {
+        book_parameters p {0.05 + 0.5 * uniform(prng), 0.05 + 0.5 * uniform(prng),
+                           trial % 5 == 0 ? 1.0 : uniform(prng),
+                           trial % 7 == 0 ? 1.0 : uniform(prng), trial % 11 == 0 ? 1.0 : uniform(prng),
+                           0.05 + 0.5 * uniform(prng), trial % 2 == 1};
+        const std::vector<bool> ends = {trial % 3 != 0, trial % 4 != 0};
+        std::vector<episode> episodes = {random_episode(prng), random_episode(prng)};
+        if (p.continuing && !ends[0]) {
+            // the task goes on: the next piece starts with the state reached and the action taken next
+            episodes[1].front() = {state(episodes[1].front().state.reward(), episodes[0].back().state.trait()),
+                                   episodes[0].back().action};
+        }
+        book_actor_critic book {p, {}, {}, {}, {}};
+        relearn::actor_critic_lambda<state,action> episodic(p.alpha_theta, p.alpha_w, p.gamma, p.lambda_theta, p.lambda_w, mostly_left_right);
+        relearn::continuing_actor_critic<state,action> continuing(p.alpha_theta, p.alpha_w, p.beta, p.lambda_theta, p.lambda_w, mostly_left_right);
+        policy stepwise;
+        for (std::size_t k = 0; k < 2; k++) {
+            const auto & e = episodes[k];
+            // a new episode for the reference: always when episodic, and after an episode that ended when continuing
+            if (!p.continuing || k == 0 || ends[0]) {
+                book.start();
+            }
+            if (!p.continuing) {
+                episodic.start_episode();
+            }
+            const std::size_t T = ends[k] ? e.size() : e.size() - 1;
+            for (std::size_t t = 0; t < T; t++) {
+                const bool last = t + 1 == e.size();
+                const std::string next = last ? "" : e[t + 1].state.trait();
+                book.step(e[t].state.trait(), e[t].action.trait(), e[t].state.reward(), last ? nullptr : &next);
+                episode window = last ? episode {e[t]} : episode {e[t], {state(0, next), e[t].action}};
+                if (p.continuing) {
+                    continuing(window, stepwise, last);
+                    largest = std::max(largest, largest_difference(continuing, stepwise, book));
+                    largest = std::max(largest, std::fabs(continuing.rho - book.R_bar));
+                }
+                else {
+                    episodic(window, stepwise, last);
+                    largest = std::max(largest, largest_difference(episodic, stepwise, book));
+                }
+            }
+            if (p.continuing && ends[k]) {
+                // a task that ended: its traces start again
+                REQUIRE(continuing.actor_traces.entries().empty());
+                for (int s = 0; s < 4; s++) {
+                    REQUIRE(continuing.critic_trace(state("s" + std::to_string(s))) == 0);
+                }
+            }
+        }
+        // the single legal action of s3 has ∇ ln π = 1 - 1 = 0: its preference never moves
+        REQUIRE(stepwise.value(state("s3"), action("left")) == 0);
+        // each episode in one call: the very same, to the last bit
+        policy at_once;
+        relearn::continuing_actor_critic<state,action> whole_continuing(p.alpha_theta, p.alpha_w, p.beta, p.lambda_theta, p.lambda_w, mostly_left_right);
+        relearn::actor_critic_lambda<state,action> whole_episodic(p.alpha_theta, p.alpha_w, p.gamma, p.lambda_theta, p.lambda_w, mostly_left_right);
+        for (std::size_t k = 0; k < 2; k++) {
+            if (p.continuing) {
+                whole_continuing(episodes[k], at_once, ends[k]);
+            }
+            else {
+                whole_episodic(episodes[k], at_once, ends[k]);
+            }
+        }
+        if (p.continuing) {
+            REQUIRE(whole_continuing.rho == continuing.rho);
+        }
+        for (int s = 0; s < 4; s++) {
+            const state s_k("s" + std::to_string(s));
+            REQUIRE((p.continuing ? whole_continuing.value(s_k) : whole_episodic.value(s_k)) ==
+                    (p.continuing ? continuing.value(s_k) : episodic.value(s_k)));
+            for (const auto & a : {"left", "right"}) {
+                REQUIRE(at_once.value(s_k, action(a)) == stepwise.value(s_k, action(a)));
+            }
+        }
+    }
+    INFO("the largest difference is " << largest);
+    REQUIRE(largest < 1e-12);
+}
+
+/// verifies that with λ^θ = λ^w = 0, Actor-Critic with traces is one-step Actor-Critic
+TEST_CASE("actor_critic_lambda: lambda = 0 is actor_critic", "[policy_gradient][actor_critic_lambda]")
+{
+    // the same random episodes, some cut short, learnt by both (to within 1e-12: α^θ (δ I ∇) is rounded differently)
+    std::mt19937 prng(8);
+    relearn::actor_critic<state,action> one_step(0.3, 0.4, 0.9, left_right);
+    relearn::actor_critic_lambda<state,action> zero(0.3, 0.4, 0.9, 0.0, 0.0, left_right);
+    policy one_preferences, zero_preferences;
+    for (int i = 0; i < 300; i++) {
+        auto e = random_episode(prng);
+        const bool terminated = i % 3 != 0;
+        one_step.start_episode();
+        one_step(e, one_preferences, terminated);
+        zero(e, zero_preferences, terminated);
+    }
+    for (int k = 0; k < 4; k++) {
+        const state s("s" + std::to_string(k));
+        REQUIRE(zero.value(s) == Approx(one_step.value(s)).epsilon(1e-12));
+        for (const auto & a : {"left", "right"}) {
+            REQUIRE(zero_preferences.value(s, action(a)) == Approx(one_preferences.value(s, action(a))).epsilon(1e-12).margin(1e-15));
+        }
+    }
+}
+
+/// verifies the critic: with an actor that learns nothing, it is TD(λ), and in a task that never ends, differential TD(0)
+TEST_CASE("actor_critic_lambda and continuing_actor_critic: the critic is TD(lambda)", "[policy_gradient][actor_critic_lambda][continuing_actor_critic]")
+{
+    // α^θ = 0: the 19-state random walk, learnt by TD(λ) and by the critic, on the same walks (to within 1e-12)
+    for (double lambda : {0.0, 0.5, 0.9, 1.0}) {
+        walk_type walk(19, -1, 1, 9);
+        walk_types::policy td_memory, preferences;
+        relearn::td_lambda<walk_types::state, walk_types::action> td(0.1, 0.9, lambda);
+        relearn::actor_critic_lambda<walk_types::state, walk_types::action> critic(0.0, 0.1, 0.9, 0.5, lambda,
+            [](const walk_types::state &) { return std::vector<walk_types::action> {walk_types::action(0)}; });
+        for (int i = 0; i < 50; i++) {
+            auto r = games::play(walk, [](const unsigned int &, const std::vector<unsigned int> &) { return 0u; }, 100000);
+            td(r.episode, td_memory, r.terminated);
+            critic(r.episode, preferences, r.terminated);
+        }
+        for (unsigned int s = 1; s <= 19; s++) {
+            INFO("λ = " << lambda << ", state " << s);
+            REQUIRE(critic.value(walk_types::state(s)) ==
+                    Approx(td_memory.value(walk_types::state(s), walk_types::action(0))).epsilon(1e-12).margin(1e-15));
+        }
+    }
+    // a task that never ends, with a single action: with λ^w = 0, the critic and R̄ are those of differential Sarsa,
+    // whose one action makes it differential TD(0) (to within 1e-12)
+    std::mt19937 prng(10);
+    std::uniform_int_distribution<int> pick_state(0, 4);
+    std::uniform_int_distribution<int> pick_reward(-1, 3);
+    episode e;
+    for (int i = 0; i < 2000; i++) {
+        e.push_back({state(pick_reward(prng), "s" + std::to_string(pick_state(prng))), action("only")});
+    }
+    relearn::differential_sarsa<state,action> sarsa(0.1, 0.05);
+    relearn::continuing_actor_critic<state,action> continuing(0.0, 0.1, 0.05, 0.5, 0.0,
+        [](const state &) { return std::vector<action> {action("only")}; });
+    policy sarsa_memory, preferences;
+    sarsa(e, sarsa_memory);
+    continuing(e, preferences);
+    REQUIRE(continuing.rho == Approx(sarsa.rho).epsilon(1e-12));
+    for (int k = 0; k < 5; k++) {
+        const state s("s" + std::to_string(k));
+        REQUIRE(continuing.value(s) == Approx(sarsa_memory.value(s, action("only"))).epsilon(1e-12).margin(1e-15));
+    }
+}
+
+/// verifies the actor: with a critic that learns nothing and λ^θ = 1, it makes the changes of REINFORCE
+TEST_CASE("actor_critic_lambda: with lambda = 1 and no critic, the actor is REINFORCE", "[policy_gradient][actor_critic_lambda]")
+{
+    // α^w = 0, so every δ is r_t, and z^θ = Σ_k γ^(t-k) γ^k ∇ ln π_k: the sum over t of α^θ r_t z^θ_t is
+    // α^θ Σ_k γ^k G_k ∇ ln π_k, REINFORCE's. On episodes that never come back to a state, every ∇ ln π_k is worked out
+    // from the same preferences in both (to within 1e-12)
+    std::mt19937 prng(11);
+    std::uniform_int_distribution<int> pick_action(0, 1);
+    std::uniform_int_distribution<int> pick_reward(-2, 3);
+    std::uniform_int_distribution<int> pick_length(1, 10);
+    for (double gamma : {1.0, 0.8}) {
+        relearn::reinforce<state,action> reinforce(0.2, gamma, left_right);
+        relearn::actor_critic_lambda<state,action> actor(0.2, 0.0, gamma, 1.0, 0.5, left_right);
+        policy reinforce_preferences, actor_preferences;
+        for (int i = 0; i < 100; i++) {
+            episode e;
+            const int length = pick_length(prng);
+            for (int k = 0; k < length; k++) {
+                // each episode visits its own states, once each: s<episode>_<step>
+                e.push_back({state(pick_reward(prng), "s" + std::to_string(i % 7) + "_" + std::to_string(k)),
+                             action(pick_action(prng) == 0 ? "left" : "right")});
+            }
+            reinforce(e, reinforce_preferences);
+            actor(e, actor_preferences);
+        }
+        for (int i = 0; i < 7; i++) {
+            for (int k = 0; k < 10; k++) {
+                const state s("s" + std::to_string(i) + "_" + std::to_string(k));
+                for (const auto & a : {"left", "right"}) {
+                    INFO("γ = " << gamma << ", " << s.trait() << ", " << a);
+                    REQUIRE(actor_preferences.value(s, action(a)) ==
+                            Approx(reinforce_preferences.value(s, action(a))).epsilon(1e-12).margin(1e-14));
+                }
+            }
+        }
+    }
+}
+
+/// verifies when an episode goes on from one call to the next, and when a new one starts
+TEST_CASE("actor_critic_lambda: episodes cut short, and one call after another", "[policy_gradient][actor_critic_lambda]")
+{
+    auto x = step {state(1, "x"), action("right")};
+    auto y = step {state(0, "y"), action("left")};
+    auto z = step {state(2, "z"), action("right")};
+    // an episode started with start_episode() and learnt a step at a time is the episode learnt at once
+    relearn::actor_critic_lambda<state,action> stepwise(0.5, 0.5, 0.9, 0.8, 0.8, left_right);
+    relearn::actor_critic_lambda<state,action> at_once(0.5, 0.5, 0.9, 0.8, 0.8, left_right);
+    policy stepwise_preferences, at_once_preferences;
+    stepwise.start_episode();
+    stepwise(episode {x, {state(0, "y"), action("right")}}, stepwise_preferences, false);
+    stepwise(episode {y, {state(0, "z"), action("left")}}, stepwise_preferences, false);
+    stepwise(episode {z}, stepwise_preferences, true);
+    at_once(episode {x, y, z}, at_once_preferences, true);
+    for (const auto & link : {x, y, z}) {
+        REQUIRE(stepwise.value(link.state) == at_once.value(link.state));
+        for (const auto & a : {"left", "right"}) {
+            REQUIRE(stepwise_preferences.value(link.state, action(a)) == at_once_preferences.value(link.state, action(a)));
+        }
+    }
+    // after the end of an episode, the next call is a new one: I = 1 and every trace 0
+    REQUIRE(stepwise.discount() == 1);
+    stepwise(episode {z}, stepwise_preferences, true);
+    REQUIRE(stepwise.critic_trace(state("x")) == Approx(0));
+    REQUIRE(stepwise.actor_traces.trace(state("x"), action("right")) == Approx(0));
+    // without start_episode(), the steps of an episode given one call at a time are learnt as episodes of their own,
+    // even the next one after an episode cut short that starts with the very link it ended with
+    relearn::actor_critic_lambda<state,action> unopened(0.5, 0.5, 0.9, 0.8, 0.8, left_right);
+    policy unopened_preferences;
+    unopened(episode {x, y}, unopened_preferences, false);
+    REQUIRE(unopened.critic_trace(state("x")) == Approx(1));
+    unopened(episode {y, z}, unopened_preferences, false);
+    REQUIRE(unopened.critic_trace(state("x")) == Approx(0));
+    REQUIRE(unopened.critic_trace(state("y")) == Approx(1));
+    REQUIRE(unopened.discount() == Approx(0.9));
+    // and start_episode() starts a new one whatever the last call was
+    unopened.start_episode();
+    REQUIRE(unopened.discount() == 1);
+    REQUIRE(unopened.critic_trace(state("y")) == Approx(0));
+    REQUIRE(unopened.actor_traces.entries().empty());
+}
+
+/// verifies the constructors of the Actor-Critics with traces, and brace initialisation
+TEST_CASE("actor_critic_lambda and continuing_actor_critic: constructors and brace initialisation", "[policy_gradient]")
+{
+    relearn::actor_critic_lambda<state,action> episodic;
+    REQUIRE(episodic.alpha_theta == Approx(0.01));
+    REQUIRE(episodic.alpha_w == Approx(0.1));
+    REQUIRE(episodic.gamma == Approx(0.9));
+    REQUIRE(episodic.lambda_theta == Approx(0.9));
+    REQUIRE(episodic.lambda_w == Approx(0.9));
+    REQUIRE(episodic.discount() == 1);
+    REQUIRE_FALSE(episodic.legal_actions);
+    auto braced = relearn::actor_critic_lambda<state,action>{0.1, 0.2, 1.0, 0.3, 0.4, left_right};
+    REQUIRE(braced.alpha_theta == Approx(0.1));
+    REQUIRE(braced.alpha_w == Approx(0.2));
+    REQUIRE(braced.gamma == Approx(1));
+    REQUIRE(braced.lambda_theta == Approx(0.3));
+    REQUIRE(braced.lambda_w == Approx(0.4));
+    REQUIRE(braced.legal_actions);
+    relearn::continuing_actor_critic<state,action> continuing;
+    REQUIRE(continuing.alpha_theta == Approx(0.01));
+    REQUIRE(continuing.alpha_w == Approx(0.1));
+    REQUIRE(continuing.beta == Approx(0.01));
+    REQUIRE(continuing.lambda_theta == Approx(0.9));
+    REQUIRE(continuing.lambda_w == Approx(0.9));
+    REQUIRE(continuing.rho == Approx(0));
+    auto queue = relearn::continuing_actor_critic<state,action>{0.05, 0.2, 0.02, 0.5, 0.6, left_right};
+    REQUIRE(queue.beta == Approx(0.02));
+    REQUIRE(queue.lambda_w == Approx(0.6));
+}
+
+/// verifies that with traces, Actor-Critic learns the short corridor even when the cells look the same
+TEST_CASE("actor_critic_lambda: the short corridor, with the cells looking the same", "[policy_gradient][actor_critic_lambda][short_corridor]")
+{
+    // where one-step Actor-Critic is misled by a critic that cannot tell the cells apart (the test above), the traces
+    // carry each δ back to the actions before it, and the actor learns the stochastic policy p = 2 - √2 = 0.5858, worth -11.6.
+    // The step sizes of Figure 13.2, α^θ = 2^-9 and α^w = 2^-6, γ = 1, λ^θ = λ^w = 0.9, 5 runs of 1000 episodes,
+    // from π(right) = 0.05. Over 10 seeds (the same numbers with libstdc++ and with libc++), every run learnt
+    // p = 0.547 to 0.674, worth -12.07 to -11.66 (against -1449 to -1074 for one-step Actor-Critic)
+    corridor_lambda learner(std::pow(2.0, -9), std::pow(2.0, -6), 1.0, 0.9, 0.9, corridor_actions);
+    auto learnt = learn_corridor(learner, false, 1000, 5, 1);
+    for (std::size_t run = 0; run < learnt.right.size(); run++) {
+        INFO("run " << run << ": p = " << learnt.right[run] << ", worth " << learnt.values[run]);
+        REQUIRE(learnt.right[run] > 0.5);
+        REQUIRE(learnt.right[run] < 0.72);
+        REQUIRE(learnt.values[run] > -12.3);
+    }
+}
+
+/// verifies that with traces, Actor-Critic still learns the short corridor when the cells are shown
+TEST_CASE("actor_critic_lambda: the short corridor, with the cells shown", "[policy_gradient][actor_critic_lambda][short_corridor]")
+{
+    // the best policy is right, left, right, worth -3; α^θ = 2^-4, α^w = 2^-3, γ = 1, λ^θ = λ^w = 0.9,
+    // 20 runs of 1000 episodes, from π(right) = 1/2 everywhere. Over 10 seeds (the same numbers with libstdc++
+    // and with libc++), every run learnt a policy worth -3.040 or more, the median π(right) was 0.9908 to 0.9920
+    // in the first cell, and the median value -3.026 to -3.024
+    corridor_lambda learner(std::pow(2.0, -4), std::pow(2.0, -3), 1.0, 0.9, 0.9, corridor_actions);
+    auto learnt = learn_corridor(learner, true, 1000, 20, 1);
+    INFO("median π(right) " << median(learnt.right) << ", median value " << median(learnt.values));
+    REQUIRE(above(learnt.values, -3.1) == learnt.values.size());
+    REQUIRE(median(learnt.right) > 0.98);
+}
+
+/// verifies the continuing Actor-Critic on the access-control queue: its policy earns close to the optimal average reward
+TEST_CASE("continuing_actor_critic: the access-control queue", "[policy_gradient][continuing_actor_critic][access_control]")
+{
+    // α^θ = 0.01, α^w = 0.1, β = 0.01, λ^θ = λ^w = 0.9, 1000000 steps learnt after every step, in pieces of 1000.
+    // The optimal policy earns ρ* = 2.7476 per step (tests/solvers.hpp, checked in tests/r_learning_test.cpp).
+    // The greedy policy of the preferences learnt (accepting on a tie) is worked out exactly from the rules.
+    // Over 10 seeds, with libstdc++ and with libc++, the greedy policy earned 2.7343 to 2.7474, the agent earned
+    // 2.7246 to 2.7521 whilst learning (second half), and the mean R̄ was 0.001 to 0.026 above it
+    queue_type queue(10, 0.06, 1);
+    std::mt19937 prng(1);
+    relearn::continuing_actor_critic<queue_types::state, queue_types::action> learner(0.01, 0.1, 0.01, 0.9, 0.9, queue_actions);
+    queue_types::policy preferences;
+    auto agent = [&](const queue_type::state_type & s,
+                     const std::vector<unsigned int> &) {
+        return learner.sample(queue_types::state(s), preferences, prng).trait();
+    };
+    // over the second half, the reward earned per step, and R̄ (which moves a lot from one step to the next)
+    double earned = 0;
+    double mean_rho = 0;
+    for (int piece = 0; piece < 1000; piece++) {
+        auto r = games::play_online_actor_critic(queue, agent, learner, preferences, 1000);
+        if (piece >= 500) {
+            earned += r.total_reward / 500000;
+            mean_rho += learner.rho / 500;
+        }
+    }
+    auto greedy = [&](const queue_type::state_type & s) {
+        if (s.free == 0) {
+            return static_cast<unsigned int>(queue_type::reject);
+        }
+        const double accept = preferences.value(queue_types::state(s), queue_types::action(queue_type::accept));
+        const double reject = preferences.value(queue_types::state(s), queue_types::action(queue_type::reject));
+        return static_cast<unsigned int>(accept >= reject ? queue_type::accept : queue_type::reject);
+    };
+    queue_type rules;
+    const double greedy_earns = rules.average_reward(greedy);
+    INFO("earned whilst learning (second half) " << earned << ", mean R̄ " << mean_rho << ", the greedy policy earns " << greedy_earns);
+    REQUIRE(greedy_earns > 2.7476 - 0.03);
+    REQUIRE(earned > 2.7476 - 0.05);
+    REQUIRE(std::fabs(mean_rho - earned) < 0.05);
 }

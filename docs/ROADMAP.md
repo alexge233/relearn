@@ -3,8 +3,7 @@
 relearn now has most of the tabular methods of Sutton and Barto's book [1]: from bandits and dynamic programming,
 through Monte Carlo, TD, n-step methods, planning and eligibility traces, to policy gradients, R-Learning and Monte
 Carlo Tree Search. Each one is tested against hand-worked steps and against the book's own figures. A few are still
-to come (Actor-Critic with traces, off-policy Monte Carlo prediction, and a few more), and they are the first part
-of this plan.
+to come (off-policy Monte Carlo prediction, and a few more), and they are the first part of this plan.
 
 This page is where it goes next. It is a plan, not a promise: there are no dates, the order may change, and each
 step is only done once it has been implemented, tested, documented and reviewed, like everything before it.
@@ -40,11 +39,10 @@ Whatever gets added, a few things don't change:
 
 The book has a few more tabular methods that relearn doesn't have yet (the whole n-step family of Chapter 7 is
 now in, have a look at [n_step.md](n_step.md), and so are true online TD(λ) and Sarsa(λ), in
-[eligibility_traces.md](eligibility_traces.md)). In the order they would be done:
+[eligibility_traces.md](eligibility_traces.md), and Actor-Critic with eligibility traces, episodic and for tasks that
+never end, in [policy_gradient.md](policy_gradient.md)). In the order they would be done:
 
-1. **Actor-Critic with eligibility traces**, and **Actor-Critic for tasks that never end** (Sections 13.5 and 13.6).
-   Today's `actor_critic` is the one-step version, for episodes only.
-2. **Off-policy Monte Carlo prediction** (Section 5.5): ordinary against weighted importance sampling, on the
+1. **Off-policy Monte Carlo prediction** (Section 5.5): ordinary against weighted importance sampling, on the
    book's blackjack state (Example 5.4, Figure 5.3). Today's `off_policy_monte_carlo` is the weighted one, for
    control only.
 

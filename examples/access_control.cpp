@@ -1,12 +1,14 @@
 /**
  * The access-control queuing task (Sutton & Barto, 1st edition Example 6.7, 2nd edition Example 10.2),
- * a task that never ends, learnt after every step, in three ways:
+ * a task that never ends, learnt after every step, in four ways:
  *
  * 1. R-Learning with the 1st edition's settings, α = 0.1 and β = 0.01 (Figure 6.17)
  * 2. R-Learning with a smaller learning rate, α = 0.01
  * 3. differential Sarsa with the 2nd edition's settings, α = 0.01 and β = 0.01 (Figure 10.5)
+ * 4. Actor-Critic with eligibility traces for tasks that never end (2nd edition, Section 13.6), α^θ = 0.01,
+ *    α^w = 0.1, β = 0.01 and λ^θ = λ^w = 0.9, which learns the policy itself, and draws its actions from it
  *
- * all exploring ε-greedy with ε = 0.1, for 2000000 steps. For each one it prints the average reward ρ
+ * the first three exploring ε-greedy with ε = 0.1, for 2000000 steps. For each one it prints the average reward ρ
  * it learnt, the greedy policy and the values learnt, in the layout of the book's figures, and what the
  * greedy policy earns per step: worked out exactly from the rules, and by playing it for 1000000 steps.
  *
@@ -14,8 +16,9 @@
  * iteration in tests/solvers.hpp (and checked in tests/r_learning_test.cpp).
  *
  * The program succeeds if R-Learning's ρ (with the book's settings) is within 0.05 of ρ*, and above
- * what the agent earns whilst exploring, and if the greedy policies of R-Learning with α = 0.01 and of
- * differential Sarsa earn within 0.08 of ρ*.
+ * what the agent earns whilst exploring, if the greedy policies of R-Learning with α = 0.01 and of
+ * differential Sarsa earn within 0.08 of ρ*, and if Actor-Critic earns within 0.05 of ρ* whilst it learns
+ * (it explores only as much as its own policy does) and its most likely actions within 0.03 of it.
  *
  * @see games/access_control.hpp for the rules
  */
@@ -107,6 +110,53 @@ learnt learn(learner_type & learner,
         }
     }
     result.rho = learner.rho;
+    result.mean_rho /= static_cast<double>(pieces);
+    result.reward /= static_cast<double>(pieces);
+    return result;
+}
+
+/// what Actor-Critic learnt on the queue
+struct learnt_policy
+{
+    /// the preferences h(s, a) learnt
+    types::policy preferences;
+    /// the mean of R̄ over the second half of the run
+    double mean_rho = 0;
+    /// the mean reward per step earned over the second half of the run
+    double reward = 0;
+};
+
+/**
+ * @brief learn the queue with Actor-Critic, after every step, its actions drawn from the policy it learns
+ * @param learner is `continuing_actor_critic`
+ * @param queue is the queue to learn
+ * @param steps is the number of steps
+ * @param prng draws the actions
+ * @return what was learnt
+ *
+ * As for `learn`, the queue is played in pieces of 1000 steps, each carrying on where the last one stopped.
+ * `games::play_online_actor_critic` chooses each action after the step before has been learnt, so no action
+ * is left over from one piece to the next.
+ */
+learnt_policy learn_policy(relearn::continuing_actor_critic<types::state, types::action> & learner,
+                           game_type & queue,
+                           std::size_t steps,
+                           std::mt19937 & prng)
+{
+    learnt_policy result;
+    auto agent = [&](const game_type::state_type & s,
+                     const std::vector<unsigned int> &) {
+        return learner.sample(types::state(s), result.preferences, prng).trait();
+    };
+    std::size_t pieces = 0;
+    for (std::size_t done = 0; done < steps; done += 1000) {
+        auto played = games::play_online_actor_critic(queue, agent, learner, result.preferences, 1000);
+        if (done >= steps / 2) {
+            result.mean_rho += learner.rho;
+            result.reward += played.total_reward / 1000;
+            pieces++;
+        }
+    }
     result.mean_rho /= static_cast<double>(pieces);
     result.reward /= static_cast<double>(pieces);
     return result;
@@ -257,10 +307,47 @@ int main()
     double sarsa_exact = report("differential Sarsa, α = 0.01, β = 0.01 (2nd edition, Example 10.2, Figure 10.5):",
                                 second, queue_3);
 
-    // R-Learning's ρ is the greedy policy's, not the exploring one's; both greedy policies are close to optimal
+    // 4. Actor-Critic with traces, its actions drawn from the policy it learns
+    game_type queue_4(10, 0.06, 4);
+    std::mt19937 prng_4(104);
+    relearn::continuing_actor_critic<types::state, types::action> critic(0.01, 0.1, 0.01, 0.9, 0.9, legal_actions);
+    auto policy = learn_policy(critic, queue_4, steps, prng_4);
+    // its most likely action in each state: accept if its preference is at least that of rejecting
+    auto likeliest = [&](const game_type::state_type & s) {
+        if (s.free == 0) {
+            return static_cast<unsigned int>(game_type::reject);
+        }
+        double accept = policy.preferences.value(types::state(s), types::action(game_type::accept));
+        double reject = policy.preferences.value(types::state(s), types::action(game_type::reject));
+        return static_cast<unsigned int>(accept >= reject ? game_type::accept : game_type::reject);
+    };
+    const double likeliest_exact = rules.average_reward(likeliest);
+    std::cout << std::endl << "Actor-Critic with traces, α^θ = 0.01, α^w = 0.1, β = 0.01, λ = 0.9 (2nd edition, Section 13.6):" << std::endl;
+    std::cout << "    mean R̄ over the second half: " << policy.mean_rho
+              << ", earned per step whilst learning (second half): " << policy.reward << std::endl;
+    std::cout << "    its most likely action in each state:" << std::endl;
+    print_policy(likeliest, {});
+    std::cout << "    π(accept) in each state, free servers:" << std::endl;
+    std::cout << "    priority \\ free servers:     1     2     3     4     5     6     7     8     9    10" << std::endl;
+    for (unsigned int priority : {8u, 4u, 2u, 1u}) {
+        std::cout << "    " << std::setw(23) << priority << ":";
+        for (unsigned int free = 1; free <= 10; free++) {
+            game_type::state_type s{free, priority};
+            std::cout << std::setw(6) << std::setprecision(2)
+                      << critic.probability(types::state(s), types::action(game_type::accept), policy.preferences)
+                      << std::setprecision(4);
+        }
+        std::cout << std::endl;
+    }
+    std::cout << "    its most likely actions earn per step, exactly: " << likeliest_exact << std::endl;
+
+    // R-Learning's ρ is the greedy policy's, not the exploring one's; both greedy policies are close to optimal,
+    // and Actor-Critic earns close to ρ* whilst it learns
     const bool good = std::fabs(book.mean_rho - optimal) < 0.05 &&
                       book.mean_rho > book.reward + 0.1 &&
                       optimal - small_exact < 0.08 &&
-                      optimal - sarsa_exact < 0.08;
+                      optimal - sarsa_exact < 0.08 &&
+                      optimal - policy.reward < 0.05 &&
+                      optimal - likeliest_exact < 0.03;
     return good ? EXIT_SUCCESS : EXIT_FAILURE;
 }
