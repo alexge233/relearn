@@ -32,6 +32,10 @@ Actualmente la biblioteca implementa los siguientes algoritmos, cada uno explica
 - predicción **TD(0)** y **TD de n pasos** (`n_step_td`), y **SARSA de n pasos** (`n_step_sarsa`), que aprenden de
   las n recompensas siguientes y después del valor del estado al que llegan, en cualquier punto entre el TD de un paso
   y Monte Carlo, ver [docs/n_step.md](docs/n_step.md)
+- **Expected SARSA de n pasos** (`n_step_expected_sarsa`), **SARSA de n pasos off-policy** (`off_policy_n_step_sarsa`), el
+  algoritmo **tree backup** (`n_step_tree_backup`) y **Q(σ)** (`n_step_q_sigma`), que aprenden n pasos a la vez, on-policy
+  u off-policy (los valores de una política greedy a partir de un agente que explora), con o sin muestreo por importancia,
+  ver [docs/n_step.md](docs/n_step.md)
 - **TD(λ)** (`td_lambda`), **SARSA(λ)** (`sarsa_lambda`) y **Q(λ) de Watkins** (`watkins_q_lambda`), cuyas
   trazas de elegibilidad reparten cada error TD entre los movimientos que llevaron a él, acumulativas o de reemplazo,
   ver [docs/eligibility_traces.md](docs/eligibility_traces.md)
@@ -51,7 +55,7 @@ Actualmente la biblioteca implementa los siguientes algoritmos, cada uno explica
   brazos con su softmax, ver [docs/bandits.md](docs/bandits.md)
 - **schedules** (pautas de decaimiento) para la tasa de aprendizaje y la tasa de exploración, de modo que cada una pueda *decaer*
   a medida que el agente aprende (`polynomial_decay`, `exponential_decay` y `linear_decay`), ver [docs/schedules.md](docs/schedules.md).
-  Ten en cuenta que `q_learning`, `sarsa`, `expected_sarsa`, `double_q_learning` y `n_step_sarsa` pueden hacer decaer, cada uno,
+  Ten en cuenta que `q_learning`, `sarsa`, `expected_sarsa`, `double_q_learning` y los algoritmos de n pasos pueden hacer decaer, cada uno,
   la tasa de aprendizaje de cada par estado/acción por separado
 
 También incluye una colección de juegos clásicos para aprender, descritos más abajo en [Juegos](#juegos).
@@ -153,7 +157,7 @@ __nota__: la serialización es opcional, y necesita Boost (ver [activar la seria
 | `relearn/dyna.hpp` | `dyna_q` |
 | `relearn/monte_carlo.hpp` | `monte_carlo` y `off_policy_monte_carlo` |
 | `relearn/mcts.hpp` | `mcts`, Monte Carlo Tree Search con UCT |
-| `relearn/n_step.hpp` | `n_step_sarsa`, y `n_step_td` (TD(0) cuando n = 1) |
+| `relearn/n_step.hpp` | `n_step_sarsa`, y `n_step_td` (TD(0) cuando n = 1); `n_step_expected_sarsa`, `off_policy_n_step_sarsa`, `n_step_tree_backup` y `n_step_q_sigma` |
 | `relearn/eligibility_traces.hpp` | `sarsa_lambda`, `td_lambda` y `watkins_q_lambda`, y sus `eligibility_traces` |
 | `relearn/policy_gradient.hpp` | `softmax_policy`, `reinforce`, `reinforce_with_baseline` y `actor_critic` |
 | `relearn/r_learning.hpp` | `r_learning` y `differential_sarsa` |
@@ -415,6 +419,7 @@ Los algoritmos con trazas de elegibilidad aprenden un episodio entero cada vez, 
 | `dynamic_programming` | S&B 4.1, 4.3, 4.4 | `dynamic_programming` | El gridworld de 4 x 4 (`small_gridworld`, Figura 4.1) y el problema del jugador (Figura 4.3), resueltos a partir de sus modelos, con evaluación de políticas, iteración de políticas e iteración de valores |
 | `dyna_maze` | S&B 8.1 a 8.3 | `dyna_q` | La planificación aprende un laberinto en muchos menos episodios (Figura 8.2), y Dyna-Q+ se adapta a laberintos que cambian (Figuras 8.4, 8.5) |
 | `dyna_maze_n_step` | S&B 7.2, 8.1 | `n_step_sarsa` | El primer episodio le enseña a SARSA de n pasos sus últimos n movimientos (Figura 7.4), así que una n mayor aprende el laberinto más rápido |
+| `cliff_walking_n_step` | S&B 6.6, 7.2 a 7.6 | `n_step_expected_sarsa`, `off_policy_n_step_sarsa`, `n_step_tree_backup`, `n_step_q_sigma` | Aprender 4 pasos a la vez: on-policy, los valores esperados ganan más mientras se explora; off-policy, cuanto menos muestreo por importancia, más cerca de los valores de la política greedy |
 | `dyna_maze_lambda` | S&B 12.7, 12.10 | `sarsa_lambda`, `watkins_q_lambda` | Con trazas de reemplazo, basta un episodio para volver a encontrar la meta; las trazas acumulativas se pierden en los bucles |
 | `short_corridor` | S&B 13.1 | `reinforce`, `reinforce_with_baseline`, `actor_critic` | Casillas que parecen iguales, donde la mejor política es estocástica: REINFORCE la aprende (Figura 13.1), más rápido con línea base (Figura 13.2), mientras que el crítico de Actor-Critic lo despista |
 | `access_control` | S&B 1.ª ed. 6.7, 2.ª ed. 10.2 | `r_learning`, `differential_sarsa` | Una tarea que no termina nunca: aceptar o rechazar clientes para ganar lo máximo por paso, frente a la política óptima exacta (Figuras 6.17, 10.5) |
