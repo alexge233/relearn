@@ -3,8 +3,7 @@
 relearn now has most of the tabular methods of Sutton and Barto's book [1]: from bandits and dynamic programming,
 through Monte Carlo, TD, n-step methods, planning and eligibility traces, to policy gradients, R-Learning and Monte
 Carlo Tree Search. Each one is tested against hand-worked steps and against the book's own figures. A few are still
-to come (the off-policy n-step methods, tree backup and Q(σ), true online TD(λ) and a few more), and they are the
-first part of this plan.
+to come (true online TD(λ), Actor-Critic with traces, and a few more), and they are the first part of this plan.
 
 This page is where it goes next. It is a plan, not a promise: there are no dates, the order may change, and each
 step is only done once it has been implemented, tested, documented and reviewed, like everything before it.
@@ -38,20 +37,15 @@ Whatever gets added, a few things don't change:
 
 ### The tabular methods still to come
 
-The book has a few more tabular methods that relearn doesn't have yet. In the order they would be done:
+The book has a few more tabular methods that relearn doesn't have yet (the whole n-step family of Chapter 7 is
+now in, have a look at [n_step.md](n_step.md)). In the order they would be done:
 
-1. **The rest of the n-step family** (Chapter 7), which shares the machinery of `n_step_sarsa`:
-   - n-step Expected Sarsa (Section 7.2)
-   - off-policy n-step Sarsa, which learns from another policy's play with importance sampling, and its
-     per-decision version with control variates (Sections 7.3 and 7.4)
-   - n-step tree backup, which learns off-policy without importance sampling (Section 7.5)
-   - n-step Q(σ), which unifies them all: σ = 1 is Sarsa, σ = 0 is tree backup (Section 7.6)
-2. **True online TD(λ) and true online Sarsa(λ)** (Sections 12.5 to 12.7), with Dutch traces. Today's TD(λ),
+1. **True online TD(λ) and true online Sarsa(λ)** (Sections 12.5 to 12.7), with Dutch traces. Today's TD(λ),
    SARSA(λ) and Watkins's Q(λ) learn one whole episode at a time; these learn after every step, and still match the
    λ-return exactly.
-3. **Actor-Critic with eligibility traces**, and **Actor-Critic for tasks that never end** (Sections 13.5 and 13.6).
+2. **Actor-Critic with eligibility traces**, and **Actor-Critic for tasks that never end** (Sections 13.5 and 13.6).
    Today's `actor_critic` is the one-step version, for episodes only.
-4. **Off-policy Monte Carlo prediction** (Section 5.5): ordinary against weighted importance sampling, on the
+3. **Off-policy Monte Carlo prediction** (Section 5.5): ordinary against weighted importance sampling, on the
    book's blackjack state (Example 5.4, Figure 5.3). Today's `off_policy_monte_carlo` is the weighted one, for
    control only.
 
