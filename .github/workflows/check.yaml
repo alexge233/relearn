@@ -10,6 +10,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: the docs build on GitHub Pages
+        run: |
+          # Jekyll reads {{ and {% in Markdown as Liquid templates, so write C++ braces as { { ... } }
+          ! grep -rn --include='*.md' -e '{{' -e '{%' .
+
       - name: install boost
         run: |
           sudo apt-get update

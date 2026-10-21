@@ -53,11 +53,11 @@ m.actions = [](const state & s) {
 };
 m.outcomes = [](const state & s, const action & a) {
     if (s == state("A")) {
-        return a == action("left") ? std::vector<outcome> {{state("T"), 1, 1}}
-                                   : std::vector<outcome> {{state("B"), 0, 1}};
+        return a == action("left") ? std::vector<outcome> { {state("T"), 1, 1} }
+                                   : std::vector<outcome> { {state("B"), 0, 1} };
     }
-    return a == action("left") ? std::vector<outcome> {{state("A"), 0, 1}}
-                               : std::vector<outcome> {{state("T"), 2, 0.5}, {state("B"), 0, 0.5}};
+    return a == action("left") ? std::vector<outcome> { {state("A"), 0, 1} }
+                               : std::vector<outcome> { {state("T"), 2, 0.5}, {state("B"), 0, 0.5} };
 };
 ```
 
