@@ -40,6 +40,9 @@ Currently the library implements the following algorithms, each one explained in
 - **REINFORCE**, **REINFORCE with a baseline** and **one-step Actor-Critic** (`reinforce`, `reinforce_with_baseline`
   and `actor_critic`), which learn the policy itself, as a softmax over action preferences (`softmax_policy`),
   so that it can stay stochastic when that is best, see [docs/policy_gradient.md](docs/policy_gradient.md)
+- **Actor-Critic with eligibility traces** (`actor_critic_lambda`), whose critic shares each TD error with the states
+  visited before and whose actor with the actions taken before, and **Actor-Critic for tasks that never end**
+  (`continuing_actor_critic`), which learns the average reward per step, see [docs/policy_gradient.md](docs/policy_gradient.md)
 - **R-Learning** (`r_learning`) and **differential Sarsa** (`differential_sarsa`), for tasks that never end:
   they learn the average reward per step, and how much better than average each action is, after every step,
   see [docs/r_learning.md](docs/r_learning.md)
@@ -157,7 +160,7 @@ There is nothing to build! This is a header-only library, you only need the `src
 | `relearn/mcts.hpp` | `mcts`, Monte Carlo Tree Search with UCT |
 | `relearn/n_step.hpp` | `n_step_sarsa`, and `n_step_td` (TD(0) when n = 1); `n_step_expected_sarsa`, `off_policy_n_step_sarsa`, `n_step_tree_backup` and `n_step_q_sigma` |
 | `relearn/eligibility_traces.hpp` | `sarsa_lambda`, `td_lambda` and `watkins_q_lambda`, and their `eligibility_traces`; `true_online_sarsa_lambda` and `true_online_td_lambda` |
-| `relearn/policy_gradient.hpp` | `softmax_policy`, `reinforce`, `reinforce_with_baseline` and `actor_critic` |
+| `relearn/policy_gradient.hpp` | `softmax_policy`, `reinforce`, `reinforce_with_baseline` and `actor_critic`; `actor_critic_lambda` and `continuing_actor_critic` |
 | `relearn/r_learning.hpp` | `r_learning` and `differential_sarsa` |
 | `relearn/prioritized_sweeping.hpp` | `prioritized_sweeping` |
 | `relearn/dynamic_programming.hpp` | `finite_mdp` and `dynamic_programming` |
@@ -421,8 +424,8 @@ The learners with eligibility traces learn a whole episode at a time, so use `ga
 | `cliff_walking_n_step` | S&B 6.6, 7.2 to 7.6 | `n_step_expected_sarsa`, `off_policy_n_step_sarsa`, `n_step_tree_backup`, `n_step_q_sigma` | Learning 4 steps at a time: on-policy, the expectations earn more whilst exploring; off-policy, the less importance sampling, the closer to the greedy policy's values |
 | `dyna_maze_lambda` | S&B 12.7, 12.10 | `sarsa_lambda`, `watkins_q_lambda` | With replacing traces, one episode is enough to find the goal again; accumulating traces get lost in the loops |
 | `mountain_car_lambda` | S&B 10.1, 12.7 | `true_online_sarsa_lambda` | Learning after every step: from the second episode on, the longer the traces, the fewer steps to the flag, little more than half of SARSA's with λ = 0.95 |
-| `short_corridor` | S&B 13.1 | `reinforce`, `reinforce_with_baseline`, `actor_critic` | Cells that look the same, where the best policy is stochastic: REINFORCE learns it (Figure 13.1), faster with a baseline (Figure 13.2), whereas Actor-Critic's critic misleads it |
-| `access_control` | S&B 1st ed. 6.7, 2nd ed. 10.2 | `r_learning`, `differential_sarsa` | A task that never ends: accept or reject customers to earn the most per step, against the exact optimal policy (Figures 6.17, 10.5) |
+| `short_corridor` | S&B 13.1 | `reinforce`, `reinforce_with_baseline`, `actor_critic`, `actor_critic_lambda` | Cells that look the same, where the best policy is stochastic: REINFORCE learns it (Figure 13.1), faster with a baseline (Figure 13.2), whereas one-step Actor-Critic's critic misleads it, and Actor-Critic with traces learns it best |
+| `access_control` | S&B 1st ed. 6.7, 2nd ed. 10.2, 13.6 | `r_learning`, `differential_sarsa`, `continuing_actor_critic` | A task that never ends: accept or reject customers to earn the most per step, against the exact optimal policy (Figures 6.17, 10.5) |
 | `dyna_maze_prioritized` | S&B 8.4 | `prioritized_sweeping`, `dyna_q` | In mazes of increasing size, prioritized sweeping needs far fewer updates than Dyna-Q to find a good path (Example 8.4) |
 | `tic_tac_toe` | S&B 1.5 | `q_learning` | Against a random or a perfect (minimax) opponent |
 | `tic_tac_toe_mcts` | S&B 8.11 | `mcts` | Planning each move, as X or as O: it never loses to a perfect opponent, and beats a random one |

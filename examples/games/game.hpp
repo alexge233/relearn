@@ -236,9 +236,9 @@ played<game_type> play_online(game_type & game,
 }
 
 /**
- * @brief play one episode of @param game, learning after every step, with one-step Actor-Critic
+ * @brief play one episode of @param game, learning after every step, with Actor-Critic
  * @param choose is called as `choose(state, legal_actions)` and returns an action
- * @param learner is `relearn::actor_critic`
+ * @param learner is `relearn::actor_critic`, `relearn::actor_critic_lambda` or `relearn::continuing_actor_critic`
  * @param memory are the preferences being learnt (and used by @param choose)
  * @param max_steps cuts the episode short
  * @return the played episode, already learnt
@@ -250,7 +250,9 @@ played<game_type> play_online(game_type & game,
  * After each step, the learner is given two links: (s_t, a_t) with its reward, and the state
  * reached, s_{t+1}, with `terminated = false`. The action of that second link is a_t again, a
  * placeholder which Actor-Critic does not use. When the game ends, the last step is learnt alone.
- * The episode starts with `learner.start_episode()`, so that I = 1 even after an episode cut short.
+ * The episode starts with `learner.start_episode()`, so that I = 1 (and the traces of `actor_critic_lambda`
+ * are 0) even after an episode cut short. `continuing_actor_critic` has no episodes, and no `start_episode()`:
+ * each game is simply the next piece of a task that never ends.
  */
 template <class game_type,
           class chooser,
@@ -265,8 +267,8 @@ played<game_type> play_online_actor_critic(game_type & game,
     using action  = typename types<game_type>::action;
     using episode = typename types<game_type>::episode;
     played<game_type> result;
-    // start a new game, and a new episode for the learner: I = 1
-    learner.start_episode();
+    // start a new game, and a new episode for the learner (I = 1, and its traces at 0), if it has episodes
+    start_episode(learner, 0);
     auto s_t = game.reset();
     while (result.steps < max_steps) {
         // choose an action with the policy learnt so far, take it,

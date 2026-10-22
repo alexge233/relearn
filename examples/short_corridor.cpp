@@ -5,6 +5,7 @@
  * 1. REINFORCE (Section 13.3, Figure 13.1), with α = 2^-13
  * 2. REINFORCE with a baseline (Section 13.4, Figure 13.2), with α^θ = 2^-9 and α^w = 2^-6
  * 3. one-step Actor-Critic (Section 13.5), with the same step sizes as 2.
+ * 4. Actor-Critic with eligibility traces (Section 13.5), with the same step sizes, and λ^θ = λ^w = 0.9
  *
  * The agent cannot tell the three cells apart, so all it can learn is how often to go right,
  * and the best policy is stochastic: right with probability 2 - √2 = 0.5858, worth -11.657.
@@ -13,12 +14,15 @@
  * total reward per episode, as in Figures 13.1 and 13.2, and the policy learnt.
  *
  * Actor-Critic's critic cannot tell the cells apart either, and it misleads the actor: it learns
- * to go right almost always. So the program then shows the agent which cell it is in, and
- * Actor-Critic (α^θ = 2^-4, α^w = 2^-3) learns the best policy there, right, left, right, worth -3.
+ * to go right almost always. With traces, each TD error also reaches the actions taken before,
+ * and the actor learns the stochastic policy after all. Then the program shows the agent which cell
+ * it is in, and one-step Actor-Critic (α^θ = 2^-4, α^w = 2^-3) learns the best policy there,
+ * right, left, right, worth -3.
  *
- * The program succeeds if, in the median run, both REINFORCEs learn a policy worth more than -12.7,
- * REINFORCE with a baseline earns more than REINFORCE in episodes 101 to 200, Actor-Critic learns
- * p > 0.99 when the cells look the same, and a policy worth more than -3.1 when they are shown.
+ * The program succeeds if, in the median run, both REINFORCEs and Actor-Critic with traces learn a
+ * policy worth more than -12.7, REINFORCE with a baseline earns more than REINFORCE in episodes 101
+ * to 200, one-step Actor-Critic learns p > 0.99 when the cells look the same, and a policy worth more
+ * than -3.1 when they are shown.
  *
  * @see games/short_corridor.hpp for the rules
  */
@@ -36,6 +40,7 @@ using types     = games::types<game_type>;
 using reinforce_type = relearn::reinforce<types::state, types::action>;
 using baseline_type  = relearn::reinforce_with_baseline<types::state, types::action>;
 using critic_type    = relearn::actor_critic<types::state, types::action>;
+using lambda_type    = relearn::actor_critic_lambda<types::state, types::action>;
 
 /// @return the legal actions, for the learners: left and right, in every cell
 std::vector<types::action> left_right(const types::state &)
@@ -78,6 +83,19 @@ template <class chooser>
 games::played<game_type> learn_episode(game_type & game,
                                        chooser && agent,
                                        critic_type & learner,
+                                       types::policy & preferences)
+{
+    return games::play_online_actor_critic(game, agent, learner, preferences, 1000);
+}
+
+/**
+ * @brief Actor-Critic with traces: play an episode, learning after every step
+ * @return the played episode
+ */
+template <class chooser>
+games::played<game_type> learn_episode(game_type & game,
+                                       chooser && agent,
+                                       lambda_type & learner,
                                        types::policy & preferences)
 {
     return games::play_online_actor_critic(game, agent, learner, preferences, 1000);
@@ -182,9 +200,10 @@ int main()
     auto plain    = learn(reinforce_type(std::pow(2.0, -13), 1.0, left_right), false);
     auto baseline = learn(baseline_type(alpha_theta, alpha_w, 1.0, left_right), false);
     auto critic   = learn(critic_type(alpha_theta, alpha_w, 1.0, left_right), false);
+    auto traced   = learn(lambda_type(alpha_theta, alpha_w, 1.0, 0.9, 0.9, left_right), false);
 
     std::cout << std::endl << "average total reward per episode, over 100 runs (Figures 13.1 and 13.2):" << std::endl;
-    std::cout << "    episodes      REINFORCE   with baseline   Actor-Critic" << std::endl;
+    std::cout << "    episodes      REINFORCE   with baseline   Actor-Critic   with traces" << std::endl;
     const std::vector<std::pair<unsigned int, unsigned int>> blocks = {{1, 10}, {11, 50}, {51, 100},
                                                                        {101, 200}, {201, 500}, {501, 1000}};
     std::cout << std::setprecision(1);
@@ -192,7 +211,8 @@ int main()
         std::cout << "    " << std::setw(4) << block.first << " to " << std::setw(4) << block.second
                   << std::setw(11) << mean_reward(plain, block.first, block.second)
                   << std::setw(16) << mean_reward(baseline, block.first, block.second)
-                  << std::setw(15) << mean_reward(critic, block.first, block.second) << std::endl;
+                  << std::setw(15) << mean_reward(critic, block.first, block.second)
+                  << std::setw(14) << mean_reward(traced, block.first, block.second) << std::endl;
     }
 
     std::cout << std::endl << "the policy learnt after 1000 episodes, in the median run:" << std::endl;
@@ -200,7 +220,8 @@ int main()
     const std::vector<std::pair<std::string, const learnt *>> methods = {
         {"REINFORCE              ", &plain},
         {"REINFORCE with baseline", &baseline},
-        {"Actor-Critic           ", &critic}
+        {"Actor-Critic           ", &critic},
+        {"Actor-Critic(λ = 0.9)  ", &traced}
     };
     for (const auto & method : methods) {
         const auto run = median_run(*method.second);
@@ -218,6 +239,7 @@ int main()
 
     bool good = median(plain.values) > -12.7 &&
                 median(baseline.values) > -12.7 &&
+                median(traced.values) > -12.7 &&
                 mean_reward(baseline, 101, 200) > mean_reward(plain, 101, 200) &&
                 critic.right[median_run(critic)][0] > 0.99 &&
                 median(shown.values) > -3.1;

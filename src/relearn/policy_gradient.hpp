@@ -18,9 +18,11 @@
 /**
  * @file relearn/policy_gradient.hpp
  * @brief policy gradient methods: the softmax policy (`softmax_policy`), REINFORCE (`reinforce`),
- *        REINFORCE with a baseline (`reinforce_with_baseline`) and one-step Actor-Critic (`actor_critic`)
+ *        REINFORCE with a baseline (`reinforce_with_baseline`), one-step Actor-Critic (`actor_critic`),
+ *        and Actor-Critic with eligibility traces (`actor_critic_lambda`, and `continuing_actor_critic`)
  */
 #include "core.hpp"
+#include "eligibility_traces.hpp"
 #include <algorithm>
 #include <cassert>
 #include <cmath>
@@ -315,9 +317,229 @@ private:
                        hasher<state_class>> values_;
 };
 
+/**
+ * @struct actor_critic_lambda This is Actor-Critic with eligibility traces, episodic (Sutton & Barto, Section 13.5)
+ * @brief Actor-Critic, where the TD error of each step is shared by the critic with the states visited before,
+ *        and by the actor with the actions taken before, through their eligibility traces
+ * @param alpha_theta is the step size α^θ of the policy
+ * @param alpha_w is the step size α^w of the state values (the critic)
+ * @param gamma is the discount rate
+ * @param lambda_theta is λ^θ, how slowly the actor's traces fade
+ * @param lambda_w is λ^w, how slowly the critic's traces fade
+ *
+ * Episode convention: same as `q_learning`, `s_t.reward()` is the reward r_t
+ * received after taking a_t in s_t (the book's R_{t+1}).
+ *
+ * One-step Actor-Critic (`actor_critic`) gives each TD error to the last state and action only.
+ * With traces, as in TD(λ), it is given to every state and action of the episode so far, the more
+ * recent the more. After each step (s_t, a_t, r_t, s_{t+1}):
+ *
+ * δ = r_t + γ v(s_{t+1}) - v(s_t)                        (v(s_{t+1}) = 0 when the episode ended)
+ * z^w = γλ^w z^w + ∇v̂(s_t, w)                            (1 for the value of s_t, 0 for the others)
+ * z^θ = γλ^θ z^θ + I ∇ ln π(a_t | s_t, θ)
+ * w = w + α^w δ z^w,   θ = θ + α^θ δ z^θ
+ * I = γ I
+ *
+ * where z^w (a trace for each state) and z^θ (a trace for each preference h(s, b)) are 0, and I is 1,
+ * at the start of each episode, and ∇ ln π(a_t | s_t) is worked out before θ changes, as in the book.
+ * With λ^θ = λ^w = 0 this is `actor_critic`. The larger λ^w, the closer the critic's values are to the
+ * returns, and the less a critic that cannot tell states apart misleads the actor: with λ^θ = λ^w = 1,
+ * and a critic that learns nothing (α^w = 0), the actor makes the very changes of REINFORCE.
+ *
+ * Learn after every step, with `games::play_online_actor_critic`, which calls `start_episode()`
+ * before every game: from then on the traces and I are kept from one call to the next, until the
+ * call that ends the episode (`terminated` true). Any other call is a whole episode on its own.
+ * As for `actor_critic`, each link is learnt from the state of the link after it, and an episode
+ * cut short (`terminated` false) only gives its last link as the state reached.
+ * @warning an episode learnt a step at a time and cut short stays open until the next `start_episode()`
+ */
+template <class state_class,
+          class action_class,
+          typename markov_chain = std::deque<link<state_class,action_class>>,
+          typename value_type = double>
+struct actor_critic_lambda : public softmax_policy<state_class,action_class,value_type>
+{
+    /// the step size α^θ of the policy (the actor) - you may change this as you process episodes
+    value_type alpha_theta = 0.01;
+    /// the step size α^w of the state values (the critic) - you may change this as you process episodes
+    value_type alpha_w = 0.1;
+    /// discount rate - you may change this as you process episodes
+    value_type gamma = 0.9;
+    /// λ^θ: how slowly the actor's traces fade, 0 ... 1 (0 is one-step Actor-Critic)
+    value_type lambda_theta = 0.9;
+    /// λ^w: how slowly the critic's traces fade, 0 ... 1 (0 is one-step Actor-Critic)
+    value_type lambda_w = 0.9;
+    /// z^θ: the actor's traces, one for each preference h(s, b) of the episode being learnt
+    eligibility_traces<state_class,action_class,value_type> actor_traces;
+
+    /**
+     * @brief ctor with the step sizes @param initial_alpha_theta (α^θ, 0.01 by default) and
+     *        @param initial_alpha_w (α^w, 0.1 by default), the discount rate @param initial_gamma
+     *        (0.9 by default), @param initial_lambda_theta (λ^θ) and @param initial_lambda_w (λ^w),
+     *        0.9 by default, and the legal actions @param legal of each state
+     */
+    actor_critic_lambda(value_type initial_alpha_theta = 0.01,
+                        value_type initial_alpha_w = 0.1,
+                        value_type initial_gamma = 0.9,
+                        value_type initial_lambda_theta = 0.9,
+                        value_type initial_lambda_w = 0.9,
+                        std::function<std::vector<action_class>(const state_class &)> legal = nullptr);
+
+    /**
+     * @brief learn the steps of @param episode: the next steps of the episode started with `start_episode()`,
+     *        or else a whole episode on its own - @param preferences (θ) and the state values will be modified
+     * @param terminated true if the episode really ended after its last link.
+     *        Pass false for an episode cut short, or for the steps of an episode still going on:
+     *        its last link is then not learnt, and only serves as the state reached by the link before it.
+     */
+    void operator()(markov_chain episode,
+                    policy<state_class,action_class,value_type> & preferences,
+                    bool terminated = true);
+
+    /**
+     * @brief start a new episode, to be learnt a step at a time: I = 1, every trace back to 0,
+     *        and all of them kept from one call to the next until a call ends the episode
+     */
+    void start_episode();
+    /// @return I, the γ^t of the next step to learn (1 at the start of an episode, and once one has ended)
+    value_type discount() const;
+    /// @return the value v(@param s_t) learnt by the critic, 0 if the state was never learnt
+    value_type value(const state_class & s_t) const;
+    /// @return the critic's trace z^w(@param s_t), 0 if the state has none
+    value_type critic_trace(const state_class & s_t) const;
+
+private:
+    // the start of a new episode: I = 1 and every trace 0
+    void restart();
+    // true from `start_episode()` until a call ends the episode: the calls go on with the same episode
+    bool open_ = false;
+    // I = γ^t, for the step t of the episode learnt next
+    value_type discount_ = 1;
+    // the state values v(s), the critic: [state] => value
+    std::unordered_map<state_class,
+                       value_type,
+                       hasher<state_class>> values_;
+    // z^w: the critic's traces, [state] => trace
+    std::unordered_map<state_class,
+                       value_type,
+                       hasher<state_class>> critic_traces_;
+};
+
+/**
+ * @struct continuing_actor_critic This is Actor-Critic with eligibility traces, for tasks that never end
+ *         (Sutton & Barto, Section 13.6)
+ * @brief Actor-Critic for the average reward: the TD error compares each reward with the average reward
+ *        per step learnt so far, R̄, instead of discounting
+ * @param alpha_theta is the step size α^θ of the policy
+ * @param alpha_w is the step size α^w of the state values (the critic)
+ * @param beta is the step size of the average reward (the book's α^R̄)
+ * @param lambda_theta is λ^θ, how slowly the actor's traces fade
+ * @param lambda_w is λ^w, how slowly the critic's traces fade
+ *
+ * Episode convention: same as `q_learning`, `s_t.reward()` is the reward r_t
+ * received after taking a_t in s_t (the book's R_{t+1}).
+ *
+ * A task that never ends has no return to discount: as differential Sarsa (`differential_sarsa`) does,
+ * it learns the average reward per step of the policy, R̄ (here `rho`), and the *differential* values,
+ * how much more than R̄ per step each state is worth. After each step (s_t, a_t, r_t, s_{t+1}):
+ *
+ * δ = r_t - R̄ + v(s_{t+1}) - v(s_t)
+ * R̄ = R̄ + β δ
+ * z^w = λ^w z^w + ∇v̂(s_t, w),   z^θ = λ^θ z^θ + ∇ ln π(a_t | s_t, θ)
+ * w = w + α^w δ z^w,   θ = θ + α^θ δ z^θ
+ *
+ * with no γ, and no I. Every step goes on from the one before, from one call to the next: the traces
+ * and R̄ are kept until the task ends, which a task that never ends never does (`terminated` true
+ * learns the last link with a next state worth 0, and then starts the traces again).
+ * Learn after every step, with `games::play_online_actor_critic`, in pieces as long as you like.
+ */
+template <class state_class,
+          class action_class,
+          typename markov_chain = std::deque<link<state_class,action_class>>,
+          typename value_type = double>
+struct continuing_actor_critic : public softmax_policy<state_class,action_class,value_type>
+{
+    /// the step size α^θ of the policy (the actor) - you may change this as you learn
+    value_type alpha_theta = 0.01;
+    /// the step size α^w of the state values (the critic) - you may change this as you learn
+    value_type alpha_w = 0.1;
+    /// β: the step size of the average reward (α^R̄) - you may change this as you learn
+    value_type beta = 0.01;
+    /// λ^θ: how slowly the actor's traces fade, 0 ... 1
+    value_type lambda_theta = 0.9;
+    /// λ^w: how slowly the critic's traces fade, 0 ... 1
+    value_type lambda_w = 0.9;
+    /// ρ (the book's R̄): the average reward per step learnt so far
+    value_type rho = 0;
+    /// z^θ: the actor's traces, one for each preference h(s, b)
+    eligibility_traces<state_class,action_class,value_type> actor_traces;
+
+    /**
+     * @brief ctor with the step sizes @param initial_alpha_theta (α^θ, 0.01 by default),
+     *        @param initial_alpha_w (α^w, 0.1 by default) and @param initial_beta (β, 0.01 by default),
+     *        @param initial_lambda_theta (λ^θ) and @param initial_lambda_w (λ^w), 0.9 by default,
+     *        and the legal actions @param legal of each state
+     */
+    continuing_actor_critic(value_type initial_alpha_theta = 0.01,
+                            value_type initial_alpha_w = 0.1,
+                            value_type initial_beta = 0.01,
+                            value_type initial_lambda_theta = 0.9,
+                            value_type initial_lambda_w = 0.9,
+                            std::function<std::vector<action_class>(const state_class &)> legal = nullptr);
+
+    /**
+     * @brief learn every step of @param episode, going on from the last call
+     *        - @param preferences (θ), the state values and `rho` will be modified
+     * @param terminated true if the task really ended after its last link (a task that never ends
+     *        never does, so it is false by default): the last link is then learnt with a next state
+     *        worth 0. Otherwise the last link is not learnt, and only serves as the state reached.
+     */
+    void operator()(markov_chain episode,
+                    policy<state_class,action_class,value_type> & preferences,
+                    bool terminated = false);
+
+    /// @return the differential value v(@param s_t) learnt by the critic, 0 if the state was never learnt
+    value_type value(const state_class & s_t) const;
+    /// @return the critic's trace z^w(@param s_t), 0 if the state has none
+    value_type critic_trace(const state_class & s_t) const;
+
+private:
+    // the state values v(s), the critic: [state] => value
+    std::unordered_map<state_class,
+                       value_type,
+                       hasher<state_class>> values_;
+    // z^w: the critic's traces, [state] => trace
+    std::unordered_map<state_class,
+                       value_type,
+                       hasher<state_class>> critic_traces_;
+};
+
+/**
+ * @brief z(s) = @param factor * z(s) for every state's trace in @param traces; with a factor of 0 they all go,
+ *        since a trace of 0 can never change a value again (the critics of the Actor-Critics with traces)
+ */
+template <class state_class,
+          typename value_type>
+void fade_traces(std::unordered_map<state_class,value_type,hasher<state_class>> & traces,
+          value_type factor);
+
 /********************************************************************************
  ***********               Template Implementations
  ********************************************************************************/
+template <class state_class,
+          typename value_type>
+void fade_traces(std::unordered_map<state_class,value_type,hasher<state_class>> & traces,
+          value_type factor)
+{
+    if (factor == 0) {
+        traces.clear();
+        return;
+    }
+    for (auto & z : traces) {
+        z.second *= factor;
+    }
+}
+
 
 template <class state_class,
           class action_class,
@@ -612,6 +834,208 @@ value_type actor_critic<state_class,action_class,markov_chain,value_type
 {
     auto found = values_.find(s_t);
     return found == values_.end() ? value_type(0) : found->second;
+}
+
+template <class state_class,
+          class action_class,
+          typename markov_chain,
+          typename value_type>
+actor_critic_lambda<state_class,action_class,markov_chain,value_type
+                   >::actor_critic_lambda(value_type initial_alpha_theta,
+                                          value_type initial_alpha_w,
+                                          value_type initial_gamma,
+                                          value_type initial_lambda_theta,
+                                          value_type initial_lambda_w,
+                                          std::function<std::vector<action_class>(const state_class &)> legal)
+: softmax_policy<state_class,action_class,value_type>(legal),
+  alpha_theta(initial_alpha_theta),
+  alpha_w(initial_alpha_w),
+  gamma(initial_gamma),
+  lambda_theta(initial_lambda_theta),
+  lambda_w(initial_lambda_w)
+{}
+
+template <class state_class,
+          class action_class,
+          typename markov_chain,
+          typename value_type>
+void actor_critic_lambda<state_class,action_class,markov_chain,value_type
+                        >::operator()(markov_chain episode,
+                                      policy<state_class,action_class,value_type> & preferences,
+                                      bool terminated)
+{
+    // the next steps of the episode started with `start_episode()`, or else a whole episode on its own
+    if (!open_) {
+        restart();
+    }
+    // a cut-short episode does not learn its last link: it is only the state reached
+    const std::size_t learnt = (terminated || episode.size() == 0) ? episode.size()
+                                                                   : episode.size() - 1;
+    for (std::size_t i = 0; i < learnt; i++) {
+        const auto & s_t = episode[i].state;
+        // the last link of an episode that ended has no next state: v(s_{t+1}) = 0
+        const bool last = terminated && i == episode.size() - 1;
+        const value_type v_next = last ? value_type(0) : value(episode[i + 1].state);
+        // δ = r_t + γ v(s_{t+1}) - v(s_t): the TD error of the critic
+        const value_type delta = s_t.reward() + gamma * v_next - value(s_t);
+        // z^w = γλ^w z^w + ∇v̂(s_t, w): every trace fades, and the one of s_t goes up by 1
+        fade_traces(critic_traces_, gamma * lambda_w);
+        critic_traces_[s_t] += 1;
+        // z^θ = γλ^θ z^θ + I ∇ ln π(a_t | s_t, θ), with ∇ ln π worked out before θ changes
+        actor_traces.decay(gamma * lambda_theta);
+        for (const auto & b : this->log_gradient(s_t, episode[i].action, preferences)) {
+            actor_traces.add(s_t, b.first, discount_ * b.second);
+        }
+        // the critic: w = w + α^w δ z^w
+        for (const auto & z : critic_traces_) {
+            values_[z.first] = value(z.first) + alpha_w * delta * z.second;
+        }
+        // the actor: θ = θ + α^θ δ z^θ
+        actor_traces.update(preferences, alpha_theta * delta);
+        // I = γ I
+        discount_ = gamma * discount_;
+    }
+    // the end of the episode: the next call is a new one, and I is 1 again (as for `actor_critic`)
+    if (terminated) {
+        open_ = false;
+        discount_ = 1;
+    }
+}
+
+template <class state_class,
+          class action_class,
+          typename markov_chain,
+          typename value_type>
+void actor_critic_lambda<state_class,action_class,markov_chain,value_type>::restart()
+{
+    discount_ = 1;
+    critic_traces_.clear();
+    actor_traces.clear();
+}
+
+template <class state_class,
+          class action_class,
+          typename markov_chain,
+          typename value_type>
+void actor_critic_lambda<state_class,action_class,markov_chain,value_type>::start_episode()
+{
+    restart();
+    open_ = true;
+}
+
+template <class state_class,
+          class action_class,
+          typename markov_chain,
+          typename value_type>
+value_type actor_critic_lambda<state_class,action_class,markov_chain,value_type>::discount() const
+{
+    return discount_;
+}
+
+template <class state_class,
+          class action_class,
+          typename markov_chain,
+          typename value_type>
+value_type actor_critic_lambda<state_class,action_class,markov_chain,value_type
+                              >::value(const state_class & s_t) const
+{
+    auto found = values_.find(s_t);
+    return found == values_.end() ? value_type(0) : found->second;
+}
+
+template <class state_class,
+          class action_class,
+          typename markov_chain,
+          typename value_type>
+value_type actor_critic_lambda<state_class,action_class,markov_chain,value_type
+                              >::critic_trace(const state_class & s_t) const
+{
+    auto found = critic_traces_.find(s_t);
+    return found == critic_traces_.end() ? value_type(0) : found->second;
+}
+
+template <class state_class,
+          class action_class,
+          typename markov_chain,
+          typename value_type>
+continuing_actor_critic<state_class,action_class,markov_chain,value_type
+                       >::continuing_actor_critic(value_type initial_alpha_theta,
+                                                  value_type initial_alpha_w,
+                                                  value_type initial_beta,
+                                                  value_type initial_lambda_theta,
+                                                  value_type initial_lambda_w,
+                                                  std::function<std::vector<action_class>(const state_class &)> legal)
+: softmax_policy<state_class,action_class,value_type>(legal),
+  alpha_theta(initial_alpha_theta),
+  alpha_w(initial_alpha_w),
+  beta(initial_beta),
+  lambda_theta(initial_lambda_theta),
+  lambda_w(initial_lambda_w)
+{}
+
+template <class state_class,
+          class action_class,
+          typename markov_chain,
+          typename value_type>
+void continuing_actor_critic<state_class,action_class,markov_chain,value_type
+                            >::operator()(markov_chain episode,
+                                          policy<state_class,action_class,value_type> & preferences,
+                                          bool terminated)
+{
+    // unless the task ended, its last link has no next state yet: it is not learnt
+    const std::size_t learnt = (terminated || episode.size() == 0) ? episode.size()
+                                                                   : episode.size() - 1;
+    for (std::size_t i = 0; i < learnt; i++) {
+        const auto & s_t = episode[i].state;
+        // a task that ended has no next state after its last link: v(s_{t+1}) = 0
+        const bool last = terminated && i == episode.size() - 1;
+        const value_type v_next = last ? value_type(0) : value(episode[i + 1].state);
+        // δ = r_t - R̄ + v(s_{t+1}) - v(s_t)
+        const value_type delta = s_t.reward() - rho + v_next - value(s_t);
+        // R̄ = R̄ + β δ
+        rho = rho + beta * delta;
+        // z^w = λ^w z^w + ∇v̂(s_t, w)
+        fade_traces(critic_traces_, lambda_w);
+        critic_traces_[s_t] += 1;
+        // z^θ = λ^θ z^θ + ∇ ln π(a_t | s_t, θ), with ∇ ln π worked out before θ changes
+        actor_traces.decay(lambda_theta);
+        for (const auto & b : this->log_gradient(s_t, episode[i].action, preferences)) {
+            actor_traces.add(s_t, b.first, b.second);
+        }
+        // the critic: w = w + α^w δ z^w
+        for (const auto & z : critic_traces_) {
+            values_[z.first] = value(z.first) + alpha_w * delta * z.second;
+        }
+        // the actor: θ = θ + α^θ δ z^θ
+        actor_traces.update(preferences, alpha_theta * delta);
+    }
+    // a task that ended: its traces start again
+    if (terminated) {
+        critic_traces_.clear();
+        actor_traces.clear();
+    }
+}
+
+template <class state_class,
+          class action_class,
+          typename markov_chain,
+          typename value_type>
+value_type continuing_actor_critic<state_class,action_class,markov_chain,value_type
+                                  >::value(const state_class & s_t) const
+{
+    auto found = values_.find(s_t);
+    return found == values_.end() ? value_type(0) : found->second;
+}
+
+template <class state_class,
+          class action_class,
+          typename markov_chain,
+          typename value_type>
+value_type continuing_actor_critic<state_class,action_class,markov_chain,value_type
+                                  >::critic_trace(const state_class & s_t) const
+{
+    auto found = critic_traces_.find(s_t);
+    return found == critic_traces_.end() ? value_type(0) : found->second;
 }
 } // end of namespace
 #endif
