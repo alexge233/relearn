@@ -21,6 +21,9 @@ Currently the library implements the following algorithms, each one explained in
 - **Monte Carlo control** (`monte_carlo` and `off_policy_monte_carlo`), which waits for each episode to end,
   and learns from the rewards that actually followed, with exploring starts, on-policy (ε-Greedy), or off-policy
   with importance sampling, see [docs/monte_carlo.md](docs/monte_carlo.md)
+- **off-policy Monte Carlo prediction** (`off_policy_monte_carlo_prediction`), which learns the values of any policy
+  from episodes played by another, with ordinary, weighted, discounting-aware or per-decision importance sampling,
+  see [docs/monte_carlo.md](docs/monte_carlo.md)
 - **Monte Carlo Tree Search** (`mcts`), with UCT, which plans each move as it is about to make it: it plays
   thousands of games in its head with a model of the game, spending more of them on the moves that look best,
   and supports two players (each value from the point of view of the player who moved), see [docs/mcts.md](docs/mcts.md)
@@ -156,7 +159,7 @@ There is nothing to build! This is a header-only library, you only need the `src
 | `relearn/sarsa.hpp` | `sarsa` and `expected_sarsa` |
 | `relearn/double_q_learning.hpp` | `double_q_learning` |
 | `relearn/dyna.hpp` | `dyna_q` |
-| `relearn/monte_carlo.hpp` | `monte_carlo` and `off_policy_monte_carlo` |
+| `relearn/monte_carlo.hpp` | `monte_carlo` and `off_policy_monte_carlo`; `off_policy_monte_carlo_prediction` |
 | `relearn/mcts.hpp` | `mcts`, Monte Carlo Tree Search with UCT |
 | `relearn/n_step.hpp` | `n_step_sarsa`, and `n_step_td` (TD(0) when n = 1); `n_step_expected_sarsa`, `off_policy_n_step_sarsa`, `n_step_tree_backup` and `n_step_q_sigma` |
 | `relearn/eligibility_traces.hpp` | `sarsa_lambda`, `td_lambda` and `watkins_q_lambda`, and their `eligibility_traces`; `true_online_sarsa_lambda` and `true_online_td_lambda` |
@@ -411,6 +414,7 @@ The learners with eligibility traces learn a whole episode at a time, so use `ga
 | `bandit_ucb_gradient` | S&B 2.7, 2.8 | `ucb`, `gradient_bandit` | UCB earns more than ε-Greedy (Figure 2.4), and the gradient bandit needs its baseline (Figure 2.5) |
 | `blackjack` | S&B 5.1 | `q_probabilistic` | A random game, where the learnt strategy matches Figure 5.2 |
 | `blackjack_monte_carlo` | S&B 5.3, 5.4, 5.7 | `monte_carlo`, `off_policy_monte_carlo` | The same game learnt from whole games: with exploring starts, on-policy, and off-policy from games played at random |
+| `importance_sampling` | S&B 5.5 to 5.9 | `off_policy_monte_carlo_prediction` | The value of a policy learnt from another's play: ordinary against weighted importance sampling on a blackjack state (Figure 5.3), an infinite variance (Example 5.5), and discounting-aware and per-decision importance sampling on long episodes |
 | `cliff_walking` | S&B 6.6 | `q_learning`, `sarsa`, `expected_sarsa` | On-policy vs off-policy: Q-Learning learns the path along the cliff edge, SARSA a safer one, and both SARSAs earn more whilst exploring |
 | `windy_gridworld` | S&B 6.5, Ex. 6.10 | both Q-Learnings | Steady wind: the 15-move path. Random wind: `q_probabilistic`, and `q_learning` with a learning rate that decays per pair, find the best policy, whereas `q_learning` with α = 0.5 does not |
 | `random_walk` | S&B 6.2, 7.1 | `q_probabilistic` | Prediction, with the learnt values next to the exact ones |
