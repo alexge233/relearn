@@ -232,6 +232,141 @@ or in short, `relearn::off_policy_monte_carlo<state,action> learner(1.0, b)`.
   policy would not have made. When episodes are long and `b` is very different from `π`, that can be
   very little, and learning is slow. Blackjack's games are short, so it works well there.
 
+## Off-policy Monte Carlo prediction
+
+Off-policy *control* learns the greedy policy. Off-policy *prediction* (Sections 5.5 and 5.6) answers a different
+question: given a policy `π`, any policy, how much is it worth, learnt from episodes played by another one, `b`?
+The same ratio turns `b`'s returns into `π`'s, this time with `π`'s own probabilities:
+
+```math
+\rho_{t:h} = \prod_{k=t}^{h} \frac{\pi(a_k \mid s_k)}{b(a_k \mid s_k)}
+```
+
+and there are two ways to average the weighted returns. With `T(s)` the steps at which `s` was visited, and `T`
+the end of each of their episodes:
+
+```math
+\text{ordinary:} \quad V(s) = \frac{\sum_{t \in \mathcal{T}(s)} \rho_{t:T-1} \, G_t}{|\mathcal{T}(s)|}
+\qquad\qquad
+\text{weighted:} \quad V(s) = \frac{\sum_{t \in \mathcal{T}(s)} \rho_{t:T-1} \, G_t}{\sum_{t \in \mathcal{T}(s)} \rho_{t:T-1}}
+```
+
+**Ordinary** importance sampling is unbiased: on average, it is exactly `v_π(s)`. But a single return can be
+weighted by a huge ratio, and its variance can be huge too, even infinite. **Weighted** importance sampling is
+biased (after a single episode, it is simply that episode's return, if `π` could have played it), but the bias
+fades as the episodes add up, and its variance is far smaller. In practice it is usually the better one.
+
+Two more refine ordinary importance sampling when the rewards come during the episode, not only at its end:
+
+- **Discounting-aware** importance sampling (Section 5.8): with `γ < 1`, a return is a mix of *flat partial returns*
+  `Ḡ_{t:h} = r_t + ... + r_{h-1}`, without discounting, `Ḡ_{t:h}` weighted by `(1 - γ) γ^{h-t-1}` and the whole
+  `Ḡ_{t:T}` by `γ^{T-t-1}`. Each partial return only needs the ratios of the actions before `h`, so the ratios of
+  the later actions no longer multiply it. There is a discounting-aware weighted version too.
+- **Per-decision** importance sampling (Section 5.9): each reward is weighted only by the ratios of the actions
+  before it, `G̃_t = ρ_{t:t} r_t + γ ρ_{t:t+1} r_{t+1} + ... + γ^{T-1-t} ρ_{t:T-1} r_{T-1}`. The book gives no weighted
+  version of it.
+
+With `γ = 1`, discounting-aware importance sampling is plain ordinary or weighted importance sampling; with a reward
+only at the end of each episode, per-decision is ordinary; and when `π = b`, every ratio is 1 and all of them are
+plain Monte Carlo.
+
+```mermaid
+flowchart LR
+    b["behaviour b<br/>(plays)"] -- "episodes" --> w["each return weighted<br/>by ρ = π / b"]
+    w -- "ordinary: Σ ρ G / n" --> vo["V(s), unbiased,<br/>high variance"]
+    w -- "weighted: Σ ρ G / Σ ρ" --> vw["V(s), biased at first,<br/>low variance"]
+```
+
+### In relearn
+
+```cpp
+relearn::off_policy_monte_carlo_prediction<state,action> learner(gamma, pi, b, relearn::importance_sampling::weighted);
+learner(episode, q);                  // q gets the action values q_π(s, a)
+double v = learner.value(s);          // the state value v_π(s)
+```
+
+- `pi(s, a)` is `π(a | s)`, the policy being evaluated, and `b(s, a)` is `b(a | s)`, the one that played. `π` may give
+  an action no chance at all; `b` must give every action it takes some.
+- `sampling` is one of `importance_sampling::ordinary`, `weighted` (the default), `discounting_aware_ordinary`,
+  `discounting_aware_weighted` and `per_decision`.
+- It learns both kinds of value from each episode: the state values, in the learner (`learner.value(s)`), with the
+  ratios from the action taken in `s` on, and the action values, in the `policy` given, with the ratios from the
+  *next* action on (the action of `q(s, a)` is given, so its own ratio is left out), as in the book's box of Section 5.6.
+- Every visit counts, as in the book's box; `learner.first_visit = true` counts only the first visit of each state
+  (and of each state/action pair) in an episode, as Example 5.5 does.
+- Every value is worked out from its sums: the sum of its weighted returns, divided by the sum of its weights (or by
+  its number of visits). Do bear in mind that ordinary importance sampling counts the episodes `π` would never have
+  played, with a ratio of 0, whereas weighted importance sampling adds nothing for them; a weighted value whose
+  weights are all 0 so far is 0.
+- As with `monte_carlo`, only episodes that ended are learnt, and `π` and `b` are read for every step before any value
+  changes.
+
+## Example: one blackjack state (Example 5.4, Figure 5.3)
+
+`examples/importance_sampling.cpp` starts with Example 5.4: every game starts with the dealer showing a deuce and the
+player on 13 with a usable Ace (`game.fixed_start(13, true, 2)`), the player picks stick or hit at random, and `π`
+sticks only on 20 or 21. Its value is `v_π(s) = -0.27726`; played by `π` itself, 10 million games here give
+-0.27747 ± 0.0003. The mean squared error of `V(s)`, over 100 runs, is:
+
+```
+                          games:          1         10        100       1000      10000
+    ordinary                         6.1616     0.6608     0.0891   0.009139   0.001367
+    weighted                         0.1858     0.4735     0.0949   0.007779   0.001256
+```
+
+As in Figure 5.3, weighted importance sampling has the far smaller error at first: after one game, its estimate is
+either that game's return, or 0, whereas ordinary importance sampling multiplies the return by a ratio of up to 2^k.
+Both get to `v_π(s)`, and from about 100 games on they are about as good as each other.
+
+## Example: the infinite variance (Example 5.5)
+
+The second part is Example 5.5 (`examples/games/infinite_variance.hpp`): a single state, where right ends the episode
+at once, worth 0, and left comes back with 0.9, worth 0, or ends with 0.1, worth +1. `π` always goes left, so
+`v_π(s) = 1`, and `b` goes left or right with 1/2 each. An episode that went left `k` times and then ended has a ratio
+of `2^k`; the ratios times the returns have a mean of exactly 1, but their variance is infinite. First-visit, in 10 runs:
+
+```
+    ordinary         10      100     1000    10000   100000  episodes
+    run  1       3.2000   0.6000   0.5680   0.9888   0.6522
+    run  2       0.0000   0.3200   0.5020   0.5508   0.7067
+    run  3       0.0000   0.1800   0.3460   0.8758   0.6920
+     ...
+    run  6       0.4000   0.2000   0.3760   0.5660   1.9772
+     ...
+    run 10       0.4000   0.3000   0.7740   1.4400   0.8759
+    weighted         10      100     1000    10000   100000  episodes
+    run  1       1.0000   1.0000   1.0000   1.0000   1.0000
+    run  2       0.0000   1.0000   1.0000   1.0000   1.0000
+     ...
+```
+
+Ordinary importance sampling is still wandering after 100000 episodes, mostly below 1: the rare episodes with huge
+ratios that pull it up to 1 have mostly not come yet. Weighted importance sampling has exactly 1 from the first
+episode `π` could have played on (before that, all its weights are 0, and so is its estimate).
+
+## Example: long episodes with a reward at every step (Sections 5.8 and 5.9)
+
+The third part is the case Sections 5.8 and 5.9 are about (`examples/games/fixed_length.hpp`): every episode is 20
+steps, action 0 earns 1 and action 1 earns 0, `π` takes action 0 with 0.9 and `b` with 0.5, and `γ = 0.5`. Ordinary
+importance sampling weights each return by the ratios of all 20 actions of the episode, even though, with `γ = 0.5`,
+the return is mostly made of its first few rewards. The mean squared error of `V(0)`, over 100 runs:
+
+```
+                       episodes:         10        100       1000
+    ordinary                        35.6693    10.3265    17.1413
+    weighted                         0.3091     0.2002     0.0761
+    discounting-aware ordinary       1.0598     0.0819   0.008731
+    discounting-aware weighted       0.1969     0.0196   0.002204
+    per-decision                     0.5080     0.0402   0.004007
+```
+
+Ordinary importance sampling does not come down at all in 1000 episodes. Discounting-aware and per-decision importance
+sampling, which only weight each reward by the ratios of the actions before it (or nearly), have errors 2000 to 8000
+times smaller after 1000 episodes, and discounting-aware weighted importance sampling is the best of the five.
+
+__note__: these numbers are GCC's. With Clang's standard library (libc++), whose random numbers differ, they are a
+little different, in the same order (`ex_importance_sampling` checks it with both).
+
 ## Example: Blackjack (Figure 5.2)
 
 `examples/blackjack_monte_carlo.cpp` learns Blackjack (Example 5.1) in all three ways, from 500000 games each
@@ -277,6 +412,31 @@ last bit of a value differently, so a near-tie can go the other way, and from th
   learning rate, and that an episode cut short is not learnt
 - the importance weights of off-policy Monte Carlo, worked out by hand, and that the walk back stops
   at the first move the greedy policy would not make
+- off-policy Monte Carlo prediction, with each of the five importance samplings:
+  - one episode worked out by hand (apart from relearn, in a few lines of Python), every-visit and first-visit, and
+    that a ratio of 0 counts as a visit for ordinary importance sampling and not for weighted, and an episode cut short
+    not at all
+  - the book's equations (5.5, 5.6, 5.9, 5.10 and 5.15), written out in the test from their definitions: after every
+    episode of 100 runs of 10 random episodes, with random `π`, `b` and `γ` (1 too), every state value and action value
+    of the learner is theirs, to within `10⁻¹⁰` (the largest difference was 4.5e-13)
+  - unbiased, exactly: every one of the 16 episodes of a 4-step `games::fixed_length`, each weighted by its probability
+    under `b`, gives ordinary, discounting-aware ordinary and per-decision importance sampling an average of exactly
+    `v_π(0)` and `q_π(0, 0)`, to within `10⁻¹²`, whilst the weighted ones are biased; and the exact variances of the
+    discounting-aware and per-decision estimates are less than half of the ordinary one
+  - with `π = b`, all five are `monte_carlo`'s averages, every-visit and first-visit; with `γ = 1`, discounting-aware is
+    ordinary and weighted; and with a reward only at the end, per-decision is ordinary (all to within `10⁻¹²`)
+  - Example 5.4 (10 seeds, with libstdc++ and with libc++): played by `π`, 1000000 games averaged -0.27843 to -0.27556;
+    from random play, weighted importance sampling had the smaller error after 1 game (0.13 to 0.26, against 4.1 to 21.7)
+    and after 10 (0.43 to 0.58, against 0.60 to 1.88), and both had 0.00066 to 0.00115 after 10000. With the same
+    games, the gap after 10 was as little as 15%, so the test checks it after 1 game only
+  - Example 5.5: weighted importance sampling has exactly 1 from the first episode `π` could have played, in every run,
+    whilst ordinary importance sampling's 10 runs are still at least 0.37 apart after 10000 episodes (10 seeds)
+  - long episodes (20 steps, `γ = 0.5`, 100 runs of 1000 episodes, 10 seeds): the mean squared error was 2.1 to 673 for
+    ordinary, against 0.0074 to 0.0116 for discounting-aware ordinary, 0.0034 to 0.0055 for per-decision, and 0.0017
+    to 0.0030 for discounting-aware weighted
+  - every one of 29 mutations of the learner (ordinary and weighted swapped, a ratio of one action too many or too few,
+    no `(1 - γ)`, the wrong discounting, the rewards a step late, first-visit counting every visit, an episode cut short
+    learnt, an action value of 0 / 0, and so on) makes at least one of these tests fail
 - Blackjack, against the exact solution in `tests/solvers.hpp`: with exploring starts and off-policy,
   the learnt strategy disagrees with the optimal one in at most 15 of the 200 states, and all three
   earn within 0.01 (0.015 for on-policy) of what the optimal strategy earns. Over 10 seeds, with
@@ -287,4 +447,5 @@ last bit of a value differently, so a near-tie can go the other way, and from th
 
 1. Sutton, R.S. and Barto, A.G., 2018. [Reinforcement Learning: An Introduction](http://incompleteideas.net/book/the-book-2nd.html), 2nd edition. Cambridge, MA: MIT Press.
    Section 5.1 (first-visit and every-visit), Section 5.3 (exploring starts), Section 5.4 (on-policy control),
-   Sections 5.5 to 5.7 (importance sampling and off-policy control), Examples 5.1 and 5.3, Figure 5.2.
+   Sections 5.5 to 5.7 (importance sampling, off-policy prediction and control), Section 5.8 (discounting-aware
+   importance sampling), Section 5.9 (per-decision importance sampling), Examples 5.1, 5.3, 5.4 and 5.5, Figures 5.2 and 5.3.

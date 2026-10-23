@@ -122,9 +122,30 @@ public:
         exploring_starts_ = on;
     }
 
+    /**
+     * @brief start every game from the same situation: the player's total, a usable Ace or not, and the
+     *        dealer's face-up card, the dealer's face-down card being dealt as usual. Example 5.4 starts
+     *        every game with the dealer showing a deuce and the player on 13 with a usable Ace.
+     * @param player_sum is the player's total, 12 ... 21
+     * @param usable_ace is true if the player holds a usable Ace
+     * @param dealer_showing is the dealer's face-up card, 1 (Ace) ... 10
+     */
+    void fixed_start(unsigned int player_sum,
+                     bool usable_ace,
+                     unsigned int dealer_showing)
+    {
+        fixed_ = true;
+        fixed_sum_ = player_sum;
+        fixed_ace_ = usable_ace;
+        fixed_showing_ = dealer_showing;
+    }
+
     /// @brief deal a new game @return what the player sees
     state_type reset()
     {
+        if (fixed_) {
+            return start_from(fixed_sum_, fixed_ace_, fixed_showing_);
+        }
         if (exploring_starts_) {
             return random_start();
         }
@@ -219,6 +240,23 @@ private:
         return observe();
     }
 
+    /// @brief start from the situation @param sum, @param ace and @param showing (see `fixed_start`) @return what the player sees
+    state_type start_from(unsigned int sum,
+                          bool ace,
+                          unsigned int showing)
+    {
+        player_ = blackjack_hand();
+        player_.sum = sum;
+        player_.usable_ace = ace;
+        player_.cards = 2;
+        natural_ = false;
+        dealer_ = blackjack_hand();
+        showing_ = showing;
+        dealer_.add(showing_);
+        dealer_.add(draw());
+        return observe();
+    }
+
     /// @return a card drawn from an infinite deck: 1 (Ace) ... 10
     unsigned int draw()
     {
@@ -251,6 +289,11 @@ private:
     bool natural_ = false;
     // true to start every game from a random situation
     bool exploring_starts_ = false;
+    // true to start every game from the same situation, `fixed_start`'s
+    bool fixed_ = false;
+    unsigned int fixed_sum_ = 0;
+    bool fixed_ace_ = false;
+    unsigned int fixed_showing_ = 0;
 };
 } // namespace games
 

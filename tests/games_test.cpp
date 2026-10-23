@@ -19,6 +19,8 @@
 #include "../examples/games/cart_pole.hpp"
 #include "../examples/games/mountain_car.hpp"
 #include "../examples/games/discretised.hpp"
+#include "../examples/games/infinite_variance.hpp"
+#include "../examples/games/fixed_length.hpp"
 #include <algorithm>
 #include <cmath>
 #include <map>
@@ -118,6 +120,31 @@ TEST_CASE("blackjack: game flow", "[games][blackjack]")
         REQUIRE(out.terminated);
         REQUIRE((out.reward == -1 || out.reward == 0 || out.reward == 1));
     }
+}
+
+/// verifies that a fixed start deals every game from the same situation (Example 5.4)
+TEST_CASE("blackjack: a fixed start", "[games][blackjack]")
+{
+    games::blackjack game(8);
+    game.fixed_start(13, true, 2);
+    std::map<unsigned int,int> drawn;
+    for (int i = 0; i < 2000; i++) {
+        auto s = game.reset();
+        REQUIRE(s.player_sum == 13);
+        REQUIRE(s.usable_ace);
+        REQUIRE(s.dealer_showing == 2);
+        REQUIRE_FALSE(s.natural);
+        // a hit draws a card: the player's soft 13 goes up by it (or, past 21, the Ace counts 1 and it goes down by 10)
+        auto out = game.step(games::blackjack::hit);
+        REQUIRE_FALSE(out.terminated);
+        const unsigned int card = out.next.usable_ace ? out.next.player_sum - 13 : out.next.player_sum + 10 - 13;
+        REQUIRE(card >= 1);
+        REQUIRE(card <= 10);
+        drawn[card]++;
+    }
+    // the cards are drawn as from an infinite deck: a 10 four times in 13, every other card once in 13
+    REQUIRE(drawn[10] == Approx(2000 * 4.0 / 13).margin(80));
+    REQUIRE(drawn[5] == Approx(2000 / 13.0).margin(50));
 }
 
 /// verifies against the exact solver that the learnt strategy is optimal (Sutton & Barto, Figure 5.2)
@@ -1436,5 +1463,68 @@ TEST_CASE("play: an episode cut short still learns its last step", "[games][play
         learner(r.episode, memory, r.terminated);
         REQUIRE(memory.value(types::state(0), types::action(0)) == Approx(3.5));
         REQUIRE(memory.value(types::state(1), types::action(0)) == Approx(3.0));
+    }
+}
+
+// ------------------------------------------------------------------ infinite variance (Example 5.5)
+
+/// verifies the one-state task of Example 5.5: right ends at once, left comes back with 0.9 and ends with 0.1, worth +1
+TEST_CASE("infinite variance: rules", "[games][infinite_variance]")
+{
+    games::infinite_variance task(3);
+    REQUIRE(task.reset() == 0);
+    REQUIRE(task.actions(0) == std::vector<unsigned int>{games::infinite_variance::left, games::infinite_variance::right});
+    auto out = task.step(games::infinite_variance::right);
+    REQUIRE(out.terminated);
+    REQUIRE(out.reward == 0);
+    REQUIRE(out.next == 0);
+    // left: 100000 times, it ends with 0.1 (+1) and comes back with 0.9 (0)
+    int ends = 0;
+    for (int i = 0; i < 100000; i++) {
+        task.reset();
+        auto left = task.step(games::infinite_variance::left);
+        REQUIRE(left.next == 0);
+        REQUIRE(left.reward == (left.terminated ? 1 : 0));
+        ends += left.terminated;
+    }
+    REQUIRE(ends == Approx(10000).margin(400));
+}
+
+// ------------------------------------------------------------------ fixed length (Sections 5.8 and 5.9)
+
+/// verifies the episodes of a fixed length, with a reward of 1 for every action 0, and the values worked out from them
+TEST_CASE("fixed length: rules and values", "[games][fixed_length]")
+{
+    games::fixed_length task(5);
+    REQUIRE(task.steps() == 5);
+    REQUIRE(task.reset() == 0);
+    for (unsigned int t = 0; t < 5; t++) {
+        REQUIRE(task.actions(t) == std::vector<unsigned int>{0, 1});
+        auto out = task.step(t % 2);
+        REQUIRE(out.next == t + 1);
+        REQUIRE(out.reward == (t % 2 == 0 ? 1 : 0));
+        REQUIRE(out.terminated == (t == 4));
+    }
+    // p (1 + γ + ... + γ^(n-t-1)): from state 3 of 5, 0.9 (1 + 0.5) = 1.35; from state 0, 0.9 (1 - 0.5^5) / 0.5
+    REQUIRE(task.value(3, 0.9, 0.5) == Approx(1.35));
+    REQUIRE(task.value(0, 0.9, 0.5) == Approx(0.9 * (1 - std::pow(0.5, 5)) / 0.5));
+    REQUIRE(task.value(0, 1.0, 1.0) == Approx(5));
+    // against iterative policy evaluation of the same task (π takes action 0 with 0.9), from tests/solvers.hpp
+    solvers::tabular m;
+    m.states  = 6;
+    m.actions = 2;
+    m.gamma   = 0.5;
+    m.model   = [](int s, int a) {
+        std::vector<solvers::outcome> outcomes;
+        if (s == 5) {
+            return outcomes;
+        }
+        outcomes.push_back({1.0, s + 1, a == 0 ? 1.0 : 0.0, s + 1 == 5});
+        return outcomes;
+    };
+    std::vector<std::vector<double>> pi(6, {0.9, 0.1});
+    auto v = m.policy_values(pi);
+    for (unsigned int s = 0; s < 5; s++) {
+        REQUIRE(v[s] == Approx(task.value(s, 0.9, 0.5)).epsilon(1e-9));
     }
 }
