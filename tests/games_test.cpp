@@ -21,6 +21,8 @@
 #include "../examples/games/discretised.hpp"
 #include "../examples/games/infinite_variance.hpp"
 #include "../examples/games/fixed_length.hpp"
+#include "../examples/games/racetrack.hpp"
+#include "../examples/games/branching_task.hpp"
 #include <algorithm>
 #include <cmath>
 #include <map>
@@ -1565,5 +1567,160 @@ TEST_CASE("fixed length: rules and values", "[games][fixed_length]")
     auto v = m.policy_values(pi);
     for (unsigned int s = 0; s < 5; s++) {
         REQUIRE(v[s] == Approx(task.value(s, 0.9, 0.5)).epsilon(1e-9));
+    }
+}
+
+/// verifies the rules of the racetrack: moving, crashing, finishing, the legal actions and the noise
+TEST_CASE("racetrack: rules", "[games][racetrack]")
+{
+    using game_type = games::racetrack;
+    game_type track(game_type::default_track(), false);
+    // the start line: 6 cells of the bottom row, at rest
+    REQUIRE(track.starts().size() == 6u);
+    for (int i = 0; i < 50; i++) {
+        auto s = track.reset();
+        REQUIRE(track.row(s) == 31);
+        REQUIRE(track.tile(31, track.column(s)) == 'S');
+        REQUIRE(track.vx(s) == 0);
+        REQUIRE(track.vy(s) == 0);
+    }
+    // the legal actions: 3 at rest (the car must move), 9 at (2, 2), 4 at (4, 4), 5 at (0, 1)
+    REQUIRE(track.actions(track.state_of(31, 3, 0, 0)).size() == 3u);
+    REQUIRE(track.actions(track.state_of(20, 3, 2, 2)).size() == 9u);
+    REQUIRE(track.actions(track.state_of(20, 3, 4, 4)).size() == 4u);
+    REQUIRE(track.actions(track.state_of(20, 3, 0, 1)).size() == 5u);
+    REQUIRE(track.actions(track.finished()).empty());
+    // from (31, 3) at rest, speeding up by (0, +1): one cell up, at velocity (0, 1)
+    track.place(track.state_of(31, 3, 0, 0));
+    auto out = track.step(5);
+    REQUIRE(out.next == track.state_of(30, 3, 0, 1));
+    REQUIRE(out.reward == -1);
+    REQUIRE(!out.terminated);
+    // from (7, 9) at velocity (1, 0), keeping it: into the wall at (7, 10), back to the start line at rest
+    track.place(track.state_of(7, 9, 1, 0));
+    out = track.step(4);
+    REQUIRE(track.row(out.next) == 31);
+    REQUIRE(track.vx(out.next) == 0);
+    REQUIRE(track.vy(out.next) == 0);
+    REQUIRE(out.reward == -1);
+    REQUIRE(!out.terminated);
+    // from (2, 14) at velocity (3, 0): the path crosses the finish line at column 16, before leaving the track
+    track.place(track.state_of(2, 14, 3, 0));
+    out = track.step(4);
+    REQUIRE(out.next == track.finished());
+    REQUIRE(out.terminated);
+    // a diagonal path that clips the corner of a wall crashes: from (8, 8) at (2, 2), through (7, 9) to (6, 10)
+    track.place(track.state_of(8, 8, 2, 2));
+    out = track.step(4);
+    REQUIRE(track.row(out.next) == 31);
+    // with the noise, the velocity stays the same a tenth of the time, whatever the action
+    game_type noisy(game_type::default_track(), true, 3);
+    int same = 0;
+    const int n = 20000;
+    for (int i = 0; i < n; i++) {
+        noisy.place(noisy.state_of(20, 3, 1, 1));
+        auto next = noisy.step(8).next;
+        same += (noisy.vx(next) == 1 && noisy.vy(next) == 1) ? 1 : 0;
+    }
+    // 0.1 n = 2000, within 4 standard deviations, sqrt(0.09 n) = 42.4
+    REQUIRE(std::fabs(same - 0.1 * n) < 4 * 42.4);
+}
+
+/// verifies the model of the racetrack against the game, and its probabilities
+TEST_CASE("racetrack: the model", "[games][racetrack]")
+{
+    using game_type = games::racetrack;
+    // without the noise, every move of the model is the game's: one outcome, or the start line, each cell alike, on a crash
+    game_type track(game_type::default_track(), false);
+    auto m = track.model();
+    REQUIRE(m.states.size() == track.states().size());
+    std::mt19937 prng(4);
+    std::size_t checked = 0;
+    for (const auto & s : m.states) {
+        for (const auto & a : m.actions(s)) {
+            auto outcomes = m.outcomes(s, a);
+            track.place(s.trait());
+            auto played = track.step(a.trait());
+            if (outcomes.size() == 1) {
+                REQUIRE(outcomes[0].next.trait() == played.next);
+                REQUIRE(outcomes[0].probability == 1);
+            }
+            else {
+                REQUIRE(outcomes.size() == track.starts().size());
+                REQUIRE(track.row(played.next) == 31);
+                REQUIRE(track.vx(played.next) == 0);
+                REQUIRE(track.vy(played.next) == 0);
+            }
+            for (const auto & o : outcomes) {
+                REQUIRE(o.reward == -1);
+            }
+            checked++;
+        }
+    }
+    REQUIRE(checked > 30000u);
+    // with the noise, every action's outcomes add up to 1, the velocity unchanged with 0.1
+    game_type noisy;
+    auto n = noisy.model();
+    for (const auto & s : n.states) {
+        for (const auto & a : n.actions(s)) {
+            double total = 0;
+            for (const auto & o : n.outcomes(s, a)) {
+                total += o.probability;
+            }
+            REQUIRE(total == Approx(1));
+        }
+    }
+    // the optimal policy takes 11.55 steps from the start line, on average
+    relearn::dynamic_programming<relearn::state<unsigned int>, relearn::action<unsigned int>> dp(1.0, 1e-9);
+    dp.value_iteration(n);
+    double v = 0;
+    for (auto s : noisy.starts()) {
+        v += dp.value(relearn::state<unsigned int>(s)) / 6;
+    }
+    REQUIRE(v == Approx(-11.5535).margin(0.0001));
+}
+
+/// verifies the random tasks of Section 8.6
+TEST_CASE("branching task: the model", "[games][branching_task]")
+{
+    games::branching_task task(100, 3, 7);
+    auto m = task.model();
+    REQUIRE(m.states.size() == 101u);
+    REQUIRE(task.start() == 0u);
+    REQUIRE(m.actions(relearn::state<unsigned int>(task.terminal())).empty());
+    double sum = 0;
+    double squares = 0;
+    int rewards = 0;
+    for (unsigned int s = 0; s < 100; s++) {
+        REQUIRE(m.actions(relearn::state<unsigned int>(s)).size() == 2u);
+        for (unsigned int a = 0; a < 2; a++) {
+            auto outcomes = m.outcomes(relearn::state<unsigned int>(s), relearn::action<unsigned int>(a));
+            // b branches with 0.9 / b each, and the end with 0.1
+            REQUIRE(outcomes.size() == 4u);
+            double total = 0;
+            for (std::size_t i = 0; i < outcomes.size(); i++) {
+                total += outcomes[i].probability;
+                REQUIRE(outcomes[i].probability == Approx(i < 3 ? 0.3 : 0.1));
+                // the branches are states, not the end
+                REQUIRE(outcomes[i].next.trait() < (i < 3 ? 100u : 101u));
+                sum += outcomes[i].reward;
+                squares += outcomes[i].reward * outcomes[i].reward;
+                rewards++;
+            }
+            REQUIRE(total == Approx(1));
+            REQUIRE(outcomes.back().next.trait() == task.terminal());
+        }
+    }
+    // the rewards are drawn from a normal distribution of mean 0 and variance 1: 800 of them
+    const double mean = sum / rewards;
+    REQUIRE(std::fabs(mean) < 4 / std::sqrt(800.0));
+    REQUIRE(squares / rewards - mean * mean == Approx(1).margin(0.2));
+    // the same seed makes the same task
+    games::branching_task again(100, 3, 7);
+    auto o1 = m.outcomes(relearn::state<unsigned int>(42), relearn::action<unsigned int>(1));
+    auto o2 = again.model().outcomes(relearn::state<unsigned int>(42), relearn::action<unsigned int>(1));
+    for (std::size_t i = 0; i < o1.size(); i++) {
+        REQUIRE(o1[i].next == o2[i].next);
+        REQUIRE(o1[i].reward == o2[i].reward);
     }
 }

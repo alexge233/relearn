@@ -62,6 +62,10 @@ Currently the library implements the following algorithms, each one explained in
 - **Dynamic programming** (`dynamic_programming`, with a model `finite_mdp`): policy evaluation, policy iteration
   and value iteration, which need no playing at all when the rules of the world are known exactly,
   see [docs/dynamic_programming.md](docs/dynamic_programming.md)
+- **trajectory sampling** (`trajectory_sampling`), **real-time dynamic programming** (`real_time_dynamic_programming`),
+  **heuristic search** (`heuristic_search`) and **rollout algorithms** (`rollout_planner`), which plan with the same model
+  where it counts: on the states the agent meets, or from the state it is in,
+  see [docs/planning.md](docs/planning.md)
 - **UCB** (`ucb`) and the **gradient bandit** (`gradient_bandit`), for the k-armed bandit: UCB explores the arms
   it is least sure about, whilst the gradient bandit learns a preference for each arm, and picks arms with their softmax,
   see [docs/bandits.md](docs/bandits.md)
@@ -176,6 +180,7 @@ There is nothing to build! This is a header-only library, you only need the `src
 | `relearn/r_learning.hpp` | `r_learning` and `differential_sarsa` |
 | `relearn/prioritized_sweeping.hpp` | `prioritized_sweeping` |
 | `relearn/dynamic_programming.hpp` | `finite_mdp` and `dynamic_programming` |
+| `relearn/planning.hpp` | `sample_outcome`, `trajectory_sampling`, `real_time_dynamic_programming`, `heuristic_search` and `rollout_planner` |
 | `relearn/bandits.hpp` | `ucb` and `gradient_bandit` |
 
 Each one includes whatever it needs, so if you only use one learner (e.g., on a small board, where every byte
@@ -434,6 +439,8 @@ after every step with `games::play_online`.
 | `maximization_bias` | S&B 6.7 | `q_learning`, `double_q_learning` | Q-Learning's overestimation, which Double Q-Learning removes (Figure 6.5) |
 | `gamblers_problem` | S&B 4.3 | `q_probabilistic` | Values that match the exact solution |
 | `dynamic_programming` | S&B 4.1, 4.3, 4.4 | `dynamic_programming` | The 4 x 4 gridworld (`small_gridworld`, Figure 4.1) and the gambler's problem (Figure 4.3) solved from their models, by policy evaluation, policy iteration and value iteration |
+| `racetrack` | S&B 5.12, 8.7, 8.9, 8.10 | `real_time_dynamic_programming`, `heuristic_search`, `rollout_planner` | Example 8.6: RTDP finds the optimal policy with 42% of value iteration's updates, touching a third of the states; from rough values, searching deeper and rolling out drive better |
+| `trajectory_sampling` | S&B 8.6 | `trajectory_sampling` | Figure 8.8: on-policy expected updates find a good policy sooner, the more so the fewer the branches, and uniform ones pass them later |
 | `dyna_maze` | S&B 8.1 to 8.3 | `dyna_q` | Planning learns a maze in far fewer episodes (Figure 8.2), and Dyna-Q+ copes with mazes that change (Figures 8.4, 8.5) |
 | `dyna_maze_n_step` | S&B 7.2, 8.1 | `n_step_sarsa` | The first episode teaches n-step SARSA its last n moves (Figure 7.4), so a larger n learns the maze faster |
 | `cliff_walking_n_step` | S&B 6.6, 7.2 to 7.6 | `n_step_expected_sarsa`, `off_policy_n_step_sarsa`, `n_step_tree_backup`, `n_step_q_sigma` | Learning 4 steps at a time: on-policy, the expectations earn more whilst exploring; off-policy, the less importance sampling, the closer to the greedy policy's values |

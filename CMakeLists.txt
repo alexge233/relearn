@@ -39,8 +39,8 @@ add_executable(ex_gridworld_online  ${EXAMPLES}/gridworld_online.cpp)
 set(GAMES access_control bandit bandit_ucb_gradient blackjack blackjack_monte_carlo cart_pole cliff_walking
           cliff_walking_n_step dyna_maze dyna_maze_lambda dyna_maze_n_step dyna_maze_prioritized
           dynamic_programming frozen_lake frozen_lake_off_policy gamblers_problem importance_sampling maximization_bias
-          mountain_car mountain_car_lambda random_walk random_walk_lambda random_walk_lambda_return random_walk_td short_corridor
-          tic_tac_toe tic_tac_toe_mcts windy_gridworld)
+          mountain_car mountain_car_lambda racetrack random_walk random_walk_lambda random_walk_lambda_return random_walk_td
+          short_corridor tic_tac_toe tic_tac_toe_mcts trajectory_sampling windy_gridworld)
 foreach(game ${GAMES})
     add_executable(ex_${game} ${EXAMPLES}/${game}.cpp)
 endforeach()
@@ -112,6 +112,8 @@ if (BUILD_TESTS)
     add_test(eligibility_traces_test test_eligibility_traces)
     add_executable(test_off_policy_traces tests/off_policy_traces_test.cpp)
     add_test(off_policy_traces_test test_off_policy_traces)
+    add_executable(test_planning tests/planning_test.cpp)
+    add_test(planning_test test_planning)
     add_executable(test_policy_gradient tests/policy_gradient_test.cpp)
     add_test(policy_gradient_test test_policy_gradient)
     add_executable(test_r_learning tests/r_learning_test.cpp)
@@ -123,7 +125,7 @@ if (BUILD_TESTS)
 
     # every part of the library compiles on its own (see tests/headers)
     foreach(part core schedules q_learning sarsa double_q_learning dyna monte_carlo bandits
-                 dynamic_programming eligibility_traces off_policy_traces mcts n_step policy_gradient
+                 dynamic_programming eligibility_traces off_policy_traces mcts n_step planning policy_gradient
                  prioritized_sweeping r_learning)
         add_executable(test_header_${part} tests/headers/${part}.cpp)
         add_test(header_${part}_test test_header_${part})
