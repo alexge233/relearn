@@ -39,7 +39,7 @@ add_executable(ex_gridworld_online  ${EXAMPLES}/gridworld_online.cpp)
 set(GAMES access_control bandit bandit_ucb_gradient blackjack blackjack_monte_carlo cart_pole cliff_walking
           cliff_walking_n_step dyna_maze dyna_maze_lambda dyna_maze_n_step dyna_maze_prioritized
           dynamic_programming frozen_lake gamblers_problem importance_sampling maximization_bias
-          mountain_car mountain_car_lambda random_walk random_walk_lambda random_walk_td short_corridor
+          mountain_car mountain_car_lambda random_walk random_walk_lambda random_walk_lambda_return random_walk_td short_corridor
           tic_tac_toe tic_tac_toe_mcts windy_gridworld)
 foreach(game ${GAMES})
     add_executable(ex_${game} ${EXAMPLES}/${game}.cpp)
