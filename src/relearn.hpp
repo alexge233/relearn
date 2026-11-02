@@ -56,6 +56,7 @@
 #include "relearn/mcts.hpp"
 #include "relearn/n_step.hpp"
 #include "relearn/eligibility_traces.hpp"
+#include "relearn/off_policy_traces.hpp"
 #include "relearn/policy_gradient.hpp"
 #include "relearn/r_learning.hpp"
 #include "relearn/prioritized_sweeping.hpp"

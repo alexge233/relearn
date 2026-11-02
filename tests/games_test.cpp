@@ -538,6 +538,45 @@ TEST_CASE("frozen lake: rules", "[games][frozen_lake]")
     REQUIRE(right == Approx(n / 3.0).epsilon(0.05));
 }
 
+/// verifies the model of the game, `model()`, against the one written from Gymnasium's rules, on both maps
+TEST_CASE("frozen lake: the model", "[games][frozen_lake]")
+{
+    using game_type = games::frozen_lake;
+    for (bool slippery : {false, true}) {
+        for (const auto & map : {game_type::map_4x4(), game_type::map_8x8()}) {
+            game_type game(map, slippery);
+            auto m = game.model();
+            auto exact = frozen_lake_model(map, 0.9, slippery);
+            REQUIRE(m.states.size() == static_cast<std::size_t>(exact.states));
+            for (const auto & s : m.states) {
+                const int cell = static_cast<int>(s.trait());
+                // the goal and the holes have no moves; every other cell has all four
+                REQUIRE(m.actions(s).size() == (exact.model(cell, 0).empty() ? 0u : 4u));
+                for (const auto & a : m.actions(s)) {
+                    auto outcomes = m.outcomes(s, a);
+                    auto expected = exact.model(cell, static_cast<int>(a.trait()));
+                    REQUIRE(outcomes.size() == expected.size());
+                    for (std::size_t i = 0; i < outcomes.size(); i++) {
+                        REQUIRE(static_cast<int>(outcomes[i].next.trait()) == expected[i].next);
+                        REQUIRE(outcomes[i].reward == expected[i].reward);
+                        REQUIRE(outcomes[i].probability == Approx(expected[i].probability));
+                    }
+                }
+            }
+        }
+    }
+    // value iteration on the model gives the optimal values of the exact one (slippery 4x4, γ = 0.95)
+    game_type game(game_type::map_4x4(), true);
+    relearn::dynamic_programming<relearn::state<unsigned int>, relearn::action<unsigned int>> dp;
+    dp.gamma = 0.95;
+    dp.theta = 1e-12;
+    dp.value_iteration(game.model());
+    auto optimal = frozen_lake_model(game_type::map_4x4(), 0.95, true).optimal_values();
+    for (unsigned int s = 0; s < 16; s++) {
+        REQUIRE(dp.value(relearn::state<unsigned int>(s)) == Approx(optimal[s]).margin(1e-9));
+    }
+}
+
 /// verifies, by exact evaluation, that the policy learnt on slippery 4x4 ice is optimal
 TEST_CASE("frozen lake: q_probabilistic learns the optimal policy", "[games][frozen_lake]")
 {

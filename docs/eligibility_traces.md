@@ -198,7 +198,8 @@ for each episode:
 Do bear in mind that whether `a'` is greedy is decided with the values from before this step's update,
 as in the book's pseudocode (its first edition, Figure 7.14). With `λ = 0` this is Q-learning.
 When the agent explores a lot, the traces are cut often, and Q(λ) learns little more than Q-learning
-(the book's Section 12.10 discusses this, and other off-policy traces that avoid it).
+(the book's Sections 12.9 and 12.10 discuss this, and other off-policy traces: relearn has them too, have a look at
+[off_policy_traces.md](off_policy_traces.md)).
 
 ## True online TD(λ) and Sarsa(λ)
 
