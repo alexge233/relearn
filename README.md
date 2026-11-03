@@ -40,6 +40,10 @@ Currently the library implements the following algorithms, each one explained in
 - **true online TD(λ)** (`true_online_td_lambda`) and **true online Sarsa(λ)** (`true_online_sarsa_lambda`), which learn
   after every step with Dutch traces, and have after every step exactly the values of the online λ-return algorithm,
   see [docs/eligibility_traces.md](docs/eligibility_traces.md)
+- **truncated TD(λ)** and **truncated Sarsa(λ)** (`truncated_td_lambda`, `truncated_sarsa_lambda`), which learn each step
+  n steps later from its λ-return truncated there, and **the online λ-return algorithm** (`online_lambda_return`); and a
+  λ and a γ that vary from state to state (`lambda_of`, `gamma_of`) for all of these but Watkins's Q(λ),
+  see [docs/eligibility_traces.md](docs/eligibility_traces.md)
 - **REINFORCE**, **REINFORCE with a baseline** and **one-step Actor-Critic** (`reinforce`, `reinforce_with_baseline`
   and `actor_critic`), which learn the policy itself, as a softmax over action preferences (`softmax_policy`),
   so that it can stay stochastic when that is best, see [docs/policy_gradient.md](docs/policy_gradient.md)
@@ -162,7 +166,7 @@ There is nothing to build! This is a header-only library, you only need the `src
 | `relearn/monte_carlo.hpp` | `monte_carlo` and `off_policy_monte_carlo`; `off_policy_monte_carlo_prediction` |
 | `relearn/mcts.hpp` | `mcts`, Monte Carlo Tree Search with UCT |
 | `relearn/n_step.hpp` | `n_step_sarsa`, and `n_step_td` (TD(0) when n = 1); `n_step_expected_sarsa`, `off_policy_n_step_sarsa`, `n_step_tree_backup` and `n_step_q_sigma` |
-| `relearn/eligibility_traces.hpp` | `sarsa_lambda`, `td_lambda` and `watkins_q_lambda`, and their `eligibility_traces`; `true_online_sarsa_lambda` and `true_online_td_lambda` |
+| `relearn/eligibility_traces.hpp` | `sarsa_lambda`, `td_lambda` and `watkins_q_lambda`, and their `eligibility_traces`; `true_online_sarsa_lambda` and `true_online_td_lambda`; `truncated_sarsa_lambda`, `truncated_td_lambda` and `online_lambda_return`, and their `lambda_return_record` |
 | `relearn/policy_gradient.hpp` | `softmax_policy`, `reinforce`, `reinforce_with_baseline` and `actor_critic`; `actor_critic_lambda` and `continuing_actor_critic` |
 | `relearn/r_learning.hpp` | `r_learning` and `differential_sarsa` |
 | `relearn/prioritized_sweeping.hpp` | `prioritized_sweeping` |
@@ -406,7 +410,8 @@ auto r = games::play_online(game, agent, learner, memory, 1000);
 The n-step learners need the last n steps after each step, not just the last one, so give `play_online` their n:
 `games::play_online(game, agent, learner, memory, 1000, learner.n)` (have a look at [docs/n_step.md](docs/n_step.md)).
 The learners with eligibility traces learn a whole episode at a time, so use `games::play` with them; all but
-`true_online_sarsa_lambda` and `true_online_td_lambda`, which learn after every step with `games::play_online`.
+`true_online_sarsa_lambda`, `truncated_sarsa_lambda` and `online_lambda_return` (and the TD(λ) names of the first two), which learn
+after every step with `games::play_online`.
 
 | Game | Source | Learnt with | What it shows |
 |---|---|---|---|
@@ -420,6 +425,7 @@ The learners with eligibility traces learn a whole episode at a time, so use `ga
 | `random_walk` | S&B 6.2, 7.1 | `q_probabilistic` | Prediction, with the learnt values next to the exact ones |
 | `random_walk_td` | S&B 6.2, 7.1 | `n_step_td`, `monte_carlo` | TD(0) learns faster than Monte Carlo (Example 6.2), and an intermediate n is best (Figure 7.2) |
 | `random_walk_lambda` | S&B 12.1, 12.2, 12.5 | `td_lambda`, `true_online_td_lambda` | An intermediate λ is best (Figure 12.6), offline TD(λ) learns exactly what the λ-return does, and true online TD(λ) learns at least as well as TD(λ), without blowing up at a large α |
+| `random_walk_lambda_return` | S&B 12.3, 12.4, 12.8 | `truncated_td_lambda`, `online_lambda_return`, `true_online_td_lambda` | A short horizon is best for truncated TD(λ), the online λ-return algorithm learns true online TD(λ)'s values to within 1e-15, and with γ = 0 in a state the walk is learnt up to its next visit there |
 | `maximization_bias` | S&B 6.7 | `q_learning`, `double_q_learning` | Q-Learning's overestimation, which Double Q-Learning removes (Figure 6.5) |
 | `gamblers_problem` | S&B 4.3 | `q_probabilistic` | Values that match the exact solution |
 | `dynamic_programming` | S&B 4.1, 4.3, 4.4 | `dynamic_programming` | The 4 x 4 gridworld (`small_gridworld`, Figure 4.1) and the gambler's problem (Figure 4.3) solved from their models, by policy evaluation, policy iteration and value iteration |

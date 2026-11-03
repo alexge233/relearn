@@ -18,13 +18,18 @@
 /**
  * @file relearn/eligibility_traces.hpp
  * @brief eligibility traces: SARSA(λ) (`sarsa_lambda`), TD(λ) (`td_lambda`), Watkins's Q(λ) (`watkins_q_lambda`),
- *        and true online TD(λ) and Sarsa(λ) (`true_online_td_lambda`, `true_online_sarsa_lambda`)
+ *        true online TD(λ) and Sarsa(λ) (`true_online_td_lambda`, `true_online_sarsa_lambda`),
+ *        truncated TD(λ) and Sarsa(λ) (`truncated_td_lambda`, `truncated_sarsa_lambda`), and the online
+ *        λ-return algorithm (`online_lambda_return`); all of them but Watkins's Q(λ) with a λ and a γ
+ *        that may vary from state to state (Section 12.8)
  */
 #include "core.hpp"
 #include <algorithm>
+#include <cassert>
 #include <cmath>
 #include <cstddef>
 #include <deque>
+#include <functional>
 #include <vector>
 
 namespace relearn
@@ -85,6 +90,86 @@ private:
 };
 
 /**
+ * @brief γ(s_t), the discount of a state (Sutton & Barto, Section 12.8)
+ * @return @param gamma_of (@param s_t) if it is set, otherwise the constant @param gamma
+ *
+ * A γ that varies from state to state: a state with γ = 0 ends the return there, as if the episode
+ * had ended (but it goes on), and one with γ = 1 does not discount what follows it at all.
+ */
+template <class state_class,
+          typename value_type>
+value_type gamma_at(const std::function<value_type(const state_class &)> & gamma_of,
+                    value_type gamma,
+                    const state_class & s_t);
+
+/**
+ * @brief λ(s_t, a_t), the λ of a state/action pair (Sutton & Barto, Section 12.8)
+ * @return @param lambda_of (@param s_t, @param a_t) if it is set, otherwise the constant @param lambda
+ *
+ * A λ that varies: with λ = 0 at a pair, the returns of the steps before it bootstrap fully from its value,
+ * and with λ = 1 they look past it, as Monte Carlo would.
+ */
+template <class state_class,
+          class action_class,
+          typename value_type>
+value_type lambda_at(const std::function<value_type(const state_class &, const action_class &)> & lambda_of,
+                     value_type lambda,
+                     const state_class & s_t,
+                     const action_class & a_t);
+
+/**
+ * @class lambda_return_record
+ * @brief the steps of an episode, with all that their truncated λ-returns need
+ *
+ * Step t holds s_t, a_t and r_t, and what follows it: γ_{t+1} = γ(s_{t+1}), λ_{t+1} = λ(s_{t+1}, a_{t+1}) and
+ * V_{t+1}, the value of (s_{t+1}, a_{t+1}) when the agent got there (all three 0 after the last step of an
+ * episode). The λ-return of step t truncated at h (Sections 12.3, 12.4 and 12.8) is then, from h backwards:
+ *
+ * G^λ_{h-1:h} = r_{h-1} + γ_h * V_h
+ * G^λ_{t:h}   = r_t + γ_{t+1} * ((1 - λ_{t+1}) * V_{t+1} + λ_{t+1} * G^λ_{t+1:h})
+ *
+ * With a constant λ and γ this is the book's (1 - λ) Σ_{n=1}^{h-t-1} λ^{n-1} G_{t:t+n} + λ^{h-t-1} G_{t:h},
+ * every n-step return G_{t:t+n} bootstrapping from V_{t+n}.
+ * `truncated_sarsa_lambda` and `online_lambda_return` keep one for the episode they learn.
+ */
+template <class state_class,
+          class action_class,
+          typename value_type = double>
+class lambda_return_record
+{
+public:
+    /// @brief one step, and what follows it
+    struct entry
+    {
+        state_class state;
+        action_class action;
+        value_type reward;
+        value_type gamma_next;
+        value_type lambda_next;
+        value_type value_next;
+    };
+
+    /// @brief add the next step @param e of the episode
+    void push_back(const entry & e);
+    /// @brief forget every step: a new episode
+    void clear();
+    /// @return the number of steps recorded
+    std::size_t size() const;
+    /// @return step @param t
+    const entry & operator[](std::size_t t) const;
+    /**
+     * @return G^λ_{t:h} of every step t = @param first ... @param h - 1, in that order
+     * @param h is the horizon, at most the number of steps recorded
+     */
+    std::vector<value_type> returns(std::size_t first,
+                                    std::size_t h) const;
+
+private:
+    // the steps of the episode
+    std::vector<entry> steps_;
+};
+
+/**
  * @struct sarsa_lambda This is SARSA(λ) (Sutton & Barto, Section 12.7), and TD(λ) (Section 12.2)
  * @brief SARSA(λ) gives each TD error to every pair visited so far, by how recently and how often it was visited
  * @param alpha is the learning rate
@@ -117,6 +202,10 @@ private:
  * and backward views, in the book's first edition, Section 7.4).
  * Do bear in mind that the second edition's offline λ-return algorithm (equation 12.4) makes those updates
  * one after the other instead, so a state visited twice in an episode learns a little differently.
+ *
+ * λ and γ may vary from state to state (Section 12.8): set `lambda_of` and `gamma_of`. Then
+ * δ = r_t + γ(s_{t+1}) * Q(s_{t+1}, a_{t+1}) - Q(s_t, a_t), and the traces fade by γ(s_t) λ(s_t, a_t) at step t,
+ * and offline it is still exactly the λ-return, the one of Section 12.8.
  */
 template <class state_class,
           class action_class,
@@ -134,6 +223,10 @@ struct sarsa_lambda
     bool replacing = false;
     /// learn offline: the values change only at the end of the episode
     bool offline = false;
+    /// optional: λ(s, a), a λ for every state/action pair (Section 12.8), instead of `lambda`
+    std::function<value_type(const state_class &, const action_class &)> lambda_of;
+    /// optional: γ(s), a discount for every state (Section 12.8), instead of `gamma`
+    std::function<value_type(const state_class &)> gamma_of;
     /// the traces z(s, a) of the last episode learnt
     eligibility_traces<state_class,action_class,value_type> traces;
 
@@ -276,6 +369,10 @@ struct watkins_q_lambda
  * and Q_old, are *kept* from one call to the next, until a call ends the episode (`terminated` true).
  * `games::play_online` does this before every game. Any other call is a whole episode on its own,
  * whose traces start at 0, as for `sarsa_lambda`, even after one cut short.
+ *
+ * λ and γ may vary from state to state (Section 12.8): set `lambda_of` and `gamma_of`. Then δ uses γ(s_{t+1}),
+ * and γλ is γ(s_t) λ(s_t, a_t) at step t, in the fading and in the Dutch trace; and it is still exactly
+ * the online λ-return algorithm (`online_lambda_return`), with the λ-return of Section 12.8.
  * @warning an episode learnt a step at a time and cut short stays open until the next `start_episode()`
  */
 template <class state_class,
@@ -290,6 +387,10 @@ struct true_online_sarsa_lambda
     value_type gamma = 0.9;
     /// λ: how slowly the traces fade, 0 ... 1 (0 is SARSA)
     value_type lambda = 0.9;
+    /// optional: λ(s, a), a λ for every state/action pair (Section 12.8), instead of `lambda`
+    std::function<value_type(const state_class &, const action_class &)> lambda_of;
+    /// optional: γ(s), a discount for every state (Section 12.8), instead of `gamma`
+    std::function<value_type(const state_class &)> gamma_of;
     /// the Dutch traces z(s, a) of the episode being learnt
     eligibility_traces<state_class,action_class,value_type> traces;
     /// Q_old: the value of the pair reached by the last step learnt, as it was before that step
@@ -342,6 +443,203 @@ template <class state_class,
           typename markov_chain = std::deque<link<state_class,action_class>>,
           typename value_type = double>
 using true_online_td_lambda = true_online_sarsa_lambda<state_class,action_class,markov_chain,value_type>;
+
+/**
+ * @struct truncated_sarsa_lambda This is truncated TD(λ), TTD(λ) (Sutton & Barto, Section 12.3), for state/action
+ *         pairs, and for states (`truncated_td_lambda`)
+ * @brief each step is learnt n steps after it, from its λ-return truncated there
+ * @param alpha is the learning rate
+ * @param gamma is the discount rate
+ * @param lambda is λ
+ * @param n is the horizon: how many steps each update waits, and looks ahead
+ *
+ * Episode convention: same as `q_learning`, `s_t.reward()` is the reward r_t
+ * received after taking a_t in s_t.
+ *
+ * The λ-return of step t needs the whole episode, but it can be cut at a horizon h, the rest of its weight
+ * going to the n-step return that reaches h:
+ *
+ * G^λ_{t:h} = (1 - λ) Σ_{n=1}^{h-t-1} λ^{n-1} G_{t:t+n} + λ^{h-t-1} G_{t:h}
+ *
+ * At each step h, TTD(λ) learns step t = h - n from it:
+ *
+ * Q(s_t,a_t) = Q(s_t,a_t) + α * (G^λ_{t:h} - Q(s_t,a_t))
+ *
+ * and once the episode ends (at T), the steps left, in order, from their λ-returns to the end, G^λ_{t:T}.
+ * Every n-step return G_{t:t+k} bootstraps from Q(s_{t+k}, a_{t+k}) as it was when the agent got there,
+ * before the update of that step, as in the book's way of working it out, so the learner keeps those values.
+ *
+ * With n = 1 this is SARSA (or TD(0)), whatever λ is; with λ = 1 it is n-step SARSA (`n_step_sarsa`);
+ * and with n at least the length of the episode, it is the offline λ-return algorithm of equation 12.4,
+ * every update made at the end of the episode, one after the other. In between, it is a cheap way to
+ * have most of the λ-return, n steps late.
+ *
+ * λ and γ may vary from state to state (Section 12.8): set `lambda_of` and `gamma_of`, and the
+ * λ-return is the one of Section 12.8 (see `lambda_return_record`).
+ *
+ * It learns online with `games::play_online` (window 1), or a whole episode at a time after `games::play`.
+ * An episode cut short (`terminated` false) ends with the state reached and the action chosen next, which
+ * is not a step, and its last n-1 steps are not learnt, as for `n_step_sarsa`. As `true_online_sarsa_lambda`,
+ * an episode started with `start_episode()` goes on from one call to the next until a call ends it; any
+ * other call is a whole episode on its own.
+ * @warning an episode learnt a step at a time and cut short stays open until the next `start_episode()`
+ */
+template <class state_class,
+          class action_class,
+          typename markov_chain = std::deque<link<state_class,action_class>>,
+          typename value_type = double>
+struct truncated_sarsa_lambda
+{
+    /// learning rate - you may change this as you process episodes
+    value_type alpha = 0.9;
+    /// discount rate - you may change this as you process episodes
+    value_type gamma = 0.9;
+    /// λ, 0 ... 1 (1 is n-step SARSA)
+    value_type lambda = 0.9;
+    /// n: the horizon, at least 1 (1 is SARSA)
+    unsigned int n = 4;
+    /// optional: λ(s, a), a λ for every state/action pair (Section 12.8), instead of `lambda`
+    std::function<value_type(const state_class &, const action_class &)> lambda_of;
+    /// optional: γ(s), a discount for every state (Section 12.8), instead of `gamma`
+    std::function<value_type(const state_class &)> gamma_of;
+
+    /**
+     * @brief ctor with a learning rate @param initial_alpha, a discount rate @param initial_gamma
+     *        and @param initial_lambda, all 0.9 by default, and the horizon @param initial_n (4 by default)
+     */
+    truncated_sarsa_lambda(value_type initial_alpha = 0.9,
+                           value_type initial_gamma = 0.9,
+                           value_type initial_lambda = 0.9,
+                           unsigned int initial_n = 4);
+
+    /**
+     * @brief start a new episode, to be learnt a step at a time: its steps are kept from one call to the next
+     *        until a call ends the episode
+     */
+    void start_episode();
+
+    /**
+     * @brief learn the steps of @param episode: the next steps of the episode started with `start_episode()`,
+     *        or else a whole episode on its own - @param policy_map will be modified
+     * @param terminated true if the episode really ended after its last link.
+     *        Pass false for an episode cut short, or for the last steps of one still being played
+     *        (as `games::play_online` does): its last link is then not a step, and only gives the
+     *        next state and action of the step before it.
+     */
+    void operator()(markov_chain episode,
+                    policy<state_class,action_class,value_type> & policy_map,
+                    bool terminated = true);
+
+private:
+    // true from `start_episode()` until a call ends the episode: the calls go on with the same episode
+    bool open_ = false;
+    // the steps of the episode so far
+    lambda_return_record<state_class,action_class,value_type> record_;
+    // the steps learnt so far: 0 ... learnt_ - 1
+    std::size_t learnt_ = 0;
+};
+
+/**
+ * @brief truncated TD(λ) (Sutton & Barto, Section 12.3): `truncated_sarsa_lambda` for a prediction task,
+ *        with a single action per state, V(s) being the value of (s, that action)
+ */
+template <class state_class,
+          class action_class,
+          typename markov_chain = std::deque<link<state_class,action_class>>,
+          typename value_type = double>
+using truncated_td_lambda = truncated_sarsa_lambda<state_class,action_class,markov_chain,value_type>;
+
+/**
+ * @struct online_lambda_return This is the online λ-return algorithm (Sutton & Barto, Section 12.4)
+ * @brief after every step, the whole episode so far is learnt again from its start, each step from its λ-return
+ *        truncated at that step
+ * @param alpha is the learning rate
+ * @param gamma is the discount rate
+ * @param lambda is λ
+ *
+ * Episode convention: same as `q_learning`, `s_t.reward()` is the reward r_t
+ * received after taking a_t in s_t.
+ *
+ * After step h - 1 of the episode, the horizon is h. Starting again from the values w_0 the episode
+ * started with, every step t = 0 ... h - 1 is learnt in order:
+ *
+ * Q(s_t,a_t) = Q(s_t,a_t) + α * (G^λ_{t:h} - Q(s_t,a_t))
+ *
+ * and the values at h, w_h, are those of the last of them. Every n-step return G_{t:t+k} bootstraps from
+ * Q(s_{t+k}, a_{t+k}) in w_{t+k-1}, the values when the agent got there. At the end of the episode, w_T
+ * is the λ-return algorithm learnt online, each update seeing every reward of the episode.
+ *
+ * It is the best of the λ-return algorithms, and the most costly: horizon h redoes h updates, so an
+ * episode of T steps costs about T²/2 of them. True online Sarsa(λ) (`true_online_sarsa_lambda`) gives
+ * the very same values after every step, at the cost of one step of Sarsa(λ): use it, and this one to
+ * see what it does. With λ = 0 it is SARSA.
+ *
+ * λ and γ may vary from state to state (Section 12.8): set `lambda_of` and `gamma_of`, and the
+ * λ-return is the one of Section 12.8 (see `lambda_return_record`).
+ *
+ * It learns online with `games::play_online` (window 1), or a whole episode at a time after `games::play`,
+ * as `true_online_sarsa_lambda` does, with the same `start_episode()`; the values of the pairs of the
+ * episode change after every step, those of the others not at all.
+ * @warning an episode learnt a step at a time and cut short stays open until the next `start_episode()`
+ */
+template <class state_class,
+          class action_class,
+          typename markov_chain = std::deque<link<state_class,action_class>>,
+          typename value_type = double>
+struct online_lambda_return
+{
+    /// learning rate - you may change this as you process episodes
+    value_type alpha = 0.9;
+    /// discount rate - you may change this as you process episodes
+    value_type gamma = 0.9;
+    /// λ, 0 ... 1 (0 is SARSA)
+    value_type lambda = 0.9;
+    /// optional: λ(s, a), a λ for every state/action pair (Section 12.8), instead of `lambda`
+    std::function<value_type(const state_class &, const action_class &)> lambda_of;
+    /// optional: γ(s), a discount for every state (Section 12.8), instead of `gamma`
+    std::function<value_type(const state_class &)> gamma_of;
+
+    /**
+     * @brief ctor with a learning rate @param initial_alpha, a discount rate @param initial_gamma
+     *        and @param initial_lambda, all 0.9 by default
+     */
+    online_lambda_return(value_type initial_alpha = 0.9,
+                         value_type initial_gamma = 0.9,
+                         value_type initial_lambda = 0.9);
+
+    /**
+     * @brief start a new episode, to be learnt a step at a time: its steps, and the values it started with,
+     *        are kept from one call to the next until a call ends the episode
+     */
+    void start_episode();
+
+    /**
+     * @brief learn the steps of @param episode: the next steps of the episode started with `start_episode()`,
+     *        or else a whole episode on its own - @param policy_map will be modified
+     * @param terminated true if the episode really ended after its last link.
+     *        Pass false for an episode cut short, or for the last steps of one still being played
+     *        (as `games::play_online` does): its last link is then not a step, and only gives the
+     *        next state and action of the step before it.
+     */
+    void operator()(markov_chain episode,
+                    policy<state_class,action_class,value_type> & policy_map,
+                    bool terminated = true);
+
+private:
+    // a state/action pair of the episode, and its value when the episode started
+    struct start_value
+    {
+        state_class state;
+        action_class action;
+        value_type value;
+    };
+    // true from `start_episode()` until a call ends the episode: the calls go on with the same episode
+    bool open_ = false;
+    // the steps of the episode so far
+    lambda_return_record<state_class,action_class,value_type> record_;
+    // w_0: the values the pairs of the episode had when it started, in the order they were first visited
+    std::vector<start_value> start_;
+};
 
 /********************************************************************************
  ***********               Template Implementations
@@ -490,12 +788,12 @@ void sarsa_lambda<state_class,action_class,markov_chain,value_type
         value_type target = step.state.reward();
         if (t + 1 < episode.size()) {
             const auto & next = episode[t + 1];
-            target += gamma * values.value(next.state, next.action);
+            target += gamma_at(gamma_of, gamma, next.state) * values.value(next.state, next.action);
         }
         // δ = r_t + γ Q(s_{t+1}, a_{t+1}) - Q(s_t, a_t)
         value_type delta = target - values.value(step.state, step.action);
         // z = γλ z, then z(s_t, a_t) = z(s_t, a_t) + 1 (accumulating) or 1 (replacing)
-        traces.decay(gamma * lambda);
+        traces.decay(gamma_at(gamma_of, gamma, step.state) * lambda_at(lambda_of, lambda, step.state, step.action));
         traces.visit(step.state, step.action, replacing);
         // Q(s,a) = Q(s,a) + α δ z(s,a), for every pair
         traces.update(policy_map, alpha * delta);
@@ -604,18 +902,21 @@ void true_online_sarsa_lambda<state_class,action_class,markov_chain,value_type
     // a cut-short episode does not learn its last link (yet): it is not a step
     const std::size_t learnt = (terminated || episode.size() == 0) ? episode.size()
                                                                    : episode.size() - 1;
-    const value_type fade = gamma * lambda;
     for (std::size_t t = 0; t < learnt; t++) {
         const auto & step = episode[t];
         // Q and Q', read before this step changes anything; nothing after the last step of an episode
         const value_type q = policy_map.value(step.state, step.action);
         value_type q_next = 0;
+        value_type discount = 0;
         if (t + 1 < episode.size()) {
             const auto & next = episode[t + 1];
             q_next = policy_map.value(next.state, next.action);
+            discount = gamma_at(gamma_of, gamma, next.state);
         }
         // δ = r_t + γ Q' - Q
-        const value_type delta = step.state.reward() + gamma * q_next - q;
+        const value_type delta = step.state.reward() + discount * q_next - q;
+        // γλ at this step: γ(s_t) λ(s_t, a_t)
+        const value_type fade = gamma_at(gamma_of, gamma, step.state) * lambda_at(lambda_of, lambda, step.state, step.action);
         // the Dutch trace: z = γλ z, then z(s_t, a_t) = z(s_t, a_t) + 1 - αγλ z_old(s_t, a_t)
         const value_type z_old = traces.trace(step.state, step.action);
         traces.decay(fade);
@@ -625,6 +926,252 @@ void true_online_sarsa_lambda<state_class,action_class,markov_chain,value_type
         policy_map.update(step.state, step.action,
                           policy_map.value(step.state, step.action) - alpha * (q - q_old));
         q_old = q_next;
+    }
+    // the end of the episode: the next call is a new one
+    if (terminated) {
+        open_ = false;
+    }
+}
+
+template <class state_class,
+          typename value_type>
+value_type gamma_at(const std::function<value_type(const state_class &)> & gamma_of,
+                    value_type gamma,
+                    const state_class & s_t)
+{
+    return gamma_of ? gamma_of(s_t) : gamma;
+}
+
+template <class state_class,
+          class action_class,
+          typename value_type>
+value_type lambda_at(const std::function<value_type(const state_class &, const action_class &)> & lambda_of,
+                     value_type lambda,
+                     const state_class & s_t,
+                     const action_class & a_t)
+{
+    return lambda_of ? lambda_of(s_t, a_t) : lambda;
+}
+
+template <class state_class,
+          class action_class,
+          typename value_type>
+void lambda_return_record<state_class,action_class,value_type>::push_back(const entry & e)
+{
+    steps_.push_back(e);
+}
+
+template <class state_class,
+          class action_class,
+          typename value_type>
+void lambda_return_record<state_class,action_class,value_type>::clear()
+{
+    steps_.clear();
+}
+
+template <class state_class,
+          class action_class,
+          typename value_type>
+std::size_t lambda_return_record<state_class,action_class,value_type>::size() const
+{
+    return steps_.size();
+}
+
+template <class state_class,
+          class action_class,
+          typename value_type>
+const typename lambda_return_record<state_class,action_class,value_type>::entry &
+    lambda_return_record<state_class,action_class,value_type>::operator[](std::size_t t) const
+{
+    return steps_[t];
+}
+
+template <class state_class,
+          class action_class,
+          typename value_type>
+std::vector<value_type> lambda_return_record<state_class,action_class,value_type
+                                            >::returns(std::size_t first,
+                                                       std::size_t h) const
+{
+    assert(h <= steps_.size() && "the horizon is past the steps recorded");
+    std::vector<value_type> G(h > first ? h - first : 0);
+    if (G.empty()) {
+        return G;
+    }
+    // G^λ_{h-1:h} = r_{h-1} + γ_h V_h
+    const auto & last = steps_[h - 1];
+    G.back() = last.reward + last.gamma_next * last.value_next;
+    // then backwards: G^λ_{t:h} = r_t + γ_{t+1} ((1 - λ_{t+1}) V_{t+1} + λ_{t+1} G^λ_{t+1:h})
+    for (std::size_t i = G.size() - 1; i > 0; i--) {
+        const auto & e = steps_[first + i - 1];
+        G[i - 1] = e.reward + e.gamma_next * ((1 - e.lambda_next) * e.value_next + e.lambda_next * G[i]);
+    }
+    return G;
+}
+
+template <class state_class,
+          class action_class,
+          typename markov_chain,
+          typename value_type>
+truncated_sarsa_lambda<state_class,action_class,markov_chain,value_type
+                      >::truncated_sarsa_lambda(value_type initial_alpha,
+                                                value_type initial_gamma,
+                                                value_type initial_lambda,
+                                                unsigned int initial_n)
+: alpha(initial_alpha),
+  gamma(initial_gamma),
+  lambda(initial_lambda),
+  n(initial_n)
+{}
+
+template <class state_class,
+          class action_class,
+          typename markov_chain,
+          typename value_type>
+void truncated_sarsa_lambda<state_class,action_class,markov_chain,value_type>::start_episode()
+{
+    record_.clear();
+    learnt_ = 0;
+    open_ = true;
+}
+
+template <class state_class,
+          class action_class,
+          typename markov_chain,
+          typename value_type>
+void truncated_sarsa_lambda<state_class,action_class,markov_chain,value_type
+                           >::operator()(markov_chain episode,
+                                         policy<state_class,action_class,value_type> & policy_map,
+                                         bool terminated)
+{
+    assert(n >= 1 && "truncated_sarsa_lambda needs n >= 1");
+    const std::size_t horizon = std::max(n, 1u);
+    // the next steps of the episode started with `start_episode()`, or else a whole episode on its own
+    if (!open_) {
+        record_.clear();
+        learnt_ = 0;
+    }
+    // learn step t from G^λ_{t:h}: Q(s_t,a_t) = Q(s_t,a_t) + α (G^λ_{t:h} - Q(s_t,a_t))
+    auto learn = [&](std::size_t t, std::size_t h) {
+        const auto & e = record_[t];
+        const value_type G = record_.returns(t, h).front();
+        const value_type q = policy_map.value(e.state, e.action);
+        policy_map.update(e.state, e.action, q + alpha * (G - q));
+    };
+    // a cut-short episode does not learn its last link: it is not a step
+    const std::size_t steps = (terminated || episode.size() == 0) ? episode.size()
+                                                                  : episode.size() - 1;
+    for (std::size_t t = 0; t < steps; t++) {
+        const auto & step = episode[t];
+        // the step, and what follows it: γ_{t+1}, λ_{t+1} and V_{t+1}, the value of (s_{t+1}, a_{t+1})
+        // before the update of this step, or nothing after the last step of an episode
+        typename lambda_return_record<state_class,action_class,value_type>::entry e
+            {step.state, step.action, step.state.reward(), value_type(0), value_type(0), value_type(0)};
+        if (t + 1 < episode.size()) {
+            const auto & next = episode[t + 1];
+            e.gamma_next  = gamma_at(gamma_of, gamma, next.state);
+            e.lambda_next = lambda_at(lambda_of, lambda, next.state, next.action);
+            e.value_next  = policy_map.value(next.state, next.action);
+        }
+        record_.push_back(e);
+        // at h = t + 1, the step n steps back is learnt, from its λ-return truncated at h
+        const std::size_t h = record_.size();
+        while (learnt_ + horizon <= h) {
+            learn(learnt_, h);
+            learnt_++;
+        }
+    }
+    // the end of the episode: the steps left, in order, from their λ-returns to the end; the next call is a new one
+    if (terminated) {
+        const std::size_t T = record_.size();
+        for (; learnt_ < T; learnt_++) {
+            learn(learnt_, T);
+        }
+        open_ = false;
+    }
+}
+
+template <class state_class,
+          class action_class,
+          typename markov_chain,
+          typename value_type>
+online_lambda_return<state_class,action_class,markov_chain,value_type
+                    >::online_lambda_return(value_type initial_alpha,
+                                            value_type initial_gamma,
+                                            value_type initial_lambda)
+: alpha(initial_alpha),
+  gamma(initial_gamma),
+  lambda(initial_lambda)
+{}
+
+template <class state_class,
+          class action_class,
+          typename markov_chain,
+          typename value_type>
+void online_lambda_return<state_class,action_class,markov_chain,value_type>::start_episode()
+{
+    record_.clear();
+    start_.clear();
+    open_ = true;
+}
+
+template <class state_class,
+          class action_class,
+          typename markov_chain,
+          typename value_type>
+void online_lambda_return<state_class,action_class,markov_chain,value_type
+                         >::operator()(markov_chain episode,
+                                       policy<state_class,action_class,value_type> & policy_map,
+                                       bool terminated)
+{
+    // the next steps of the episode started with `start_episode()`, or else a whole episode on its own
+    if (!open_) {
+        record_.clear();
+        start_.clear();
+    }
+    // a cut-short episode does not learn its last link: it is not a step
+    const std::size_t steps = (terminated || episode.size() == 0) ? episode.size()
+                                                                  : episode.size() - 1;
+    for (std::size_t t = 0; t < steps; t++) {
+        const auto & step = episode[t];
+        // a pair new to the episode: its value is still the one the episode started with
+        bool known = false;
+        for (const auto & p : start_) {
+            if (p.state == step.state && p.action == step.action) {
+                known = true;
+                break;
+            }
+        }
+        if (!known) {
+            start_.push_back({step.state, step.action, policy_map.value(step.state, step.action)});
+        }
+        // the step, and what follows it: γ_{t+1}, λ_{t+1} and V_{t+1}, the value of (s_{t+1}, a_{t+1})
+        // in w_t, before this step is learnt, or nothing after the last step of an episode
+        typename lambda_return_record<state_class,action_class,value_type>::entry e
+            {step.state, step.action, step.state.reward(), value_type(0), value_type(0), value_type(0)};
+        if (t + 1 < episode.size()) {
+            const auto & next = episode[t + 1];
+            e.gamma_next  = gamma_at(gamma_of, gamma, next.state);
+            e.lambda_next = lambda_at(lambda_of, lambda, next.state, next.action);
+            e.value_next  = policy_map.value(next.state, next.action);
+        }
+        record_.push_back(e);
+        // the horizon h: from w_0, every step k < h learnt again, in order, from G^λ_{k:h}
+        const std::size_t h = record_.size();
+        const auto G = record_.returns(0, h);
+        policy<state_class,action_class,value_type> redone;
+        for (const auto & p : start_) {
+            redone.update(p.state, p.action, p.value);
+        }
+        for (std::size_t k = 0; k < h; k++) {
+            const auto & s = record_[k];
+            const value_type q = redone.value(s.state, s.action);
+            redone.update(s.state, s.action, q + alpha * (G[k] - q));
+        }
+        // w_h: the values of the pairs of the episode
+        for (const auto & p : start_) {
+            policy_map.update(p.state, p.action, redone.value(p.state, p.action));
+        }
     }
     // the end of the episode: the next call is a new one
     if (terminated) {
