@@ -44,6 +44,10 @@ Currently the library implements the following algorithms, each one explained in
   n steps later from its λ-return truncated there, and **the online λ-return algorithm** (`online_lambda_return`); and a
   λ and a γ that vary from state to state (`lambda_of`, `gamma_of`) for all of these but Watkins's Q(λ),
   see [docs/eligibility_traces.md](docs/eligibility_traces.md)
+- **off-policy TD(λ)** and **off-policy Expected Sarsa(λ)** (`off_policy_td_lambda`, `off_policy_expected_sarsa_lambda`),
+  with per-decision importance sampling and control variates, and **Tree-Backup(λ)** (`tree_backup_lambda`), which learn
+  the values of one policy from the episodes of another with eligibility traces,
+  see [docs/off_policy_traces.md](docs/off_policy_traces.md)
 - **REINFORCE**, **REINFORCE with a baseline** and **one-step Actor-Critic** (`reinforce`, `reinforce_with_baseline`
   and `actor_critic`), which learn the policy itself, as a softmax over action preferences (`softmax_policy`),
   so that it can stay stochastic when that is best, see [docs/policy_gradient.md](docs/policy_gradient.md)
@@ -167,6 +171,7 @@ There is nothing to build! This is a header-only library, you only need the `src
 | `relearn/mcts.hpp` | `mcts`, Monte Carlo Tree Search with UCT |
 | `relearn/n_step.hpp` | `n_step_sarsa`, and `n_step_td` (TD(0) when n = 1); `n_step_expected_sarsa`, `off_policy_n_step_sarsa`, `n_step_tree_backup` and `n_step_q_sigma` |
 | `relearn/eligibility_traces.hpp` | `sarsa_lambda`, `td_lambda` and `watkins_q_lambda`, and their `eligibility_traces`; `true_online_sarsa_lambda` and `true_online_td_lambda`; `truncated_sarsa_lambda`, `truncated_td_lambda` and `online_lambda_return`, and their `lambda_return_record` |
+| `relearn/off_policy_traces.hpp` | `off_policy_td_lambda`, `off_policy_expected_sarsa_lambda` and `tree_backup_lambda` |
 | `relearn/policy_gradient.hpp` | `softmax_policy`, `reinforce`, `reinforce_with_baseline` and `actor_critic`; `actor_critic_lambda` and `continuing_actor_critic` |
 | `relearn/r_learning.hpp` | `r_learning` and `differential_sarsa` |
 | `relearn/prioritized_sweeping.hpp` | `prioritized_sweeping` |
@@ -440,6 +445,7 @@ after every step with `games::play_online`.
 | `tic_tac_toe` | S&B 1.5 | `q_learning` | Against a random or a perfect (minimax) opponent |
 | `tic_tac_toe_mcts` | S&B 8.11 | `mcts` | Planning each move, as X or as O: it never loses to a perfect opponent, and beats a random one |
 | `frozen_lake` | Gymnasium | `q_probabilistic` | Slippery ice, where the learnt 4x4 policy is optimal |
+| `frozen_lake_off_policy` | S&B 12.9, 12.10 | `tree_backup_lambda`, `off_policy_expected_sarsa_lambda`, `off_policy_td_lambda` | Learning off-policy from random play: tree backup is steady whatever λ, importance sampling blows up in about half the runs with a large λ, and with a uniform b the two are one |
 | `cart_pole` | Gymnasium | `q_learning` | A continuous state, cut into boxes (`games::discretised`) |
 | `mountain_car` | Gymnasium | `q_learning` | A continuous state, explored by optimistic initial values |
 

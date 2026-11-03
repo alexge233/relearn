@@ -17,6 +17,7 @@
  * - Reaching G is worth +1 and ends the episode; falling into H ends it with 0.
  * - Gymnasium stops an episode after 100 moves (4x4) or 200 moves (8x8):
  *   use `step_limit()` with `games::play`.
+ * - `model()` gives the rules as a model, p(s', r | s, a), for dynamic programming.
  */
 #include "game.hpp"
 #include <random>
@@ -36,6 +37,9 @@ public:
     using state_type  = unsigned int;
     /// an action is one of the four moves, numbered as in Gymnasium
     using action_type = unsigned int;
+    /// the rules as a model, for dynamic programming
+    using model_type  = relearn::finite_mdp<relearn::state<state_type>,
+                                            relearn::action<action_type>>;
     /// the four moves, numbered as in Gymnasium
     enum : action_type
     {
@@ -157,6 +161,44 @@ public:
     std::vector<action_type> actions(const state_type &) const
     {
         return {left, down, right, up};
+    }
+
+    /**
+     * @return the rules as a model, p(s', r | s, a): on slippery ice each move turns left, stays, or turns right,
+     *         a third of the time each; reaching the goal is worth +1, and the goal and the holes end the episode
+     */
+    model_type model() const
+    {
+        model_type m;
+        for (state_type s = 0; s < states(); s++) {
+            m.states.push_back(relearn::state<state_type>(s));
+        }
+        // the four moves, in every cell but the goal and the holes
+        auto self = *this;
+        m.actions = [self](const relearn::state<state_type> & s) {
+            std::vector<relearn::action<action_type>> moves;
+            if (self.tile(s.trait()) != 'G' && self.tile(s.trait()) != 'H') {
+                for (action_type a : {left, down, right, up}) {
+                    moves.push_back(relearn::action<action_type>(a));
+                }
+            }
+            return moves;
+        };
+        // each of the moves the ice can turn the agent to, a third of the time each (or the move itself, for sure)
+        m.outcomes = [self](const relearn::state<state_type> & s,
+                            const relearn::action<action_type> & a) {
+            std::vector<model_type::outcome> outcomes;
+            const std::vector<int> turns = self.slippery_ ? std::vector<int>{-1, 0, 1} : std::vector<int>{0};
+            for (int turn : turns) {
+                const action_type actual = static_cast<action_type>((static_cast<int>(a.trait()) + 4 + turn) % 4);
+                const state_type next = self.moved(s.trait(), actual);
+                outcomes.push_back({relearn::state<state_type>(next),
+                                    self.tile(next) == 'G' ? 1.0 : 0.0,
+                                    1.0 / static_cast<double>(turns.size())});
+            }
+            return outcomes;
+        };
+        return m;
     }
 
     /// @return the cell reached from @param s by moving in direction @param a (no slipping)
