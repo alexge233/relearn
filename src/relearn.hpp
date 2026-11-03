@@ -61,5 +61,6 @@
 #include "relearn/r_learning.hpp"
 #include "relearn/prioritized_sweeping.hpp"
 #include "relearn/dynamic_programming.hpp"
+#include "relearn/planning.hpp"
 #include "relearn/bandits.hpp"
 #endif

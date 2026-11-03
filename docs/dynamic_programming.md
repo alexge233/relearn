@@ -342,6 +342,10 @@ changes, whilst staying just as good.
 
 `tests/games_test.cpp` checks that the models of `small_gridworld` and `gamblers_problem` follow the games' rules.
 
+__note__: dynamic programming sweeps every state. Planning where it counts, on the states the agent meets or from the
+state it is in (trajectory sampling, real-time dynamic programming, heuristic search and rollouts), is in
+[planning.md](planning.md), with the same `finite_mdp`.
+
 __note__: Jack's car rental (Example 4.2) is not here. Its model has 441 states, with 441 outcomes for every move,
 which is fine for `dynamic_programming`, but the book gives its answer only as a picture (Figure 4.2), which is hard
 to check cell by cell.

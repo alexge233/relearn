@@ -1,10 +1,9 @@
 # Roadmap
 
-relearn now has most of the tabular methods of Sutton and Barto's book [1]: from bandits and dynamic programming,
-through Monte Carlo, TD, n-step methods, planning and eligibility traces, to policy gradients, R-Learning and Monte
-Carlo Tree Search. Each one is tested against hand-worked steps and against the book's own figures. A few are still
-to come (real-time dynamic programming, trajectory sampling, heuristic search and rollouts), and they are the first part
-of this plan.
+relearn now has the tabular methods of Sutton and Barto's book [1]: from bandits and dynamic programming, through
+Monte Carlo, TD, n-step methods, planning and eligibility traces, to policy gradients, R-Learning and Monte Carlo Tree
+Search. Each one is tested against hand-worked steps and against the book's own figures. Function approximation comes
+next, and it is the first part of this plan.
 
 This page is where it goes next. It is a plan, not a promise: there are no dates, the order may change, and each
 step is only done once it has been implemented, tested, documented and reviewed, like everything before it.
@@ -36,17 +35,15 @@ Whatever gets added, a few things don't change:
 
 ## 1. Finishing the classics
 
-### The tabular methods still to come
+### The tabular methods
 
 The book has a few more tabular methods that relearn doesn't have yet (the whole n-step family of Chapter 7 is
 now in, have a look at [n_step.md](n_step.md), and so are true online TD(λ) and Sarsa(λ), truncated TD(λ), the online
 λ-return algorithm and a λ and a γ that vary, in [eligibility_traces.md](eligibility_traces.md), and Actor-Critic with eligibility traces, episodic and for tasks that
 never end, in [policy_gradient.md](policy_gradient.md), off-policy Monte Carlo prediction with every importance
 sampling of Chapter 5, in [monte_carlo.md](monte_carlo.md), and off-policy traces with control variates and Tree-Backup(λ),
-in [off_policy_traces.md](off_policy_traces.md)). What is left are the smaller or rarer ones:
-
-- real-time dynamic programming (Section 8.7), and trajectory sampling, heuristic search and rollout algorithms
-  (Sections 8.6, 8.9 and 8.10)
+in [off_policy_traces.md](off_policy_traces.md), and trajectory sampling, real-time dynamic programming, heuristic search and
+rollout algorithms, in [planning.md](planning.md)). That was the last of them.
 
 ### Function approximation
 
@@ -87,7 +84,7 @@ come from Gymnasium included, as FrozenLake was), and drawable in the watch mode
 |---|---|---|---|
 | Drifting bandit | arms whose values drift over time: a constant step size against sample averages | ε-Greedy, UCB, gradient bandit | Exercise 2.5 [1] |
 | Jack's car rental | dynamic programming on a model with thousands of transitions (Figure 4.2) | policy iteration, value iteration | Example 4.2 [1] |
-| Racetrack | learning to drive round a bend from another policy's play, then planning it in real time | off-policy Monte Carlo, real-time DP | Exercise 5.12, Example 8.6 [1] |
+| Racetrack | now in, planned with real-time DP, heuristic search and rollouts (`examples/racetrack.cpp`); still to come, learning to drive it from another policy's play | off-policy Monte Carlo | Exercise 5.12 [1] |
 | Taxi | a pick-up and a drop-off, with wrong moves punished: a small test bench for the whole n-step family | Q-Learning, Sarsa, tree backup, Q(σ) | [14] |
 | Superoptimiser | writing the shortest program, below, step by step | MCTS, Q-Learning, linear function approximation | [12], [13] |
 | Connect Four | a game too big for a table, played by planning alone | MCTS | |
