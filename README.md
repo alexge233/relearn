@@ -2,6 +2,8 @@
 
 [![check](https://github.com/alexge233/relearn/actions/workflows/check.yaml/badge.svg)](https://github.com/alexge233/relearn/actions/workflows/check.yaml)
 
+**English** | [Español](README.es.md)
+
 A Reinforcement Learning *header-only* template library for C++14.
 Minimal and simple to use, for a variety of scenarios.
 It is based on Sutton and Barto's book [1] and implements *some* of the functionality described in it.
