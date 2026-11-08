@@ -840,3 +840,102 @@ TEST_CASE("knowing how it chose changes nothing it plays", "[lesson][beliefs]")
         REQUIRE(s.last_action() == t.last_action());
     }
 }
+
+TEST_CASE("the walker's death goes walker, skull, ghost, and ends", "[lesson][death]")
+{
+    using part = lessons::death_scene::part;
+    lessons::death_scene d;
+    REQUIRE(!d.running());
+    REQUIRE(d.shown() == part::none);
+    REQUIRE(d.along() == 0);
+    d.begin();
+    REQUIRE(d.running());
+    REQUIRE(d.shown() == part::walker);
+    REQUIRE(d.along() == Approx(0).margin(1e-12));
+    d.advance(0.125);
+    REQUIRE(d.shown() == part::walker);
+    REQUIRE(d.along() == Approx(0.5));
+    d.advance(0.125 + 1e-9);
+    REQUIRE(d.shown() == part::skull);
+    REQUIRE(d.along() == Approx(0).margin(1e-6));
+    d.advance(0.175);
+    REQUIRE(d.shown() == part::skull);
+    REQUIRE(d.along() == Approx(0.5).margin(1e-6));
+    d.advance(0.175);
+    REQUIRE(d.shown() == part::ghost);
+    REQUIRE(d.along() == Approx(0).margin(1e-6));
+    d.advance(0.2);
+    REQUIRE(d.shown() == part::ghost);
+    REQUIRE(d.along() == Approx(0.5).margin(1e-6));
+    d.advance(0.2);
+    REQUIRE(!d.running());
+    REQUIRE(d.shown() == part::none);
+    d.advance(5);
+    REQUIRE(!d.running());
+    d.begin();
+    REQUIRE(d.running());
+    d.stop();
+    REQUIRE(!d.running());
+}
+
+TEST_CASE("nothing moves during a death, and what was asked for comes after", "[lesson][death]")
+{
+    lessons::controls c;
+    c.death.begin();
+    for (int i = 0; i < 10; i++) {
+        REQUIRE(c.steps_for(0.05) == 0);
+    }
+    c.death.stop();
+    REQUIRE(c.steps_for(0.2) == 1);
+    c.paused = true;
+    c.death.begin();
+    c.single_step();
+    REQUIRE(c.steps_for(0.1) == 0);
+    c.death.stop();
+    REQUIRE(c.steps_for(0.1) == 1);
+    REQUIRE(c.steps_for(0.1) == 0);
+}
+
+TEST_CASE("the moves lead where they say", "[lesson][death]")
+{
+    const games::position p{5, 2};
+    REQUIRE(lessons::moved_to(p, 0) == games::position{5, 1});
+    REQUIRE(lessons::moved_to(p, 1) == games::position{6, 2});
+    REQUIRE(lessons::moved_to(p, 2) == games::position{5, 3});
+    REQUIRE(lessons::moved_to(p, 3) == games::position{4, 2});
+}
+
+TEST_CASE("every fall ends on the spikes, for every learner", "[lesson][death]")
+{
+    lessons::tabular_session<rules, q_learning_rule<rules>> q(rules(), 0.5, 1.0, 0.3, 2);
+    lessons::tabular_session<rules, sarsa_rule<rules>> s(rules(), 0.5, 1.0, 0.3, 2);
+    int falls = 0;
+    for (int i = 0; i < 20000; i++) {
+        q.step();
+        s.step();
+        if (q.punished()) {
+            REQUIRE(rules::cliff(lessons::moved_to(q.from(), q.last_action())));
+            REQUIRE(q.at() == rules::start());
+            falls++;
+        }
+        if (s.punished()) {
+            REQUIRE(rules::cliff(lessons::moved_to(s.from(), s.last_action())));
+            falls++;
+        }
+    }
+    REQUIRE(falls > 100);
+}
+
+TEST_CASE("the skull is a tile, and symmetric", "[lesson][death]")
+{
+    const auto & rows = lessons::skull_art();
+    REQUIRE(rows.size() == 16);
+    int holes = 0;
+    for (const auto & row : rows) {
+        REQUIRE(row.size() == 16);
+        REQUIRE(std::string(row.rbegin(), row.rend()) == row);
+        REQUIRE(row.find_first_not_of(".#osx") == std::string::npos);
+        holes += static_cast<int>(std::count(row.begin(), row.end(), 'x'));
+    }
+    REQUIRE(holes > 10);
+}

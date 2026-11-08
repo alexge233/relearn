@@ -15,6 +15,7 @@ of each one; this is the short version.
 - Help bubbles: rest the mouse on anything on the main screen and it says what it is.
 - `examples/window/chiptune.hpp`: an original chiptune loop and the sound effects, written as code; M and the top bar
   turn them on and off, `--mute` starts silent; `tests/chiptune_test.cpp` measures the samples.
+- A fall is a short scene at low speeds: the walker turns red, a skull bounces up and its ghost floats away.
 - The beliefs in a cell are a heatmap, one triangle per move, and it says whether the move was a best guess or a
   random try, which is where epsilon acts.
 - `examples/lesson_cliff_walking.cpp`: the first lesson, with Kenney's tiles and a smooth map of the values.

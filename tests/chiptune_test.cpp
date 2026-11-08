@@ -372,12 +372,12 @@ TEST_CASE("steps only make a sound when they can be followed", "[chiptune][cue]"
         c.slower();
     }
     while (c.rate() <= 10) {
-        REQUIRE(c.audible_steps());
+        REQUIRE(c.followable_steps());
         c.faster();
     }
-    REQUIRE(!c.audible_steps());
+    REQUIRE(!c.followable_steps());
     c.paused = true;
-    REQUIRE(c.audible_steps());
+    REQUIRE(c.followable_steps());
 }
 
 TEST_CASE("the sound has its key, its bubble and its option", "[chiptune]")

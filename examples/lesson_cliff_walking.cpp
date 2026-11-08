@@ -196,6 +196,11 @@ private:
                 float y,
                 float side) const
     {
+        if (shown.death.running()) {
+            dying(look, now, shown.death, x, y, side);
+            caption(look, now, x, y, side);
+            return;
+        }
         const games::position to = now.at();
         float cx = static_cast<float>(to.x);
         float cy = static_cast<float>(to.y);
@@ -205,8 +210,46 @@ private:
             cy = now.from().y + (to.y - now.from().y) * t;
         }
         look.dungeon(0, 8, x + cx * side, y + cy * side);
+        caption(look, now, x, y, side);
+    }
+
+    /// @brief what a fall cost it
+    void caption(const lessons::studio & look,
+                 const lessons::session & now,
+                 float x,
+                 float y,
+                 float side) const
+    {
         if (now.punished()) {
+            look.write("-100! Back to the start.", x + 57, y + 3 * side - 23, 16, BLACK, true);
             look.write("-100! Back to the start.", x + 56, y + 3 * side - 24, 16, lessons::ink::danger, true);
+        }
+    }
+
+    /// @brief the walker going onto the spikes and turning red, a skull bouncing up, and its ghost floating away
+    void dying(const lessons::studio & look,
+               const lessons::session & now,
+               const lessons::death_scene & scene,
+               float x,
+               float y,
+               float side) const
+    {
+        using part = lessons::death_scene::part;
+        const games::position from = now.from();
+        const games::position spikes = lessons::moved_to(from, now.last_action());
+        const float left = x + spikes.x * side;
+        const float top  = y + spikes.y * side;
+        const auto t = static_cast<float>(scene.along());
+        if (scene.shown() == part::walker) {
+            const auto fade = static_cast<unsigned char>(255 * (1 - t));
+            look.dungeon(0, 8, x + (from.x + (spikes.x - from.x) * t) * side, y + (from.y + (spikes.y - from.y) * t) * side, Color{255, fade, fade, 255});
+        }
+        else if (scene.shown() == part::skull) {
+            look.skull(left, top - std::sin(t * PI) * side * 0.3f);
+        }
+        else {
+            look.skull(left, top);
+            look.dungeon(1, 10, left, top - t * side, Color{255, 255, 255, static_cast<unsigned char>(230 * (1 - t))});
         }
     }
 };

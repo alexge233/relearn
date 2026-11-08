@@ -682,6 +682,83 @@ inline cue cue_of(bool punished,
 }
 
 /**
+ * @class death_scene
+ * @brief the short scene of the walker dying: first the walker going in, then a skull, then its ghost leaving
+ */
+class death_scene
+{
+public:
+    /// how long it lasts, in seconds
+    static constexpr double length = 1.0;
+
+    /// what is on the screen
+    enum class part
+    {
+        none,
+        walker,
+        skull,
+        ghost
+    };
+
+    /// @brief start it
+    void begin()
+    {
+        left_ = length;
+    }
+
+    /// @brief end it at once
+    void stop()
+    {
+        left_ = 0;
+    }
+
+    /// @brief let @param seconds go by
+    void advance(double seconds)
+    {
+        left_ = std::max(0.0, left_ - seconds);
+    }
+
+    /// @return true whilst it is playing
+    bool running() const
+    {
+        return left_ > 0;
+    }
+
+    /// @return what is on the screen now
+    part shown() const
+    {
+        if (!running()) {
+            return part::none;
+        }
+        const double t = done();
+        return t < skull_at ? part::walker : (t < ghost_at ? part::skull : part::ghost);
+    }
+
+    /// @return how far the current part has got, from 0 to 1
+    double along() const
+    {
+        const double t = done();
+        switch (shown()) {
+            case part::walker: return t / skull_at;
+            case part::skull:  return (t - skull_at) / (ghost_at - skull_at);
+            case part::ghost:  return (t - ghost_at) / (1 - ghost_at);
+            default:           return 0;
+        }
+    }
+
+private:
+    static constexpr double skull_at = 0.25;
+    static constexpr double ghost_at = 0.6;
+
+    double done() const
+    {
+        return 1 - left_ / length;
+    }
+
+    double left_ = 0;
+};
+
+/**
  * @class controls
  * @brief how the lesson is being run: the speed, whether it is paused, what is shown
  */
@@ -698,6 +775,8 @@ public:
     bool help = false;
     /// the music and the effects are on
     bool sound = true;
+    /// the walker dying, during which nothing moves
+    death_scene death;
 
     /// @return the speeds, in steps per second
     static const std::vector<double> & speeds()
@@ -734,8 +813,8 @@ public:
         return rate() <= 10;
     }
 
-    /// @return true if a step is slow enough to have its own sound: above that, it would be a constant rattle
-    bool audible_steps() const
+    /// @return true if a step is slow enough for its sound and its scene: above that, they would be a constant rattle
+    bool followable_steps() const
     {
         return paused || gliding();
     }
@@ -750,10 +829,13 @@ public:
     /**
      * @brief the steps to play in a frame
      * @param seconds is the length of the frame
-     * @return how many steps: those asked for one by one if paused, else as many as the speed has built up
+     * @return how many steps: none during a death, those asked for one by one if paused, else as many as the speed has built up
      */
     unsigned int steps_for(double seconds)
     {
+        if (death.running()) {
+            return 0;
+        }
         if (paused) {
             const unsigned int asked = pending_;
             pending_ = 0;
@@ -871,6 +953,36 @@ inline double scaled(double v,
                      double high)
 {
     return high > low ? (v - low) / (high - low) : 1.0;
+}
+
+/// @return the cell the move @param a (up, right, down, left) leads to from @param from, if nothing stops it
+inline position moved_to(const position & from,
+                         unsigned int a)
+{
+    static const int dirs[4][2] = {{0, -1}, {1, 0}, {0, 1}, {-1, 0}};
+    return position{from.x + dirs[a][0], from.y + dirs[a][1]};
+}
+
+/// @return the skull, 16 x 16: '#' its outline, 'o' bone, 's' shaded bone, 'x' the holes
+inline const std::vector<std::string> & skull_art()
+{
+    static const std::vector<std::string> rows = {"................",
+                                                  ".....######.....",
+                                                  "...##oooooo##...",
+                                                  "..#oooooooooo#..",
+                                                  ".#oooooooooooo#.",
+                                                  ".#oooooooooooo#.",
+                                                  ".#oxxxooooxxxo#.",
+                                                  ".#oxxxxooxxxxo#.",
+                                                  ".#oxxxooooxxxo#.",
+                                                  ".#sooooxxoooos#.",
+                                                  "..#soooooooos#..",
+                                                  "...#ssooooss#...",
+                                                  "...#oxoxxoxo#...",
+                                                  "...#oxoxxoxo#...",
+                                                  "....########....",
+                                                  "................"};
+    return rows;
 }
 
 /// @return where a move's belief sits on the colour scale of its cell: the middle when nothing tells them apart yet

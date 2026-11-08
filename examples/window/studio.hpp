@@ -133,13 +133,28 @@ public:
         tile(town_, col, row, x, y);
     }
 
-    /// @brief draw a tile of the dungeon's sheet
+    /// @brief draw a tile of the dungeon's sheet, tinted @param tint
     void dungeon(int col,
                  int row,
                  float x,
-                 float y) const
+                 float y,
+                 Color tint = WHITE) const
     {
-        tile(dungeon_, col, row, x, y);
+        tile(dungeon_, col, row, x, y, tint);
+    }
+
+    /// @brief draw the skull at (@param x, @param y), the size of a tile
+    void skull(float x,
+               float y) const
+    {
+        const auto & rows = skull_art();
+        for (std::size_t r = 0; r < rows.size(); r++) {
+            for (std::size_t c = 0; c < rows[r].size(); c++) {
+                if (rows[r][c] != '.') {
+                    DrawRectangle(static_cast<int>(x) + static_cast<int>(c) * zoom, static_cast<int>(y) + static_cast<int>(r) * zoom, zoom, zoom, bone(rows[r][c]));
+                }
+            }
+        }
     }
 
     /// @brief draw a panel with a title
@@ -204,16 +219,27 @@ public:
     }
 
 private:
+    /// @return the colour of a letter of the skull
+    static Color bone(char letter)
+    {
+        switch (letter) {
+            case 'o': return Color{236, 232, 220, 255};
+            case 's': return Color{176, 172, 188, 255};
+            default:  return Color{50, 34, 52, 255};
+        }
+    }
+
     /// @brief draw a tile of @param sheet, scaled by `zoom`
     void tile(const Texture2D & sheet,
               int col,
               int row,
               float x,
-              float y) const
+              float y,
+              Color tint = WHITE) const
     {
         const float side = static_cast<float>(tile_side);
         const float target = static_cast<float>(cell);
-        DrawTexturePro(sheet, {col * side, row * side, side, side}, {x, y, target, target}, {0, 0}, 0, WHITE);
+        DrawTexturePro(sheet, {col * side, row * side, side, side}, {x, y, target, target}, {0, 0}, 0, tint);
     }
 
     Font regular_{};
@@ -405,11 +431,16 @@ private:
         drag_sliders();
         mouse();
         rest_ = seconds;
+        shown_.death.advance(seconds);
         if (!shown_.help) {
             for (unsigned int n = shown_.steps_for(seconds); n > 0; n--) {
                 now().step();
-                if (shown_.audible_steps()) {
+                if (shown_.followable_steps()) {
                     sound_.play(cue_of(now().punished(), now().latest().ended));
+                    if (now().punished()) {
+                        shown_.death.begin();
+                        break;
+                    }
                 }
             }
         }
@@ -505,6 +536,7 @@ private:
             picking_ = false;
             if (at.y >= bar_height && at.x < picker_width && row >= 0 && row < static_cast<int>(learners_.size())) {
                 current_ = static_cast<std::size_t>(row);
+                shown_.death.stop();
                 return;
             }
         }
@@ -527,9 +559,9 @@ private:
     void run_command(command c)
     {
         switch (c) {
-            case command::learner: current_ = (current_ + 1) % learners_.size(); break;
-            case command::restart: now().restart(); break;
-            case command::reset:   now().reset(); break;
+            case command::learner: current_ = (current_ + 1) % learners_.size(); shown_.death.stop(); break;
+            case command::restart: now().restart(); shown_.death.stop(); break;
+            case command::reset:   now().reset(); shown_.death.stop(); break;
             case command::pause:   shown_.paused = !shown_.paused; break;
             case command::step:    shown_.single_step(); break;
             case command::slower:  shown_.slower(); break;
@@ -1066,6 +1098,18 @@ private:
         frame();
         frame();
         TakeScreenshot((folder + "main.png").c_str());
+        // the walker's death, half way through the skull and half way through the ghost
+        for (int i = 0; i < 200000 && !now().punished(); i++) {
+            now().step();
+        }
+        shown_.death.begin();
+        for (const double seconds : {0.15, 0.27, 0.3}) {
+            shown_.death.advance(seconds);
+            frame();
+            frame();
+            TakeScreenshot((folder + "death" + std::to_string(static_cast<int>(shown_.death.shown())) + ".png").c_str());
+        }
+        shown_.death.stop();
         // a bubble, over the discount of the formula
         pretending_ = true;
         pretend_ = {708, 400};

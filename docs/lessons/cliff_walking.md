@@ -72,6 +72,9 @@ learns on its own.
   library really made.
 - **In plain words**: the same step as sentences.
 
+At 10 steps a second or slower, a fall is a short scene: the walker turns red on the spikes, a skull bounces up, and its
+ghost floats away. Nothing moves until it ends. Faster than that, it is skipped, as the sounds are.
+
 ## Controls
 
 Rest the mouse on anything for a moment and a bubble says what it is: each term of the formula, each move's bar, each
