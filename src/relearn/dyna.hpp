@@ -81,6 +81,28 @@ struct dyna_q
      * and the agent goes to try them (Sutton & Barto, the footnote in Section 8.3).
      */
     std::function<std::vector<action_class>(const state_class &)> legal_actions;
+    /**
+     * @struct imagined
+     * @brief what one imagined step did, as told to `on_imagined`
+     */
+    struct imagined
+    {
+        /// the state and the action picked from the model
+        state_class state;
+        action_class action;
+        /// the reward the model remembers, without any bonus of Dyna-Q+
+        value_type reward;
+        /// the state the model says it led to, and whether the episode ended there (then `next` means nothing)
+        state_class next;
+        bool terminal;
+        /// max(Q(s', a)), 0 at the end of an episode
+        value_type next_value;
+        /// Q(s, a) before and after the update
+        value_type before;
+        value_type after;
+    };
+    /// optional: called after every imagined step, to watch the planning
+    std::function<void(const imagined &)> on_imagined;
     /// picks the remembered state and action of each imagined step - seed it to repeat a run
     std::mt19937 prng;
 
@@ -264,6 +286,7 @@ void dyna_q<state_class,action_class,markov_chain,value_type
         const auto & happened = actions.outcomes.at(a_t);
         // Dyna-Q+: a bonus of κ * sqrt(τ), where τ is the real steps since the pair was last tried
         value_type target = happened.reward;
+        value_type next_value = 0;
         if (kappa > 0) {
             target += kappa * std::sqrt(static_cast<value_type>(steps_ - happened.last_tried));
         }
@@ -271,10 +294,15 @@ void dyna_q<state_class,action_class,markov_chain,value_type
         if (!happened.terminal) {
             auto q_next = policy_map.best_value(happened.next);
             if (std::isnan(q_next)) q_next = 0.;
+            next_value = q_next;
             target += gamma * q_next;
         }
         auto q = policy_map.value(s_t, a_t);
-        policy_map.update(s_t, a_t, q + alpha * (target - q));
+        const value_type learnt = q + alpha * (target - q);
+        policy_map.update(s_t, a_t, learnt);
+        if (on_imagined) {
+            on_imagined(imagined{s_t, a_t, happened.reward, happened.next, happened.terminal, next_value, q, learnt});
+        }
     }
 }
 

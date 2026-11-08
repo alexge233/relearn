@@ -18,6 +18,12 @@
 
 namespace
 {
+/// what an imagined step should have learnt towards
+struct value_of_target
+{
+    double target;
+};
+
 using state   = relearn::state<std::string>;
 using action  = relearn::action<std::string>;
 using step    = relearn::link<state,action>;
@@ -295,6 +301,80 @@ TEST_CASE("dyna_q+: actions not tried yet are imagined to lead back with a rewar
 }
 
 /// verifies that the learner works with `float` values, though a state's reward is a `double`
+TEST_CASE("dyna_q: on_imagined is told every imagined step, exactly", "[dyna_q]")
+{
+    policy memory;
+    learner_type learner(0.5, 0.9, 4, 7);
+    std::vector<learner_type::imagined> told;
+    learner.on_imagined = [&](const learner_type::imagined & i) {
+        told.push_back(i);
+        // told after the update: the policy already holds what it says
+        REQUIRE(memory.value(i.state, i.action) == Approx(i.after));
+    };
+    const state a(1.0, std::string("a"));
+    const state b(0.0, std::string("b"));
+    const action go("go");
+    // one real step of a chain of two, then one that ends it
+    learner(episode{{a, go}, {b, go}}, memory, false);
+    REQUIRE(told.size() == 4);
+    learner(episode{{b, go}}, memory, true);
+    REQUIRE(told.size() == 8);
+    for (const auto & i : told) {
+        const value_of_target expected{i.terminal ? i.reward : i.reward + 0.9 * i.next_value};
+        REQUIRE(i.after == Approx(i.before + 0.5 * (expected.target - i.before)));
+        REQUIRE(i.action.trait() == "go");
+        if (i.state.trait() == "a") {
+            REQUIRE(i.reward == 1.0);
+            REQUIRE(i.next.trait() == "b");
+            REQUIRE(!i.terminal);
+        }
+        else {
+            REQUIRE(i.reward == 0.0);
+            REQUIRE(i.terminal);
+            REQUIRE(i.next_value == 0.0);
+        }
+    }
+}
+
+TEST_CASE("dyna_q: watching the planning changes nothing", "[dyna_q]")
+{
+    policy watched, unwatched;
+    learner_type one(0.5, 0.9, 6, 3);
+    learner_type two(0.5, 0.9, 6, 3);
+    one.on_imagined = [](const learner_type::imagined &) {};
+    const state a(1.0, std::string("a"));
+    const state b(0.0, std::string("b"));
+    const action go("go");
+    for (int i = 0; i < 20; i++) {
+        one(episode{{a, go}, {b, go}}, watched, false);
+        two(episode{{a, go}, {b, go}}, unwatched, false);
+    }
+    REQUIRE(watched.value(a, go) == unwatched.value(a, go));
+    REQUIRE(one.prng() == two.prng());
+}
+
+TEST_CASE("dyna_q+: on_imagined tells the reward remembered, without the bonus", "[dyna_q][dyna_q_plus]")
+{
+    policy memory;
+    learner_type learner(1.0, 0.0, 1, 7);
+    learner.kappa = 1.0;
+    const state a(2.0, std::string("a"));
+    const state b(0.0, std::string("b"));
+    const action go("go");
+    double reward = -1;
+    double after = -1;
+    learner.on_imagined = [&](const learner_type::imagined & i) {
+        reward = i.reward;
+        after = i.after;
+    };
+    for (int i = 0; i < 5; i++) {
+        learner(episode{{a, go}, {b, go}}, memory, false);
+    }
+    REQUIRE(reward == 2.0);
+    // alpha 1 and gamma 0: all that is learnt is the reward with its bonus, here tried at this very step
+    REQUIRE(after == Approx(2.0));
+}
+
 TEST_CASE("dyna_q: float values", "[dyna_q][regression]")
 {
     // the same as the first test, in float: 0.5, 0.75, 0.875, 0.9375
