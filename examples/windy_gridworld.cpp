@@ -11,32 +11,48 @@
  *    - `q_probabilistic` averages the outcomes it has seen by design, and learns
  *      that policy too.
  *
+ * Run it with `--watch` to see the agent learn the steady wind: its first three episodes, then every 50th, the
+ * cells coloured by the values learnt so far (have a look at docs/watch.md).
+ *
  * @see docs/schedules.md for learning rates that decay
  *
  * @see games/windy_gridworld.hpp for the rules
  */
 #include "games/windy_gridworld.hpp"
+#include "games/views.hpp"
 #include <cstdlib>
 #include <iomanip>
 #include <iostream>
 #include <string>
 
-// set shortcuts to the game and to its relearn types
-using game_type = games::windy_gridworld;
+// the frames go to the terminal, or, built by the window sub-project, to a raylib window
+#ifdef RELEARN_WINDOW
+#include "window/window.hpp"
+using screen = games::window_screen;
+#else
+using screen = games::terminal_screen;
+#endif
+// set shortcuts to the game, to the game as it is watched, and to its relearn types
+using rules     = games::windy_gridworld;
+using game_type = games::watched<rules, screen>;
 using types     = games::types<game_type>;
 
 /**
  * @brief train @param learner for @param episodes ε-greedy episodes of @param game
  * @param prng draws the random choices of the agent
+ * @param show is true to watch the first three episodes, then every 50th
  * @return the learnt policy
  */
 template <class learner_type>
 types::policy train(game_type & game,
                     learner_type & learner,
                     unsigned int episodes,
-                    std::mt19937 & prng)
+                    std::mt19937 & prng,
+                    bool show)
 {
     types::policy memory;
+    // watched, the cells are coloured by the values being learnt
+    game.memory = &memory;
     // the ε-greedy agent: explores 10% of the time, otherwise takes the best known move
     auto agent = [&](const game_type::state_type & s,
                      const std::vector<unsigned int> & legal) {
@@ -44,9 +60,12 @@ types::policy train(game_type & game,
     };
     // play and learn after every episode
     for (unsigned int i = 0; i < episodes; i++) {
+        game.on = show && (i < 3 || (i + 1) % 50 == 0);
         auto r = games::play(game, agent, 1000);
         learner(r.episode, memory, r.terminated);
     }
+    game.on     = false;
+    game.memory = nullptr;
     return memory;
 }
 
@@ -60,7 +79,7 @@ void draw(game_type & game,
           const types::policy & memory,
           std::mt19937 & prng)
 {
-    std::vector<std::string> rows(game_type::height, std::string(game_type::width, '.'));
+    std::vector<std::string> rows(rules::height, std::string(rules::width, '.'));
     // follow the greedy policy from the start, marking each cell visited
     auto s = game.reset();
     for (int step = 0; step < 100; step++) {
@@ -73,28 +92,32 @@ void draw(game_type & game,
         }
     }
     // mark the start and the goal, then print the grid and the wind below it
-    rows[game_type::start().y][game_type::start().x] = 'S';
-    rows[game_type::goal().y][game_type::goal().x]   = 'G';
+    rows[rules::start().y][rules::start().x] = 'S';
+    rows[rules::goal().y][rules::goal().x]   = 'G';
     for (const auto & row : rows) {
         std::cout << "    " << row << std::endl;
     }
     std::cout << "    ";
-    for (int x = 0; x < game_type::width; x++) {
-        std::cout << game_type::wind(x);
+    for (int x = 0; x < rules::width; x++) {
+        std::cout << rules::wind(x);
     }
     std::cout << "   <- wind" << std::endl;
 }
 
-int main()
+int main(int argc,
+         char ** argv)
 {
+    const auto options = games::watch_options::parse(argc, argv);
     std::mt19937 prng(1);
 
     // 1. steady wind: Q-learning should find the 15-move shortest path
-    game_type steady;
+    game_type steady{rules()};
+    options.apply(steady);
+    steady.title = "steady wind, q_learning";
     relearn::q_learning<types::state, types::action> q_steady;
     q_steady.alpha = 0.5;
     q_steady.gamma = 1.0;
-    auto memory = train(steady, q_steady, 500, prng);
+    auto memory = train(steady, q_steady, 500, prng, options.on);
     // every move costs -1, so the number of moves is minus the return
     double moves = -games::evaluate(steady, memory, 1, 100, prng);
     std::cout << std::fixed << std::setprecision(0)
@@ -103,7 +126,7 @@ int main()
 
     // 2. random wind: compare Q-learning, with a constant and with a decaying
     //    learning rate, and probabilistic Q-learning, each trained for 5000 episodes
-    game_type random_wind(true, 2);
+    game_type random_wind{rules(true, 2)};
     relearn::q_learning<types::state, types::action> q_constant;
     q_constant.alpha = 0.5;
     q_constant.gamma = 1.0;
@@ -112,9 +135,9 @@ int main()
     // α = 1/n^0.6 for the n-th update of each state/action pair
     q_decaying.learning_rate = relearn::polynomial_decay<>(1.0, 0.6);
     relearn::q_probabilistic<types::state, types::action> p_random(1.0);
-    auto memory_constant = train(random_wind, q_constant, 5000, prng);
-    auto memory_decaying = train(random_wind, q_decaying, 5000, prng);
-    auto memory_p        = train(random_wind, p_random, 5000, prng);
+    auto memory_constant = train(random_wind, q_constant, 5000, prng, false);
+    auto memory_decaying = train(random_wind, q_decaying, 5000, prng, false);
+    auto memory_p        = train(random_wind, p_random, 5000, prng, false);
     // a policy that wanders forever is stopped at 1000 moves
     double moves_constant = -games::evaluate(random_wind, memory_constant, 1000, 1000, prng);
     double moves_decaying = -games::evaluate(random_wind, memory_decaying, 1000, 1000, prng);

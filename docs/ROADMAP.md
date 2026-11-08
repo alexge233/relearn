@@ -70,9 +70,12 @@ docs will explain why.
 
 - Build and run every game on Linux and macOS, and check its output against the book again.
 - A `--watch` mode, to see the agents play: one drawing hook per game, and two views of it.
-  - in the terminal, as good old ASCII art, or as small pixels drawn with half-block characters in 24-bit colour
-  - in a window, as retro pixel art, with [raylib](https://www.raylib.com) in an optional sub-project
-  - the learning shown in the same style: a pixel learning curve, Q values as tile colours, and a status line
+  - in the terminal, as small pixels drawn with half-block characters in 24-bit colour: now in, for seven games,
+    with the learning shown in the same style, a pixel learning curve, Q values as the colours of the cells and a
+    status line (have a look at [watch.md](watch.md))
+  - in a window, as retro pixel art, with [raylib](https://www.raylib.com) in an optional sub-project, drawing the
+    very same canvas: now in too, as `win_<game>` for the same seven games; still to come, views for the games
+    that have none yet, and a `view3d` hook for those that want a camera
 
 ### New games, to show each algorithm at its best
 

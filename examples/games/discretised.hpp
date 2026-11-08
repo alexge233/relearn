@@ -77,10 +77,29 @@ public:
         return game_;
     }
 
+    /// @return the wrapped game
+    const game_type & inner() const
+    {
+        return game_;
+    }
+
+    /// @return the bins of each state variable, in the order of the state
+    const std::vector<bins> & grid() const
+    {
+        return grid_;
+    }
+
     /// @return the continuous state of the last step
     const typename game_type::state_type & raw() const
     {
         return raw_;
+    }
+
+    /// @brief put the wrapped game in the continuous state @param s (for tests, or to start elsewhere)
+    void place(const typename game_type::state_type & s)
+    {
+        game_.place(s);
+        raw_ = s;
     }
 
     /// @return the number of cells: the product of the bins of every variable

@@ -460,6 +460,35 @@ The `tests/games_test.cpp` tests the rules of every game, and that the learners 
 either exact solutions (`tests/solvers.hpp`: value iteration, relative value iteration, exact blackjack, breadth-first search) or the
 optimal results given by the book.
 
+## Watching the agents play
+
+Seven of the examples take `--watch`, and draw the game in the terminal as the agent plays it, in colour, as small
+pixels made of half-block characters, with the cells coloured by the values learnt so far and a learning curve
+underneath:
+
+```bash
+./ex_cliff_walking --watch              # Q-learning, SARSA and Expected SARSA, the first run of each
+./ex_dyna_maze --watch --every 5        # one frame every 5 steps
+./ex_mountain_car --watch --delay 10    # 10 ms between frames, next to the plane of values (Figure 10.1)
+```
+
+The others are `windy_gridworld`, `frozen_lake`, `racetrack` (the optimal policy driving) and `cart_pole`. Each
+watches a few episodes, the first three and then one every so often, and plays the rest as fast as before; without
+`--watch` every example runs exactly as it did. It is all in `examples/games/watch.hpp` (the canvas, and
+`games::watched`, a game that draws the game it wraps) and `examples/games/views.hpp` (how each game is drawn), and
+the library knows nothing about it; have a look at [docs/watch.md](docs/watch.md) for how it works, and how to give a
+new game a view.
+
+The same frames can go to a window, drawn with [raylib](https://www.raylib.com) as retro pixels, through the
+optional sub-project (`cmake .. -DBUILD_WINDOW=On`, after `brew install raylib`, or on Linux building it from source: have a look at [docs/watch.md](docs/watch.md)),
+which builds the seven as `win_<game>`:
+
+```bash
+./win_mountain_car --watch              # space pauses, S saves a screenshot, closing the window stops the watching
+```
+
+![Mountain Car in the window](images/mountain_car_window.png)
+
 # Contributing
 
 Contributions are welcome! Please read [CONTRIBUTING.md](CONTRIBUTING.md) first,
@@ -469,13 +498,10 @@ AI-generated contributions are welcome, as long as they have been reviewed and a
 # TODO
 
 1. watch the agents play: a `--watch` mode for the examples, with one drawing hook for two views
-   - in the terminal, as good old ASCII art
-   - in a window, as retro pixel art: 2D, drawn at a low resolution and scaled up with sharp pixels,
-     with sprites and a 16-colour palette defined in the code (so no asset files), a pixel font, optional
-     chiptune sounds generated in code, and the learning shown in the same style (a pixel learning
-     curve, Q values as tile colours, and a status line)
-   - the window would use [raylib](https://www.raylib.com) (zlib licence, Linux and macOS), in an optional
-     CMake sub-project which is off by default, so that `relearn.hpp` and the default build keep no dependencies
+   - in the terminal, as small pixels in colour: done, have a look at [docs/watch.md](docs/watch.md)
+   - in a window, as retro pixel art with [raylib](https://www.raylib.com), in an optional CMake sub-project
+     which is off by default: done, for the same seven games; still to come, views for the other games, sprites,
+     a pixel font, and optional chiptune sounds generated in code
 
 For the longer-term plans (function approximation, DQN and its variants, Python bindings, simulators and game
 engines), have a look at the [roadmap](docs/ROADMAP.md).

@@ -62,6 +62,13 @@ set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -O3 -mtune=native -march
 message(STATUS "CXX Flags: " ${CMAKE_CXX_FLAGS})
 message(STATUS "CXX Linker: " ${CMAKE_EXE_LINKER_FLAGS})
 
+# the window: the watched examples drawn with raylib, as win_<game> (see examples/window/), off by default;
+# after the flags above, so that it builds with the same ones
+option(BUILD_WINDOW "build the examples with the raylib window as their screen" OFF)
+if (BUILD_WINDOW)
+    add_subdirectory(${EXAMPLES}/window)
+endif()
+
 # if building tests
 if (BUILD_TESTS)
     message(STATUS "Checking ${PROJECT_SOURCE_DIR}/tests/catch.hpp")
@@ -122,6 +129,8 @@ if (BUILD_TESTS)
     add_test(prioritized_sweeping_test test_prioritized_sweeping)
     add_executable(test_dynamic_programming tests/dynamic_programming_test.cpp)
     add_test(dynamic_programming_test test_dynamic_programming)
+    add_executable(test_watch tests/watch_test.cpp)
+    add_test(watch_test test_watch)
 
     # every part of the library compiles on its own (see tests/headers)
     foreach(part core schedules q_learning sarsa double_q_learning dyna monte_carlo bandits

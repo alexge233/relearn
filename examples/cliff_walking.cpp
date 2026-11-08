@@ -16,17 +16,29 @@
  * Each learner is trained in 20 runs, and the returns are averaged over the runs,
  * as the book does.
  *
+ * Run it with `--watch` to see the first run of each learner play: its first three episodes, then every 50th,
+ * the cells coloured by the values learnt so far (have a look at docs/watch.md).
+ *
  * @see games/cliff_walking.hpp for the rules
  * @see docs/sarsa.md for the algorithms
  */
 #include "games/cliff_walking.hpp"
+#include "games/views.hpp"
 #include <cstdlib>
 #include <iomanip>
 #include <iostream>
 #include <string>
 
-// set shortcuts to the game and to its relearn types
-using game_type = games::cliff_walking;
+// the frames go to the terminal, or, built by the window sub-project, to a raylib window
+#ifdef RELEARN_WINDOW
+#include "window/window.hpp"
+using screen = games::window_screen;
+#else
+using screen = games::terminal_screen;
+#endif
+// set shortcuts to the game, to the game as it is watched, and to its relearn types
+using rules     = games::cliff_walking;
+using game_type = games::watched<rules, screen>;
 using types     = games::types<game_type>;
 
 // the settings of Sutton & Barto, Example 6.6
@@ -34,6 +46,8 @@ const double epsilon = 0.1;
 const double alpha   = 0.5;
 const unsigned int runs     = 20;
 const unsigned int episodes = 500;
+// whether, and how, to watch the agents play (from the command line)
+games::watch_options options;
 
 /**
  * @brief prepare a learner: nothing to do for Q-learning and SARSA
@@ -53,11 +67,11 @@ void prepare(learner_type &,
 void prepare(relearn::expected_sarsa<types::state,types::action> & learner,
              const types::policy & memory)
 {
-    game_type rules;
-    learner.probabilities = [&memory, rules](const types::state & s) {
+    rules game;
+    learner.probabilities = [&memory, game](const types::state & s) {
         return games::epsilon_greedy_probabilities<game_type>(memory,
                                                               s.trait(),
-                                                              rules.actions(s.trait()),
+                                                              game.actions(s.trait()),
                                                               epsilon);
     };
 }
@@ -71,12 +85,12 @@ void draw(const types::policy & memory,
           std::mt19937 & prng)
 {
     // an empty grid, with the cliff along the bottom row
-    std::vector<std::string> rows(game_type::height, std::string(game_type::width, '.'));
-    for (int x = 1; x < game_type::width - 1; x++) {
-        rows[game_type::height - 1][x] = 'C';
+    std::vector<std::string> rows(rules::height, std::string(rules::width, '.'));
+    for (int x = 1; x < rules::width - 1; x++) {
+        rows[rules::height - 1][x] = 'C';
     }
     // follow the greedy policy from the start, marking each cell visited
-    game_type game;
+    rules game;
     auto s = game.reset();
     bool reached = false;
     for (int step = 0; step < 100; step++) {
@@ -90,8 +104,8 @@ void draw(const types::policy & memory,
         s = out.next;
     }
     // mark the start and the goal, then print the grid
-    rows[game_type::start().y][game_type::start().x] = 'S';
-    rows[game_type::goal().y][game_type::goal().x]   = 'G';
+    rows[rules::start().y][rules::start().x] = 'S';
+    rows[rules::goal().y][rules::goal().x]   = 'G';
     for (const auto & row : rows) {
         std::cout << "    " << row << std::endl;
     }
@@ -114,21 +128,27 @@ double train(const std::string & name,
     returns.assign(episodes, 0.0);
     for (unsigned int run = 1; run <= runs; run++) {
         // a new agent for each run: an empty policy and its own random numbers
-        game_type game;
+        game_type game{rules()};
         std::mt19937 prng(run);
         types::policy memory;
         learner_type learner;
         learner.alpha = alpha;
         learner.gamma = 1.0;
         prepare(learner, memory);
+        // watched, the cells are coloured by the values being learnt
+        options.apply(game);
+        game.memory = &memory;
+        game.title  = name;
 
         // the ε-greedy agent: explores with probability ε, otherwise takes the best known move
         auto agent = [&](const game_type::state_type & s,
                          const std::vector<unsigned int> & legal) {
             return games::epsilon_greedy<game_type>(memory, s, legal, epsilon, prng);
         };
-        // play and learn after every step, adding up each episode's return
+        // play and learn after every step, adding up each episode's return;
+        // the first run is watched: its first three episodes, then every 50th
         for (unsigned int i = 0; i < episodes; i++) {
+            game.on = options.on && run == 1 && (i < 3 || (i + 1) % 50 == 0);
             auto r = games::play_online(game, agent, learner, memory, 1000);
             returns[i] += r.total_reward / runs;
         }
@@ -147,8 +167,10 @@ double train(const std::string & name,
     return sum / (episodes - 100);
 }
 
-int main()
+int main(int argc,
+         char ** argv)
 {
+    options = games::watch_options::parse(argc, argv);
     // train each learner, keeping the average return of each episode
     std::vector<double> q;
     std::vector<double> sarsa;
