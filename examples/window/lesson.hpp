@@ -620,6 +620,7 @@ enum class command
     values,
     arrows,
     intro,
+    sound,
     help,
     quit
 };
@@ -649,11 +650,27 @@ inline command command_of_key(int key)
         case 'V':  return command::values;
         case 'A':  return command::arrows;
         case 'I':  return command::intro;
+        case 'M':  return command::sound;
         case 'H':  return command::help;
         case 'Q':  return command::quit;
         case key_tab: return command::learner;
         default:   return command::none;
     }
+}
+
+/// the sounds a step can make
+enum class cue
+{
+    none,
+    fall,
+    treasure
+};
+
+/// @return the sound of a step: @param punished is whether it was punished, @param ended whether it ended the episode
+inline cue cue_of(bool punished,
+                  bool ended)
+{
+    return punished ? cue::fall : (ended ? cue::treasure : cue::none);
 }
 
 /**
@@ -671,6 +688,8 @@ public:
     bool arrows = true;
     /// the help is over the screen
     bool help = false;
+    /// the music and the effects are on
+    bool sound = true;
 
     /// @return the speeds, in steps per second
     static const std::vector<double> & speeds()
@@ -705,6 +724,12 @@ public:
     bool gliding() const
     {
         return rate() <= 10;
+    }
+
+    /// @return true if a step is slow enough to have its own sound: above that, it would be a constant rattle
+    bool audible_steps() const
+    {
+        return paused || gliding();
     }
 
     /// @brief ask for one step, which also pauses
@@ -1109,6 +1134,7 @@ inline std::string menu_help(command what)
         case command::values:  return "Show or hide the colours: how good it believes each cell is. (V)";
         case command::arrows:  return "Show or hide the arrows: its best known move in each cell. (A)";
         case command::intro:   return "Watch the introduction again. (I)";
+        case command::sound:   return "The music and the sound effects, on or off. (M)";
         case command::help:    return "All the keys, and what is on the screen. (H)";
         default:               return "";
     }
@@ -1181,6 +1207,8 @@ struct lesson_options
 {
     /// skip the intro
     bool no_intro = false;
+    /// start with the sound off
+    bool mute = false;
     /// a directory to render the pictures to, without showing a window, and end (empty: run normally)
     std::string capture;
 
@@ -1193,6 +1221,9 @@ struct lesson_options
             const std::string arg = argv[i];
             if (arg == "--no-intro") {
                 options.no_intro = true;
+            }
+            else if (arg == "--mute") {
+                options.mute = true;
             }
             else if (arg == "--capture" && i + 1 < argc) {
                 options.capture = argv[++i];

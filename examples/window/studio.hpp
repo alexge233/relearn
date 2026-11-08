@@ -11,8 +11,9 @@
  *     std::string describe(const session & now, int column, int row) const;   // what a bubble says about a cell
  *     int columns() const;  int rows() const;   // of the board
  *
- * Keys and mouse do the same things (H shows them all). The window is 1280 x 732, drawn at its native resolution.
+ * The music and the effects are chiptune.hpp's, played by `speaker`. Keys and mouse do the same things (H shows them all). The window is 1280 x 732, drawn at its native resolution.
  */
+#include "chiptune.hpp"
 #include "lesson.hpp"
 #include <raylib.h>
 #include <rlgl.h>
@@ -222,6 +223,103 @@ private:
 };
 
 /**
+ * @class speaker
+ * @brief plays the music and the effects; without a sound device, it does nothing
+ */
+class speaker
+{
+public:
+    /// @brief open the sound device and start the music
+    void open()
+    {
+        InitAudioDevice();
+        if (!IsAudioDeviceReady()) {
+            return;
+        }
+        SetAudioStreamBufferSizeDefault(chunk);
+        music_ = LoadAudioStream(sample_rate, 16, 1);
+        SetAudioStreamVolume(music_, 0.5f);
+        fall_     = sound_of(book_.fall());
+        treasure_ = sound_of(book_.treasure());
+        click_    = sound_of(book_.click());
+        PlayAudioStream(music_);
+        open_ = true;
+    }
+
+    /// @brief free everything, before the window closes
+    void close()
+    {
+        if (!open_) {
+            return;
+        }
+        UnloadAudioStream(music_);
+        UnloadSound(fall_);
+        UnloadSound(treasure_);
+        UnloadSound(click_);
+        CloseAudioDevice();
+        open_ = false;
+    }
+
+    /// @brief top up the music; once a frame
+    void update()
+    {
+        if (open_ && IsAudioStreamProcessed(music_)) {
+            short samples[chunk];
+            cursor_.fill(samples, chunk);
+            UpdateAudioStream(music_, samples, chunk);
+        }
+    }
+
+    /// @brief turn everything on or off
+    void set_on(bool on)
+    {
+        if (open_) {
+            SetMasterVolume(on ? 1.0f : 0.0f);
+        }
+    }
+
+    /// @brief play the sound of a step
+    void play(cue what)
+    {
+        if (open_ && what != cue::none) {
+            PlaySound(what == cue::fall ? fall_ : treasure_);
+        }
+    }
+
+    /// @brief play the blip of a click
+    void click()
+    {
+        if (open_) {
+            PlaySound(click_);
+        }
+    }
+
+private:
+    /// samples handed to the music at a time
+    static constexpr int chunk = 4096;
+
+    /// @return @param samples as a raylib sound, which copies them
+    static Sound sound_of(const std::vector<short> & samples)
+    {
+        Wave wave{};
+        wave.frameCount = static_cast<unsigned int>(samples.size());
+        wave.sampleRate = sample_rate;
+        wave.sampleSize = 16;
+        wave.channels   = 1;
+        wave.data       = const_cast<short *>(samples.data());
+        return LoadSoundFromWave(wave);
+    }
+
+    sound_book book_;
+    loop_cursor cursor_{book_.music()};
+    AudioStream music_{};
+    Sound fall_{};
+    Sound treasure_{};
+    Sound click_{};
+    bool open_ = false;
+};
+
+/**
  * @class lesson_app
  * @brief runs a lesson: the intro, then the main screen, until the window is closed
  * @tparam board_type draws the game
@@ -262,15 +360,22 @@ public:
         look_.load();
         prepare_crawl();
         in_intro_ = !options_.no_intro;
+        shown_.sound = !options_.mute;
+        if (!capture) {
+            sound_.open();
+            sound_.set_on(shown_.sound);
+        }
         if (capture) {
             render_pictures();
         }
         else {
             while (!WindowShouldClose() && !quit_) {
+                sound_.update();
                 update(GetFrameTime());
                 frame();
             }
         }
+        sound_.close();
         UnloadRenderTexture(crawl_);
         look_.unload();
         CloseWindow();
@@ -303,6 +408,9 @@ private:
         if (!shown_.help) {
             for (unsigned int n = shown_.steps_for(seconds); n > 0; n--) {
                 now().step();
+                if (shown_.audible_steps()) {
+                    sound_.play(cue_of(now().punished(), now().latest().ended));
+                }
             }
         }
     }
@@ -311,7 +419,7 @@ private:
     void keyboard()
     {
         static const int keys[] = {KEY_SPACE, KEY_N, KEY_RIGHT, KEY_R, KEY_Z, KEY_MINUS, KEY_EQUAL, KEY_KP_SUBTRACT, KEY_KP_ADD,
-                                   KEY_V, KEY_A, KEY_I, KEY_H, KEY_Q, KEY_TAB};
+                                   KEY_V, KEY_A, KEY_I, KEY_M, KEY_H, KEY_Q, KEY_TAB};
         for (int key : keys) {
             if (IsKeyPressed(key)) {
                 run_command(command_of_key(key));
@@ -401,6 +509,9 @@ private:
             }
         }
         const command hit = menu_hit(menu(), at.x, at.y, bar_height);
+        if (hit != command::none) {
+            sound_.click();
+        }
         if (hit == command::learner) {
             picking_ = true;
         }
@@ -426,6 +537,7 @@ private:
             case command::values:  shown_.values = !shown_.values; break;
             case command::arrows:  shown_.arrows = !shown_.arrows; break;
             case command::intro:   in_intro_ = true; crawl_seconds_ = 0; break;
+            case command::sound:   shown_.sound = !shown_.sound; sound_.set_on(shown_.sound); break;
             case command::help:    shown_.help = !shown_.help; break;
             case command::quit:    quit_ = true; break;
             default: break;
@@ -439,7 +551,7 @@ private:
             {command::learner, learners_[current_]->name() + " v"}, {command::restart, "Restart"}, {command::reset, "Reset"},
             {command::pause, shown_.paused ? "Resume" : "Pause"}, {command::step, "Step"}, {command::slower, "Slower"},
             {command::faster, "Faster"}, {command::values, "Values"}, {command::arrows, "Arrows"}, {command::intro, "Intro"},
-            {command::help, "Help"}};
+            {command::sound, shown_.sound ? "Sound on" : "Sound off"}, {command::help, "Help"}};
         return lay_out_menu(entries, [this](const std::string & s) { return look_.width(s, 16); }, 8, 12);
     }
 
@@ -811,7 +923,7 @@ private:
         static const row keys[] = {{"Space", "pause and resume"}, {"N or Right", "one step"}, {"- and =", "slower and faster"},
                                    {"R", "restart: a new episode, keeping what was learnt"}, {"Z", "reset: forget everything"},
                                    {"Tab", "the next learner (each one learns on its own)"}, {"V and A", "the colours and the arrows, on or off"},
-                                   {"I", "the intro again"}, {"S", "save a screenshot"}, {"H", "this help"}, {"Q", "quit"}};
+                                   {"I", "the intro again"}, {"M", "the music and the sounds, on or off"}, {"S", "save a screenshot"}, {"H", "this help"}, {"Q", "quit"}};
         float y = 54;
         for (const auto & k : keys) {
             look_.write(k.key, 196, y, 16, ink::gold, true);
@@ -919,6 +1031,7 @@ private:
     board_type board_;
     lesson_options options_;
     studio look_;
+    speaker sound_;
     controls shown_;
     std::size_t current_ = 0;
     bool in_intro_ = true;
