@@ -62,7 +62,8 @@ learns on its own.
 - **The board**: the game. The colours run from blue, where the walker expects to do badly, to gold, where it expects
   to do well; they are the best `Q` of each cell, smoothed between cells. Only cells it has visited are coloured.
 - **Its beliefs in that cell**: the four `Q` values of the cell the last step started from. The move it took is in gold.
-- **Learning curve**: the total reward of each episode. The first episodes, far below the rest, are cut off at -300.
+- **Learning curve**: the total reward of each episode, with the episode under way moving at its end, so that it
+  starts at the first step. The first episodes, far below the rest, are cut off at -300.
 - **The whole idea**: the formula, each term over its value at this step. The numbers are read from the update the
   library really made.
 - **In plain words**: the same step as sentences.
@@ -89,6 +90,18 @@ Every entry of the top bar can be clicked, and has a key:
 
 `--no-intro` starts on the main screen, and `--capture folder` writes the intro, the main screen and the help to that
 folder, without opening a window.
+
+## Try other values
+
+Three sliders change how it learns, from the next step on: each learner keeps its own.
+
+- **α (speed)**: high, and it learns fast but jumps about; low, and it is slow and steady; at 0 it never learns.
+- **γ (future)**: how much later rewards count. Lower it and values fade with distance from the treasure, so a walker
+  far away hardly feels it. γ is the discount: the two names are one thing.
+- **ε (explore)**: how often it moves at random. At 0 it never tries anything new; at 1 it ignores what it has learnt.
+
+Changing them part way through is sound: the learner simply carries on from what it believes. But the old values were
+learnt under the old settings, and take a while to catch up; Z starts afresh, and keeps the settings you chose.
 
 ## What to try
 

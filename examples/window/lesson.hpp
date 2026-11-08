@@ -210,7 +210,7 @@ struct q_learning_rule
     static void prepare(learner_type &,
                         const typename types<game_type>::policy &,
                         const game_type &,
-                        double)
+                        const double &)
     {}
 
     static double next_value(const typename types<game_type>::policy & memory,
@@ -241,7 +241,7 @@ struct sarsa_rule
     static void prepare(learner_type &,
                         const typename types<game_type>::policy &,
                         const game_type &,
-                        double)
+                        const double &)
     {}
 
     static double next_value(const typename types<game_type>::policy & memory,
@@ -272,9 +272,9 @@ struct expected_sarsa_rule
     static void prepare(learner_type & learner,
                         const typename types<game_type>::policy & memory,
                         const game_type & game,
-                        double epsilon)
+                        const double & epsilon)
     {
-        learner.probabilities = [&memory, game, epsilon](const typename types<game_type>::state & s) {
+        learner.probabilities = [&memory, game, &epsilon](const typename types<game_type>::state & s) {
             return epsilon_greedy_probabilities<game_type>(memory, s.trait(), game.actions(s.trait()), epsilon);
         };
     }
@@ -345,8 +345,22 @@ public:
     virtual std::size_t steps() const = 0;
     /// @return the return of this episode so far
     virtual double total() const = 0;
+    /// @return true if an episode is under way, and not yet on the curve
+    virtual bool playing() const = 0;
     /// @return the chance of a random move
     virtual double epsilon() const = 0;
+    /// @return the learning rate
+    virtual double alpha() const = 0;
+    /// @return the discount
+    virtual double gamma() const = 0;
+    /// @brief set the learning rate, kept between 0 and 1, from the next step on
+    virtual void set_alpha(double value) = 0;
+    /// @brief set the discount, kept between 0 and 1, from the next step on
+    virtual void set_gamma(double value) = 0;
+    /// @brief set the chance of a random move, kept between 0 and 1, from the next move on
+    virtual void set_epsilon(double value) = 0;
+    /// @brief go back to the values the lesson started with
+    virtual void restore_settings() = 0;
 };
 
 /**
@@ -379,6 +393,9 @@ public:
       alpha_(alpha),
       gamma_(gamma),
       epsilon_(epsilon),
+      first_alpha_(alpha),
+      first_gamma_(gamma),
+      first_epsilon_(epsilon),
       seed_(seed),
       max_steps_(max_steps),
       prng_(seed)
@@ -493,7 +510,34 @@ public:
     std::size_t episode() const override { return episode_; }
     std::size_t steps() const override { return steps_; }
     double total() const override { return total_; }
+    bool playing() const override { return playing_; }
     double epsilon() const override { return epsilon_; }
+    double alpha() const override { return alpha_; }
+    double gamma() const override { return gamma_; }
+
+    void set_alpha(double value) override
+    {
+        alpha_ = unit(value);
+        learner_.alpha = alpha_;
+    }
+
+    void set_gamma(double value) override
+    {
+        gamma_ = unit(value);
+        learner_.gamma = gamma_;
+    }
+
+    void set_epsilon(double value) override
+    {
+        epsilon_ = unit(value);
+    }
+
+    void restore_settings() override
+    {
+        set_alpha(first_alpha_);
+        set_gamma(first_gamma_);
+        set_epsilon(first_epsilon_);
+    }
 
     /// @return the policy being learnt
     const typename types<game_type>::policy & memory() const
@@ -502,6 +546,12 @@ public:
     }
 
 private:
+    /// @return @param value kept between 0 and 1
+    static double unit(double value)
+    {
+        return std::max(0.0, std::min(1.0, value));
+    }
+
     /// @brief a new learner, set up for this policy
     void make_learner()
     {
@@ -535,6 +585,9 @@ private:
     double alpha_;
     double gamma_;
     double epsilon_;
+    double first_alpha_;
+    double first_gamma_;
+    double first_epsilon_;
     unsigned int seed_;
     std::size_t max_steps_;
     std::mt19937 prng_;
@@ -894,6 +947,53 @@ inline std::vector<double> curve_points(const std::vector<double> & values,
         sums[c] /= static_cast<double>(counts[c]);
     }
     return sums;
+}
+
+/// @return the points of the learning curve now: the returns so far, and, if an episode is under way, what it has
+///         earned until now, so that the curve moves from the very first step
+inline std::vector<double> live_curve(const session & now)
+{
+    std::vector<double> values = now.returns();
+    if (now.playing() && now.steps() > 0) {
+        values.push_back(now.total());
+    }
+    return values;
+}
+
+/**
+ * @struct slider_range
+ * @brief the values a slider goes through
+ */
+struct slider_range
+{
+    double low;
+    double high;
+    double step;
+};
+
+/**
+ * @brief the value of a slider at a point of its track
+ * @param range are its values
+ * @param mouse_x is where the mouse is
+ * @param left and @param width are the track's
+ * @return the value there, on one of its steps, inside its range even with the mouse beyond the track's ends
+ */
+inline double slider_value(const slider_range & range,
+                           float mouse_x,
+                           float left,
+                           float width)
+{
+    const double along = std::max(0.0, std::min(1.0, static_cast<double>(mouse_x - left) / width));
+    const double raw = range.low + along * (range.high - range.low);
+    const double snapped = range.low + std::round((raw - range.low) / range.step) * range.step;
+    return std::max(range.low, std::min(range.high, snapped));
+}
+
+/// @return how far along its track, from 0 to 1, a slider of @param range with @param value sits
+inline double slider_fraction(const slider_range & range,
+                              double value)
+{
+    return std::max(0.0, std::min(1.0, (value - range.low) / (range.high - range.low)));
 }
 
 /**

@@ -11,7 +11,7 @@
  *     std::string describe(const session & now, int column, int row) const;   // what a bubble says about a cell
  *     int columns() const;  int rows() const;   // of the board
  *
- * Keys and mouse do the same things (H shows them all). The window is 1280 x 800, drawn at its native resolution.
+ * Keys and mouse do the same things (H shows them all). The window is 1280 x 732, drawn at its native resolution.
  */
 #include "lesson.hpp"
 #include <raylib.h>
@@ -231,7 +231,7 @@ class lesson_app
 {
 public:
     static constexpr int width_px  = 1280;
-    static constexpr int height_px = 800;
+    static constexpr int height_px = 732;
     static constexpr int bar_height = 36;
 
     /**
@@ -297,6 +297,7 @@ private:
             return;
         }
         keyboard();
+        drag_sliders();
         mouse();
         rest_ = seconds;
         if (!shown_.help) {
@@ -329,6 +330,58 @@ private:
             else {
                 quit_ = true;
             }
+        }
+    }
+
+    /// @brief the three settings, as sliders: alpha, gamma, epsilon
+    double setting(int which)
+    {
+        return which == 0 ? now().alpha() : (which == 1 ? now().gamma() : now().epsilon());
+    }
+
+    /// @brief set one of the three settings
+    void set_setting(int which,
+                     double value)
+    {
+        if (which == 0) {
+            now().set_alpha(value);
+        }
+        else if (which == 1) {
+            now().set_gamma(value);
+        }
+        else {
+            now().set_epsilon(value);
+        }
+    }
+
+    /// @return the screen height of slider @param which
+    float slider_y(int which) const
+    {
+        return 562.0f + static_cast<float>(which) * 42.0f;
+    }
+
+    /// @brief drag a slider with the mouse, and the button that puts the settings back
+    void drag_sliders()
+    {
+        const Vector2 at = pointer();
+        if (IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) {
+            dragging_ = -1;
+        }
+        if (shown_.help || picking_) {
+            return;
+        }
+        if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
+            for (int i = 0; i < 3; i++) {
+                if (at.x >= slider_left - 8 && at.x <= slider_left + slider_width + 8 && at.y >= slider_y(i) - 8 && at.y <= slider_y(i) + 22) {
+                    dragging_ = i;
+                }
+            }
+            if (at.x >= 1096 && at.x <= 1240 && at.y >= 522 && at.y <= 548) {
+                now().restore_settings();
+            }
+        }
+        if (dragging_ >= 0) {
+            set_setting(dragging_, slider_value(slider_range{0, 1, 0.01}, at.x, slider_left, slider_width));
         }
     }
 
@@ -416,7 +469,11 @@ private:
         out.push_back({640, 50, 304, 34, "The value of each move from the cell it just left. It usually picks the highest."});
         out.push_back({956, 50, 300, 270, "How well each whole episode went. It should climb as it learns, then level off."});
         out.push_back({24, 332, static_cast<float>(width_px) - 48, 36, "The whole learning rule. Rest the mouse on any term to see what it means."});
-        out.push_back({24, 520, static_cast<float>(width_px) - 48, 264, "The step that just happened, read out as sentences. It is the formula above, in words."});
+        out.push_back({24, 516, 776, 204, "The step that just happened, read out as sentences. It is the formula above, in words."});
+        out.push_back({812, 516, 444, 40, "Drag a slider and the learner changes from its next step. Each learner keeps its own settings."});
+        out.push_back({820, slider_y(0) - 10, 430, 34, "alpha, the learning rate. High: learns fast but jumps around. Low: slow and steady. At 0 it never learns."});
+        out.push_back({820, slider_y(1) - 10, 430, 34, "gamma, the discount. Lower it and the walker cares less about the far-off treasure: values fade with distance. At 1 all rewards count."});
+        out.push_back({820, slider_y(2) - 10, 430, 34, "epsilon, how often it moves at random. At 0 it never tries anything new; at 1 it ignores what it has learnt. Watch how many falls change."});
         const auto names = board_.moves();
         const position p = now().from();
         for (std::size_t a = 0; a < names.size(); a++) {
@@ -641,9 +698,13 @@ private:
         DrawLine(static_cast<int>(x), static_cast<int>(y + h), static_cast<int>(x + w), static_cast<int>(y + h), ink::line);
         DrawLine(static_cast<int>(x), static_cast<int>(y), static_cast<int>(x), static_cast<int>(y + h), ink::line);
         look_.write("reward per episode, over time", x, y + h + 6, 16, ink::dim);
-        const auto values = curve_points(now().returns(), static_cast<std::size_t>(w) / 2);
-        if (values.size() < 2) {
+        auto values = curve_points(live_curve(now()), static_cast<std::size_t>(w) / 2);
+        if (values.empty()) {
             return;
+        }
+        if (values.size() == 1) {
+            // one episode so far: a level line, at what it has earned
+            values.push_back(values.front());
         }
         const double low = lowest_shown(values, -300.0);
         double high = low;
@@ -697,37 +758,61 @@ private:
     /// @brief the same step in plain words, and what this learner does differently
     void draw_words()
     {
-        look_.panel(24, 520, width_px - 48, 264, "In plain words");
-        float y = 552;
+        look_.panel(24, 516, 776, 204, "In plain words");
+        float y = 544;
         if (now().latest().valid) {
             const auto names = board_.moves();
             for (const auto & line : plain_words(now().latest(), names[now().last_action()], now().next_words())) {
-                look_.write(line, 44, y, 32, ink::text);
-                y += 36;
+                look_.write(line, 40, y, 16, ink::text);
+                y += 22;
             }
         }
         else {
-            look_.write("Nothing has happened yet: the first step will appear here.", 44, y, 32, ink::text);
-            y += 144;
+            look_.write("Nothing has happened yet: the first step will appear here.", 40, y, 16, ink::text);
+            y += 88;
         }
-        y += 4;
-        look_.write(about_.watch_for, 44, y, 16, ink::reward);
-        look_.write(now().idea(), 44, y + 24, 16, ink::gold);
+        y += 8;
+        look_.write(about_.watch_for, 40, y, 16, ink::reward);
+        look_.write(now().idea(), 40, y + 20, 16, ink::gold);
         const std::string policy = "It follows the arrows, with a random move " + std::to_string(static_cast<int>(now().epsilon() * 100 + 0.5)) + "% of the time, so that it keeps exploring.";
-        look_.write(policy, 44, y + 48, 16, ink::dim);
+        look_.write(policy, 40, y + 40, 16, ink::dim);
+    }
+
+    /// @brief the settings: drag them whilst it runs
+    void draw_settings()
+    {
+        look_.panel(812, 516, 444, 204, "Try other values");
+        DrawRectangleRounded({1096, 522, 144, 26}, 0.3f, 6, Color{58, 54, 104, 255});
+        look_.write("Lesson's values", 1110, 527, 16, ink::text);
+        const slider_range range{0, 1, 0.01};
+        const char * glyphs[3] = {"alpha", "gamma", "epsilon"};
+        const char * words[3] = {"speed", "future", "explore"};
+        const Color colours[3] = {ink::gold, ink::future, ink::belief};
+        for (int i = 0; i < 3; i++) {
+            const float y = slider_y(i);
+            look_.write(words[i], 828, y, 16, colours[i]);
+            look_.symbol(glyphs[i], 894, y - 12, colours[i]);
+            DrawRectangleRounded({slider_left, y + 4, slider_width, 8}, 0.5f, 6, Color{44, 46, 80, 255});
+            const float at = slider_left + slider_width * static_cast<float>(slider_fraction(range, setting(i)));
+            DrawRectangleRounded({slider_left, y + 4, at - slider_left, 8}, 0.5f, 6, colours[i]);
+            DrawCircle(static_cast<int>(at), static_cast<int>(y) + 8, 8, dragging_ == i ? WHITE : ink::text);
+            const std::string number = two_decimals(setting(i));
+            look_.write(number, 1242 - look_.width(number, 16), y, 16, colours[i], true);
+        }
+        look_.write("Changes apply from the next step. Z starts afresh.", 828, 694, 16, ink::dim);
     }
 
     /// @brief the help, over everything
     void draw_help()
     {
         DrawRectangle(0, 0, width_px, height_px, Color{4, 4, 14, 215});
-        look_.panel(170, 70, 940, 660, "Help");
+        look_.panel(170, 22, 940, 688, "Help");
         struct row { const char * key; const char * what; };
         static const row keys[] = {{"Space", "pause and resume"}, {"N or Right", "one step"}, {"- and =", "slower and faster"},
                                    {"R", "restart: a new episode, keeping what was learnt"}, {"Z", "reset: forget everything"},
                                    {"Tab", "the next learner (each one learns on its own)"}, {"V and A", "the colours and the arrows, on or off"},
                                    {"I", "the intro again"}, {"S", "save a screenshot"}, {"H", "this help"}, {"Q", "quit"}};
-        float y = 106;
+        float y = 54;
         for (const auto & k : keys) {
             look_.write(k.key, 196, y, 16, ink::gold, true);
             look_.write(k.what, 340, y, 16, ink::text);
@@ -742,14 +827,15 @@ private:
                                       std::string("The formula: the whole learning rule. Every term has its real value at this step."),
                                       std::string("In plain words: the same step, as a sentence."),
                                       std::string("alpha (speed): how far a belief moves towards what really happened."),
-                                      std::string("gamma (future): how much what comes later counts against what comes now.")}) {
+                                      std::string("gamma (future): how much what comes later counts against what comes now."),
+                                      std::string("epsilon (explore): how often it moves at random instead of following the arrows. Drag the three sliders to try other values.")}) {
             for (const auto & line : wrap_text(s, 112)) {
                 look_.write(line, 196, y, 16, ink::text);
                 y += 22;
             }
             y += 4;
         }
-        look_.write("Mouse: every entry of the top bar can be clicked. Click anywhere, or press H, to close this.", 196, 696, 16, ink::dim);
+        look_.write("Mouse: every entry of the top bar can be clicked. Click anywhere, or press H, to close this.", 196, 682, 16, ink::dim);
     }
 
     /// @brief the main screen
@@ -774,6 +860,7 @@ private:
         draw_curve();
         draw_formula();
         draw_words();
+        draw_settings();
         draw_bar();
         if (picking_) {
             draw_picker();
@@ -824,6 +911,8 @@ private:
     static constexpr double crawl_speed = 46;
     static constexpr int picker_width = 220;
     static constexpr int picker_row = 28;
+    static constexpr float slider_left = 930;
+    static constexpr float slider_width = 260;
 
     info about_;
     std::vector<std::unique_ptr<session>> learners_;
@@ -840,6 +929,7 @@ private:
     hover_timer hover_;
     double rest_ = 0;
     bool pretending_ = false;
+    int dragging_ = -1;
     Vector2 pretend_{};
     int crawl_height_ = 0;
     RenderTexture2D crawl_{};

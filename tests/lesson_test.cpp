@@ -580,6 +580,125 @@ TEST_CASE("what the bubbles say", "[lesson][bubbles]")
     REQUIRE(lessons::cell_help(s, start, names) == "Its best known move here is " + names[s.best_action(start)] + ", which it believes is worth " + lessons::two_decimals(s.best(start)) + ".");
 }
 
+TEST_CASE("the learning curve moves from the first step", "[lesson][curve]")
+{
+    lessons::tabular_session<rules, q_learning_rule<rules>> s(rules(), 0.5, 1.0, 0.1, 6);
+    REQUIRE(lessons::live_curve(s).empty());
+    s.step();
+    REQUIRE(lessons::live_curve(s) == std::vector<double>{s.total()});
+    s.step();
+    REQUIRE(lessons::live_curve(s) == std::vector<double>{s.total()});
+    // an episode that has ended is on the curve once, not twice
+    while (s.returns().empty()) {
+        s.step();
+    }
+    REQUIRE(!s.playing());
+    REQUIRE(lessons::live_curve(s) == s.returns());
+    s.step();
+    REQUIRE(s.playing());
+    REQUIRE(lessons::live_curve(s).size() == 2);
+    REQUIRE(lessons::live_curve(s)[0] == s.returns()[0]);
+    REQUIRE(lessons::live_curve(s)[1] == s.total());
+}
+
+TEST_CASE("the settings can change whilst it learns, and the formula stays true", "[lesson][settings]")
+{
+    lessons::tabular_session<rules, q_learning_rule<rules>> q(rules(), 0.5, 1.0, 0.1, 6);
+    lessons::tabular_session<rules, sarsa_rule<rules>> sarsa(rules(), 0.5, 1.0, 0.1, 6);
+    lessons::tabular_session<rules, expected_sarsa_rule<rules>> expected(rules(), 0.5, 1.0, 0.1, 6);
+    lessons::session * all[] = {&q, &sarsa, &expected};
+    for (auto * s : all) {
+        REQUIRE(s->alpha() == 0.5);
+        REQUIRE(s->gamma() == 1.0);
+        REQUIRE(s->epsilon() == 0.1);
+        const double settings[][3] = {{0.5, 1.0, 0.1}, {0.1, 0.9, 0.3}, {1.0, 0.5, 0.0}, {0.25, 0.0, 1.0}};
+        for (const auto & setting : settings) {
+            s->set_alpha(setting[0]);
+            s->set_gamma(setting[1]);
+            s->set_epsilon(setting[2]);
+            for (int i = 0; i < 400; i++) {
+                s->step();
+                const auto & n = s->latest();
+                REQUIRE(n.alpha == setting[0]);
+                REQUIRE(n.gamma == setting[1]);
+                REQUIRE(n.learnt == Approx(n.believed + n.alpha * n.surprise()).epsilon(1e-12).margin(1e-12));
+            }
+        }
+        // kept between 0 and 1
+        s->set_alpha(7);
+        REQUIRE(s->alpha() == 1);
+        s->set_alpha(-1);
+        REQUIRE(s->alpha() == 0);
+        s->set_gamma(2);
+        REQUIRE(s->gamma() == 1);
+        s->set_gamma(-2);
+        REQUIRE(s->gamma() == 0);
+        s->set_epsilon(3);
+        REQUIRE(s->epsilon() == 1);
+        s->set_epsilon(-3);
+        REQUIRE(s->epsilon() == 0);
+        // and back to the lesson's values
+        s->restore_settings();
+        REQUIRE(s->alpha() == 0.5);
+        REQUIRE(s->gamma() == 1.0);
+        REQUIRE(s->epsilon() == 0.1);
+        s->reset();
+        REQUIRE(s->alpha() == 0.5);
+    }
+    // a reset keeps the settings: it forgets what was learnt, not how it learns
+    q.set_alpha(0.2);
+    q.reset();
+    REQUIRE(q.alpha() == 0.2);
+    q.step();
+    REQUIRE(q.latest().alpha == 0.2);
+}
+
+TEST_CASE("epsilon really changes what the agent does", "[lesson][settings]")
+{
+    // with epsilon 1 it moves at random, and falls again and again
+    lessons::tabular_session<rules, sarsa_rule<rules>> s(rules(), 0.5, 1.0, 0.1, 8);
+    s.set_epsilon(1.0);
+    int falls = 0;
+    for (int i = 0; i < 3000; i++) {
+        s.step();
+        falls += s.punished();
+    }
+    REQUIRE(falls > 50);
+    // a learnt policy followed without exploring never falls
+    lessons::tabular_session<rules, sarsa_rule<rules>> greedy(rules(), 0.5, 1.0, 0.1, 8);
+    for (int i = 0; i < 40000; i++) {
+        greedy.step();
+    }
+    greedy.set_epsilon(0.0);
+    int late = 0;
+    for (int i = 0; i < 2000; i++) {
+        greedy.step();
+        late += greedy.punished();
+    }
+    REQUIRE(late == 0);
+}
+
+TEST_CASE("sliders: from the mouse to a value and back", "[lesson][settings]")
+{
+    const lessons::slider_range range{0, 1, 0.01};
+    REQUIRE(lessons::slider_value(range, 100, 100, 200) == 0);
+    REQUIRE(lessons::slider_value(range, 300, 100, 200) == 1);
+    REQUIRE(lessons::slider_value(range, 200, 100, 200) == Approx(0.5));
+    REQUIRE(lessons::slider_value(range, 150, 100, 200) == Approx(0.25));
+    // beyond the ends of the track
+    REQUIRE(lessons::slider_value(range, 50, 100, 200) == 0);
+    REQUIRE(lessons::slider_value(range, 900, 100, 200) == 1);
+    // on the steps: 0.2537 goes to 0.25
+    REQUIRE(lessons::slider_value({0, 1, 0.05}, 150.74f, 100, 200) == Approx(0.25));
+    REQUIRE(lessons::slider_value({0, 1, 0.05}, 156, 100, 200) == Approx(0.3));
+    // a range not starting at 0
+    REQUIRE(lessons::slider_value({0.5, 2.5, 0.5}, 150, 100, 200) == Approx(1.0));
+    REQUIRE(lessons::slider_fraction(range, 0.3) == Approx(0.3));
+    REQUIRE(lessons::slider_fraction({0.5, 2.5, 0.5}, 1.5) == Approx(0.5));
+    REQUIRE(lessons::slider_fraction(range, 2) == 1);
+    REQUIRE(lessons::slider_fraction(range, -2) == 0);
+}
+
 TEST_CASE("the drawn symbols", "[lesson][glyphs]")
 {
     for (const char * name : {"alpha", "gamma", "epsilon", "arrow"}) {
