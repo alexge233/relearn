@@ -34,7 +34,7 @@ changes what a value means:
 
 - **The lake**, with the colours of the values and the arrows of its best known moves. On each step, a thick white arrow
   is the move it chose. When the ice has other ideas, the traveller sets off that way, skids, and a thick orange arrow
-  shows where it was sent. The lesson starts at 2 steps a second so that this can be followed.
+  shows where it was sent, while it keels over and wobbles. Going into a hole, it spins and shrinks. The lesson starts at 2 steps a second so that this can be followed.
 - **The ice decides**: the move it chose, the three things the ice could do with it, and which it did.
 - **In plain words**: when the ice gets in the way, it says so, in orange.
 - The rest is as in [Cliff Walking](cliff_walking.md#what-is-on-the-screen). The top bar and Tab switch between Q-learning,

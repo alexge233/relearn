@@ -233,6 +233,49 @@ TEST_CASE("the animation of a step, paused or not", "[frozen][slide]")
     REQUIRE(c.animation() == Approx(0.5).margin(0.11));
 }
 
+TEST_CASE("a move that goes as chosen is a little hop, upright", "[frozen][pose]")
+{
+    REQUIRE(lessons::step_pose(0, 0).lift == Approx(0).margin(1e-9));
+    REQUIRE(lessons::step_pose(0, 0.5).lift == Approx(0.09));
+    REQUIRE(lessons::step_pose(0, 1).lift == Approx(0).margin(1e-9));
+    for (double t : {0.0, 0.3, 0.7, 1.0}) {
+        REQUIRE(lessons::step_pose(0, t).angle == 0);
+        REQUIRE(lessons::step_pose(0, t).size == 1);
+    }
+}
+
+TEST_CASE("a slip keels over the way it skids, and comes back", "[frozen][pose]")
+{
+    // upright whilst it sets off the way it chose
+    REQUIRE(lessons::step_pose(1, 0).angle == 0);
+    REQUIRE(lessons::step_pose(1, 0.39).angle == 0);
+    REQUIRE(lessons::step_pose(1, 0.39).lift == 0);
+    // from the start of the skid: no jump
+    REQUIRE(lessons::step_pose(1, 0.4).angle == Approx(0).margin(1e-9));
+    // furthest over half way through the skid, one way or the other
+    REQUIRE(lessons::step_pose(1, 0.7).angle == Approx(55).margin(1e-9));
+    REQUIRE(lessons::step_pose(-1, 0.7).angle == Approx(-55).margin(1e-9));
+    REQUIRE(lessons::step_pose(1, 0.7).lift == Approx(0.12));
+    // the wobble on top of it
+    REQUIRE(lessons::step_pose(1, 0.475).angle == Approx(55 * std::sin(std::acos(-1.0) / 8) + 12));
+    // and back on its feet
+    REQUIRE(lessons::step_pose(1, 1).angle == Approx(0).margin(1e-9));
+    REQUIRE(lessons::step_pose(1, 1).lift == Approx(0).margin(1e-9));
+    REQUIRE(lessons::step_pose(1, 2).angle == Approx(0).margin(1e-9));
+    REQUIRE(lessons::step_pose(1, 0.7).size == 1);
+}
+
+TEST_CASE("going into a hole, it spins and shrinks", "[frozen][pose]")
+{
+    REQUIRE(lessons::sinking_pose(0).angle == 0);
+    REQUIRE(lessons::sinking_pose(0).size == 1);
+    REQUIRE(lessons::sinking_pose(0.5).angle == Approx(270));
+    REQUIRE(lessons::sinking_pose(1).angle == Approx(540));
+    REQUIRE(lessons::sinking_pose(1).size == Approx(0.25));
+    REQUIRE(lessons::sinking_pose(3).size == Approx(0.25));
+    REQUIRE(lessons::sinking_pose(-1).size == 1);
+}
+
 TEST_CASE("slowing down to a speed", "[frozen][slide]")
 {
     lessons::controls c;

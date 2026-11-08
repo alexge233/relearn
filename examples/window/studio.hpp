@@ -148,6 +148,26 @@ public:
         tile(dungeon_, col, row, x, y, tint, scale);
     }
 
+    /**
+     * @brief draw a tile of the dungeon's sheet held at an angle
+     * @param col and @param row choose the tile, drawn in the square at (@param x, @param y)
+     * @param degrees turns it about its middle, @param size multiplies it, @param tint colours it, @param scale is the art's zoom
+     */
+    void dungeon_held(int col,
+                      int row,
+                      float x,
+                      float y,
+                      float degrees,
+                      float size,
+                      Color tint,
+                      int scale) const
+    {
+        const float side = static_cast<float>(tile_side);
+        const float target = side * static_cast<float>(scale);
+        const float drawn = target * size;
+        DrawTexturePro(dungeon_, {col * side, row * side, side, side}, {x + target / 2, y + target / 2, drawn, drawn}, {drawn / 2, drawn / 2}, degrees, tint);
+    }
+
     /// @brief draw the skull at (@param x, @param y), the size of a tile
     void skull(float x,
                float y) const

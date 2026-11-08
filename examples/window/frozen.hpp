@@ -6,6 +6,7 @@
  */
 #include "../games/frozen_lake.hpp"
 #include "lesson.hpp"
+#include <cmath>
 #include <numeric>
 #include <string>
 #include <vector>
@@ -190,6 +191,49 @@ inline spot slide_path(const position & from,
     }
     const double part = (t - turning) / (1 - turning);
     return spot{out.x + (to.x - out.x) * part, out.y + (to.y - out.y) * part};
+}
+
+/**
+ * @struct pose
+ * @brief how the traveller's one drawing is held: tilted, lifted, and how big
+ */
+struct pose
+{
+    /// degrees, clockwise
+    double angle;
+    /// how far off the ice, in cells
+    double lift;
+    /// 1 is its usual size
+    double size;
+};
+
+/**
+ * @brief how the traveller holds itself during a step
+ * @param turn says how the ice turned it, as `turn_of` does
+ * @param t is how far the step has got, from 0 to 1
+ * @return a little hop if it went as chosen; otherwise upright as it sets off, then keeling over the way it skids, wobbling, and back
+ */
+inline pose step_pose(int turn,
+                      double t)
+{
+    const double turning = 0.4;  // as in `slide_path`
+    const double pi = std::acos(-1.0);
+    t = std::max(0.0, std::min(1.0, t));
+    if (turn == 0) {
+        return pose{0, 0.09 * std::sin(t * pi), 1};
+    }
+    if (t < turning) {
+        return pose{0, 0, 1};
+    }
+    const double u = (t - turning) / (1 - turning);
+    return pose{turn * (55 * std::sin(u * pi) + 12 * std::sin(u * pi * 4)), 0.12 * std::sin(u * pi), 1};
+}
+
+/// @return how the traveller holds itself going into a hole, @param t of the way down: spinning, and shrinking away
+inline pose sinking_pose(double t)
+{
+    t = std::max(0.0, std::min(1.0, t));
+    return pose{540 * t, 0, 1 - 0.75 * t};
 }
 
 /**

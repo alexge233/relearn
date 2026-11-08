@@ -218,10 +218,12 @@ private:
             falling(look, now, shown.death, x, y, side);
             return;
         }
-        const auto at = where(now, shown.followable_steps() ? shown.animation() : 1.0);
+        const double t = shown.followable_steps() ? shown.animation() : 1.0;
+        const auto at = where(now, t);
         const auto px = static_cast<float>(x + at.x * side);
         const auto py = static_cast<float>(y + at.y * side);
-        look.dungeon(1, 7, px, py, WHITE, scale);
+        const lessons::pose held = now.latest().valid ? lessons::step_pose(turn(now), t) : lessons::pose{0, 0, 1};
+        look.dungeon_held(1, 7, px, py - static_cast<float>(held.lift) * side, static_cast<float>(held.angle), static_cast<float>(held.size), WHITE, scale);
         if (shown.followable_steps() && slipped(now)) {
             // kept under the top bar when it is on the first row
             const float label = std::max(y + 2, py - 14);
@@ -330,7 +332,8 @@ private:
         if (scene.shown() == part::walker) {
             const auto fade = static_cast<unsigned char>(255 * (1 - t));
             const auto at = where(now, t);
-            look.dungeon(1, 7, static_cast<float>(x + at.x * side), static_cast<float>(y + at.y * side), Color{fade, fade, 255, 255}, scale);
+            const lessons::pose held = lessons::sinking_pose(t);
+            look.dungeon_held(1, 7, static_cast<float>(x + at.x * side), static_cast<float>(y + at.y * side), static_cast<float>(held.angle), static_cast<float>(held.size), Color{fade, fade, 255, 255}, scale);
         }
         else {
             rings(left + side / 2, top + side / 2, side, scene.shown() == part::skull ? t : 1.0f);
