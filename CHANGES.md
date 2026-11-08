@@ -10,6 +10,7 @@ of each one; this is the short version.
   time, behind the `session` interface), the controls, the top bar's layout and clicks.
 - `examples/window/studio.hpp`: draws a lesson with raylib, at native resolution: the crawling intro, the clickable
   top bar, the board, the beliefs, the learning curve, the formula with its real numbers, the plain words and the help.
+- Help bubbles: rest the mouse on anything on the main screen and it says what it is.
 - `examples/lesson_cliff_walking.cpp`: the first lesson, with Kenney's tiles and a smooth map of the values.
 - `examples/window/assets/`: Kenney's Tiny Town and Tiny Dungeon and the Pixel Operator font, all CC0, with credits.
 - `tests/lesson_test.cpp`: the numbers on the screen against the library's at every step, a session against

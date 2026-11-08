@@ -69,6 +69,8 @@ learns on its own.
 
 ## Controls
 
+Rest the mouse on anything for a moment and a bubble says what it is: each term of the formula, each move's bar, each
+cell of the board with what the walker believes there, the colour scale, the curve, and each entry of the top bar.
 Every entry of the top bar can be clicked, and has a key:
 
 | Key | |

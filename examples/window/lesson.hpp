@@ -897,6 +897,167 @@ inline std::vector<double> curve_points(const std::vector<double> & values,
 }
 
 /**
+ * @struct hot_zone
+ * @brief a part of the screen that explains itself when the mouse rests on it
+ */
+struct hot_zone
+{
+    float x;
+    float y;
+    float width;
+    float height;
+    /// what the bubble says
+    std::string text;
+};
+
+/// @return the zone under (@param x, @param y), the last one given if several overlap, or null if none
+inline const hot_zone * zone_at(const std::vector<hot_zone> & zones,
+                                float x,
+                                float y)
+{
+    const hot_zone * found = nullptr;
+    for (const auto & zone : zones) {
+        if (x >= zone.x && x < zone.x + zone.width && y >= zone.y && y < zone.y + zone.height) {
+            found = &zone;
+        }
+    }
+    return found;
+}
+
+/**
+ * @struct bubble_place
+ * @brief where a help bubble goes
+ */
+struct bubble_place
+{
+    float x;
+    float y;
+};
+
+/**
+ * @brief place a bubble of @param width x @param height near the mouse at (@param mouse_x, @param mouse_y)
+ * @param screen_width and @param screen_height are the size of the window
+ * @return below and to the right of the mouse; on its other side if it would leave the window that way, and always
+ *         inside the window
+ */
+inline bubble_place place_bubble(float mouse_x,
+                                 float mouse_y,
+                                 float width,
+                                 float height,
+                                 float screen_width,
+                                 float screen_height)
+{
+    const float offset = 16;
+    const float margin = 6;
+    float x = mouse_x + offset;
+    float y = mouse_y + offset;
+    if (x + width > screen_width - margin) {
+        x = mouse_x - offset - width;
+    }
+    if (y + height > screen_height - margin) {
+        y = mouse_y - offset - height;
+    }
+    return {std::max(margin, std::min(x, screen_width - margin - width)),
+            std::max(margin, std::min(y, screen_height - margin - height))};
+}
+
+/**
+ * @class hover_timer
+ * @brief a bubble appears once the mouse has rested on the same thing for a moment, so that it does not flicker
+ */
+class hover_timer
+{
+public:
+    /// the seconds the mouse must rest
+    static constexpr double wait = 0.3;
+
+    /**
+     * @brief a frame has gone by
+     * @param zone identifies the zone under the mouse, empty if there is none
+     * @param seconds is the length of the frame
+     * @return true if its bubble is to be shown
+     */
+    bool update(const std::string & zone,
+                double seconds)
+    {
+        if (zone != zone_) {
+            zone_ = zone;
+            rested_ = 0;
+        }
+        else {
+            rested_ += seconds;
+        }
+        return !zone_.empty() && rested_ >= wait;
+    }
+
+private:
+    std::string zone_;
+    double rested_ = 0;
+};
+
+/// @return what a bubble says about the entry @param what of the top bar
+inline std::string menu_help(command what)
+{
+    switch (what) {
+        case command::learner: return "Choose how it learns. Each learner has its own memory. (Tab)";
+        case command::restart: return "Send the walker back to the start. It keeps everything it has learnt. (R)";
+        case command::reset:   return "Forget everything and begin again from nothing. (Z)";
+        case command::pause:   return "Stop or carry on, to read a step at your own pace. (Space)";
+        case command::step:    return "Take exactly one step, then wait. (N or the right arrow)";
+        case command::slower:  return "Fewer steps each second. (-)";
+        case command::faster:  return "More steps each second. Very fast, it learns in seconds. (=)";
+        case command::values:  return "Show or hide the colours: how good it believes each cell is. (V)";
+        case command::arrows:  return "Show or hide the arrows: its best known move in each cell. (A)";
+        case command::intro:   return "Watch the introduction again. (I)";
+        case command::help:    return "All the keys, and what is on the screen. (H)";
+        default:               return "";
+    }
+}
+
+/**
+ * @brief what a bubble says about a term of the formula
+ * @param t is the term
+ * @param next_idea is what sets this learner apart, for the term of what comes next
+ * @return the explanation, empty for the plain signs
+ */
+inline std::string term_help(const term & t,
+                             const std::string & next_idea)
+{
+    switch (t.kind) {
+        case role::result: return "The new belief: what this move will be worth from now on, the next time it is here.";
+        case role::belief: return "The old belief: what it thought this move was worth before taking it.";
+        case role::speed:  return "alpha, the learning rate: how far the belief moves. At 0 it never learns; at 1 it forgets the old belief entirely.";
+        case role::reward: return "The reward: what this step just paid.";
+        case role::future: return "gamma, the discount: how much later rewards count. At 0 only the next reward matters; at 1 all of them count the same.";
+        case role::next:   return "What comes next, by its own reckoning. " + next_idea;
+        default: break;
+    }
+    if (t.symbol == "[" || t.symbol == "]") {
+        return "Everything inside the brackets is the surprise: what the move turned out to be worth, minus what it believed.";
+    }
+    if (t.symbol == "arrow") {
+        return "Replace the value on the left with what is on the right.";
+    }
+    return "";
+}
+
+/**
+ * @brief what a bubble says about a cell of a grid
+ * @param now is the session
+ * @param p is the cell
+ * @param names are the names of the moves
+ */
+inline std::string cell_help(const session & now,
+                             const position & p,
+                             const std::vector<std::string> & names)
+{
+    if (!now.known(p)) {
+        return "It has not been here yet, so it knows nothing about this cell.";
+    }
+    return "Its best known move here is " + names[now.best_action(p)] + ", which it believes is worth " + two_decimals(now.best(p)) + ".";
+}
+
+/**
  * @struct info
  * @brief what a lesson says about itself
  */

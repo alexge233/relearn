@@ -29,6 +29,34 @@ public:
         return 4.0f * lessons::studio::cell;
     }
 
+    /// @return the columns of the board
+    int columns() const
+    {
+        return rules::width;
+    }
+
+    /// @return the rows of the board
+    int rows() const
+    {
+        return rules::height;
+    }
+
+    /// @return what a bubble says about the cell in column @param column and row @param row
+    std::string describe(const lessons::session & now,
+                         int column,
+                         int row) const
+    {
+        const games::position p{column, row};
+        if (rules::cliff(p)) {
+            return "The cliff. Stepping here costs 100 points and sends the walker back to the start.";
+        }
+        if (p == rules::goal()) {
+            return "The treasure. Reaching it ends the episode.";
+        }
+        const std::string about = lessons::cell_help(now, p, moves());
+        return p == rules::start() ? "The start. " + about : about;
+    }
+
     /// @return the names of the moves, in the order of the game's actions
     std::vector<std::string> moves() const
     {

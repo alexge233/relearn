@@ -8,6 +8,8 @@
  *     const char * legend() const;      // what the colours of the board mean
  *     float height() const;             // of the board, in screen pixels
  *     std::vector<std::string> moves() const;   // the names of the moves
+ *     std::string describe(const session & now, int column, int row) const;   // what a bubble says about a cell
+ *     int columns() const;  int rows() const;   // of the board
  *
  * Keys and mouse do the same things (H shows them all). The window is 1280 x 800, drawn at its native resolution.
  */
@@ -296,6 +298,7 @@ private:
         }
         keyboard();
         mouse();
+        rest_ = seconds;
         if (!shown_.help) {
             for (unsigned int n = shown_.steps_for(seconds); n > 0; n--) {
                 now().step();
@@ -335,7 +338,7 @@ private:
         if (!IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
             return;
         }
-        const Vector2 at = GetMousePosition();
+        const Vector2 at = pointer();
         if (picking_) {
             const int row = static_cast<int>(at.y - bar_height) / picker_row;
             picking_ = false;
@@ -385,6 +388,88 @@ private:
             {command::faster, "Faster"}, {command::values, "Values"}, {command::arrows, "Arrows"}, {command::intro, "Intro"},
             {command::help, "Help"}};
         return lay_out_menu(entries, [this](const std::string & s) { return look_.width(s, 16); }, 8, 12);
+    }
+
+    /// @return where the mouse is (or where the pictures pretend it is)
+    Vector2 pointer() const
+    {
+        return pretending_ ? pretend_ : GetMousePosition();
+    }
+
+    /// @return the columns of the formula, and its terms' widths in @param widths
+    std::vector<column> layout_formula(const std::vector<term> & terms,
+                                       std::vector<float> & widths) const
+    {
+        widths.clear();
+        for (const auto & t : terms) {
+            widths.push_back(std::max({look_.symbol(t.symbol, 0, 0, ink::text, false), look_.width(t.number, 16, true), look_.width(t.label, 16)}));
+        }
+        return formula_columns(widths, 36, width_px - 72, 24);
+    }
+
+    /// @return every part of the main screen that explains itself; later ones are on top
+    std::vector<hot_zone> zones()
+    {
+        std::vector<hot_zone> out;
+        out.push_back({32, 46, 576, 40, "The demo's name, which learner is running, and how the current episode is going. The return is the sum of its rewards so far."});
+        out.push_back({32, 92 + board_.height(), 576, 32, "The colour scale: blue is where it expects to do badly, gold where it expects to do well."});
+        out.push_back({640, 50, 304, 34, "The value of each move from the cell it just left. It usually picks the highest."});
+        out.push_back({956, 50, 300, 270, "How well each whole episode went. It should climb as it learns, then level off."});
+        out.push_back({24, 332, static_cast<float>(width_px) - 48, 36, "The whole learning rule. Rest the mouse on any term to see what it means."});
+        out.push_back({24, 520, static_cast<float>(width_px) - 48, 264, "The step that just happened, read out as sentences. It is the formula above, in words."});
+        const auto names = board_.moves();
+        const position p = now().from();
+        for (std::size_t a = 0; a < names.size(); a++) {
+            out.push_back({640, 84 + static_cast<float>(a) * 56, 304, 44, "Q(s, " + names[a] + "): what it believes moving " + names[a] + " from that cell is worth: " + two_decimals(now().q(p, static_cast<unsigned int>(a))) + "."});
+        }
+        const float side = static_cast<float>(studio::cell);
+        for (int r = 0; r < board_.rows(); r++) {
+            for (int c = 0; c < board_.columns(); c++) {
+                out.push_back({32 + c * side, 92 + r * side, side, side, board_.describe(now(), c, r)});
+            }
+        }
+        const auto terms = formula_terms(now().latest(), now().next_symbol(), now().next_label());
+        std::vector<float> widths;
+        const auto columns = layout_formula(terms, widths);
+        for (std::size_t i = 0; i < terms.size(); i++) {
+            const std::string text = term_help(terms[i], now().idea());
+            if (!text.empty()) {
+                out.push_back({columns[i].x, 368, columns[i].width, 134, text});
+            }
+        }
+        for (const auto & item : menu()) {
+            out.push_back({item.x, 0, item.width, static_cast<float>(bar_height), menu_help(item.what)});
+        }
+        return out;
+    }
+
+    /// @brief the help bubble of what the mouse has rested on
+    void draw_bubble()
+    {
+        const Vector2 at = pointer();
+        const auto all = zones();
+        const hot_zone * zone = (picking_ || shown_.help) ? nullptr : zone_at(all, at.x, at.y);
+        // the zone's place identifies it: its text changes with every step, and the bubble must not start over
+        if (!hover_.update(zone ? std::to_string(zone->x) + "," + std::to_string(zone->y) : std::string(), rest_)) {
+            return;
+        }
+        const auto lines = wrap_text(zone->text, 46);
+        float wide = 0;
+        for (const auto & line : lines) {
+            wide = std::max(wide, look_.width(line, 16));
+        }
+        const float pad = 10;
+        const float w = wide + 2 * pad;
+        const float h = static_cast<float>(lines.size()) * 20 + 2 * pad - 2;
+        const auto place = place_bubble(at.x, at.y, w, h, width_px, height_px);
+        DrawRectangleRounded({place.x + 3, place.y + 3, w, h}, 0.15f, 6, Color{0, 0, 0, 120});
+        DrawRectangleRounded({place.x, place.y, w, h}, 0.15f, 6, Color{58, 54, 104, 250});
+        DrawRectangleRoundedLinesEx({place.x, place.y, w, h}, 0.15f, 6, 1, ink::gold);
+        float y = place.y + pad;
+        for (const auto & line : lines) {
+            look_.write(line, place.x + pad, y, 16, ink::text);
+            y += 20;
+        }
     }
 
     /// @brief draw one frame
@@ -493,7 +578,7 @@ private:
     {
         DrawRectangleGradientV(0, 0, width_px, bar_height, Color{44, 46, 84, 255}, Color{30, 32, 60, 255});
         DrawLine(0, bar_height, width_px, bar_height, ink::line);
-        const Vector2 at = GetMousePosition();
+        const Vector2 at = pointer();
         for (const auto & item : menu()) {
             const bool hover = at.y < bar_height && at.x >= item.x && at.x < item.x + item.width;
             const bool lit = (item.what == command::values && shown_.values) || (item.what == command::arrows && shown_.arrows) ||
@@ -593,10 +678,7 @@ private:
         look_.panel(24, 332, width_px - 48, 176, "The whole idea, with the numbers from this step");
         const auto terms = formula_terms(now().latest(), now().next_symbol(), now().next_label());
         std::vector<float> widths;
-        for (const auto & t : terms) {
-            widths.push_back(std::max({look_.symbol(t.symbol, 0, 0, ink::text, false), look_.width(t.number, 16, true), look_.width(t.label, 16)}));
-        }
-        const auto columns = formula_columns(widths, 36, width_px - 72, 24);
+        const auto columns = layout_formula(terms, widths);
         const float y = 372;
         for (std::size_t i = 0; i < terms.size(); i++) {
             const term & t = terms[i];
@@ -699,6 +781,7 @@ private:
         if (shown_.help) {
             draw_help();
         }
+        draw_bubble();
     }
 
     /// @brief render the intro, the main screen and the help to files, without showing a window
@@ -722,6 +805,15 @@ private:
         frame();
         frame();
         TakeScreenshot((folder + "main.png").c_str());
+        // a bubble, over the discount of the formula
+        pretending_ = true;
+        pretend_ = {708, 400};
+        rest_ = hover_timer::wait;
+        frame();
+        frame();
+        frame();
+        TakeScreenshot((folder + "bubble.png").c_str());
+        pretending_ = false;
         shown_.help = true;
         frame();
         frame();
@@ -745,6 +837,10 @@ private:
     bool quit_ = false;
     unsigned int shots_ = 0;
     double crawl_seconds_ = 0;
+    hover_timer hover_;
+    double rest_ = 0;
+    bool pretending_ = false;
+    Vector2 pretend_{};
     int crawl_height_ = 0;
     RenderTexture2D crawl_{};
 };

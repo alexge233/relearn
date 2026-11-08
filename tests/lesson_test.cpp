@@ -484,6 +484,102 @@ TEST_CASE("the points of a learning curve", "[lesson][colours]")
     REQUIRE(lessons::curve_points(std::vector<double>(100000, -13), 136)[135] == Approx(-13));
 }
 
+TEST_CASE("hot zones: which one is under the mouse", "[lesson][bubbles]")
+{
+    const std::vector<lessons::hot_zone> zones = {{10, 10, 100, 50, "big"}, {20, 20, 10, 10, "small"}};
+    REQUIRE(lessons::zone_at(zones, 5, 15) == nullptr);
+    REQUIRE(lessons::zone_at(zones, 10, 10)->text == "big");
+    REQUIRE(lessons::zone_at(zones, 109.5f, 59.5f)->text == "big");
+    REQUIRE(lessons::zone_at(zones, 110, 30) == nullptr);
+    REQUIRE(lessons::zone_at(zones, 50, 60) == nullptr);
+    // the later one is on top, and only inside its own bounds
+    REQUIRE(lessons::zone_at(zones, 25, 25)->text == "small");
+    REQUIRE(lessons::zone_at(zones, 30, 25)->text == "big");
+    REQUIRE(lessons::zone_at({}, 1, 1) == nullptr);
+}
+
+TEST_CASE("where a bubble goes", "[lesson][bubbles]")
+{
+    // room everywhere: below and to the right of the mouse
+    auto p = lessons::place_bubble(100, 100, 200, 60, 1280, 800);
+    REQUIRE(p.x == 116);
+    REQUIRE(p.y == 116);
+    // at the right edge: to its left; at the bottom: above it
+    p = lessons::place_bubble(1200, 100, 200, 60, 1280, 800);
+    REQUIRE(p.x == 984);
+    REQUIRE(p.y == 116);
+    p = lessons::place_bubble(100, 780, 200, 60, 1280, 800);
+    REQUIRE(p.x == 116);
+    REQUIRE(p.y == 704);
+    // exactly fitting stays on the usual side: 1280 - 6 - 200 - 16 = 1058
+    REQUIRE(lessons::place_bubble(1058, 100, 200, 60, 1280, 800).x == 1074);
+    REQUIRE(lessons::place_bubble(1059, 100, 200, 60, 1280, 800).x == 843);
+    // never outside the window, even with no good side
+    p = lessons::place_bubble(50, 50, 1300, 900, 1280, 800);
+    REQUIRE(p.x == 6);
+    REQUIRE(p.y == 6);
+    p = lessons::place_bubble(10, 790, 300, 790, 1280, 800);
+    REQUIRE(p.y >= 6);
+    REQUIRE(p.y + 790 <= 800);
+}
+
+TEST_CASE("a bubble waits for the mouse to rest", "[lesson][bubbles]")
+{
+    lessons::hover_timer h;
+    // the first frame on a zone only starts the wait
+    REQUIRE(!h.update("a", 1.0));
+    REQUIRE(!h.update("a", 0.2));
+    REQUIRE(h.update("a", 0.1));
+    REQUIRE(h.update("a", 5));
+    // on another zone it waits again
+    REQUIRE(!h.update("b", 5));
+    REQUIRE(h.update("b", 0.3));
+    // nothing under the mouse: no bubble, however long
+    REQUIRE(!h.update("", 0.1));
+    REQUIRE(!h.update("", 9));
+    // and back on the same zone it waits again
+    REQUIRE(!h.update("b", 0.1));
+}
+
+TEST_CASE("what the bubbles say", "[lesson][bubbles]")
+{
+    using lessons::command;
+    for (auto c : {command::learner, command::restart, command::reset, command::pause, command::step, command::slower,
+                   command::faster, command::values, command::arrows, command::intro, command::help}) {
+        REQUIRE(!lessons::menu_help(c).empty());
+    }
+    REQUIRE(lessons::menu_help(command::none).empty());
+    REQUIRE(lessons::menu_help(command::reset).find("(Z)") != std::string::npos);
+    REQUIRE(lessons::menu_help(command::restart).find("(R)") != std::string::npos);
+    // every term that has a meaning explains it, and the plain signs that do not stay silent
+    const auto terms = lessons::formula_terms(sample(), "max Q(s',a')", "best from there");
+    std::vector<std::string> said;
+    for (const auto & t : terms) {
+        said.push_back(lessons::term_help(t, "THE IDEA"));
+    }
+    REQUIRE(said[0].find("new belief") != std::string::npos);
+    REQUIRE(said[1].find("Replace") != std::string::npos);
+    REQUIRE(said[2].find("old belief") != std::string::npos);
+    REQUIRE(said[3].empty());
+    REQUIRE(said[4].find("alpha") != std::string::npos);
+    REQUIRE(said[5].find("surprise") != std::string::npos);
+    REQUIRE(said[6].find("reward") != std::string::npos);
+    REQUIRE(said[7].empty());
+    REQUIRE(said[8].find("gamma") != std::string::npos);
+    REQUIRE(said[9].find("THE IDEA") != std::string::npos);
+    REQUIRE(said[10].empty());
+    REQUIRE(said[12] == said[5]);
+    // a cell: unvisited, then what it believes
+    lessons::tabular_session<rules, q_learning_rule<rules>> s(rules(), 1.0, 1.0, 0.0, 1);
+    const std::vector<std::string> names = {"up", "right", "down", "left"};
+    REQUIRE(lessons::cell_help(s, {9, 0}, names) == "It has not been here yet, so it knows nothing about this cell.");
+    for (int i = 0; i < 60; i++) {
+        s.step();
+    }
+    const games::position start = rules::start();
+    REQUIRE(lessons::cell_help(s, start, names) == "Its best known move here is " + names[s.best_action(start)] + ", which it believes is worth " + lessons::two_decimals(s.best(start)) + ".");
+}
+
 TEST_CASE("the drawn symbols", "[lesson][glyphs]")
 {
     for (const char * name : {"alpha", "gamma", "epsilon", "arrow"}) {
