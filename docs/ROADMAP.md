@@ -74,7 +74,8 @@ docs will explain why.
     with the learning shown in the same style, a pixel learning curve, Q values as the colours of the cells and a
     status line (have a look at [watch.md](watch.md))
   - in a window, as retro pixel art, with [raylib](https://www.raylib.com) in an optional sub-project, drawing the
-    very same canvas; and views for the games that have none yet
+    very same canvas: now in too, as `win_<game>` for the same seven games; still to come, views for the games
+    that have none yet, and a `view3d` hook for those that want a camera
 
 ### New games, to show each algorithm at its best
 

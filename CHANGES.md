@@ -3,6 +3,22 @@
 What each change to relearn did, newest first. The pull requests hold the details, the measurements and the review
 of each one; this is the short version.
 
+## Watching the agents play, in a window
+
+- `watched<game_type, screen_type>`: the frames go to a *screen*, `terminal_screen` (the default, what the terminal
+  did before, moved out of `watched`) or any class with `fits`, `too_tall` and `show`; closing a screen stops the
+  watching.
+- `examples/window/layout.hpp`: `window_layout`, the geometry of a window (the pixel size, the band, a minimum width
+  with the picture centred, the canvas as bytes), with no raylib in it; `examples/window/window.hpp`:
+  `window_screen`, a raylib window opened at the first frame, with pause (space), screenshots (S), a `snapshot`
+  of the last frame, and held on its last frame until dismissed unless a snapshot was asked for; `examples/window/CMakeLists.txt`, the sub-project (`-DBUILD_WINDOW=On`) building the seven
+  watched examples again as `win_<game>`.
+- `--snapshot file.png` on the examples, applied to the screens that take one.
+- Tests for the terminal screen, a recording screen through `watched`, the layout and the options; the CI builds the
+  window examples on Linux and macOS.
+- `docs/watch.md` has the window and two pictures of it, `images/mountain_car_window.png` and
+  `images/racetrack_window.png`; the README and the roadmap mark it done.
+
 ## Watching the agents play, in the terminal
 
 - `examples/games/watch.hpp`: a `canvas` of pixels rendered two to a character with half blocks, in 24-bit colour

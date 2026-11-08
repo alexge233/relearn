@@ -139,7 +139,9 @@ needed unless you want the plane of values, as Mountain Car has; and in the exam
 
 ## Tests
 
-`tests/watch_test.cpp` checks the pieces one by one, worked out by hand:
+`tests/watch_test.cpp` checks the pieces one by one, worked out by hand (the window's layout and the screens
+included; opening a window is the one thing not tested, since the CI has no display, which only builds the window
+examples, on Linux and on macOS):
 
 - the colours: equality, the gradient, the two palettes' escape sequences, whether `COLORTERM` says 24-bit colour,
   the six levels of the 256-colour cube and the boundaries between them (47 is level 0, 48 is level 1), and the
@@ -161,12 +163,83 @@ needed unless you want the plane of values, as Mountain Car has; and in the exam
   every step (or every n-th, and the last one always), each with the status line, and shows the cursor again at the
   end, and not when nothing was drawn; that the frame is, byte for byte, the view drawn with the values, the curve
   of the returns under it and the status line, in each of the two palettes; and that it fits the terminal's height
-- the command line options, and their defaults
+- the screens: the terminal's rows and the lines a frame takes, its note, the exact text of its first and second
+  frame, its rendering in both palettes and the cursor shown again when it goes; a recording screen through
+  `watched`, given the very drawing, the status and the title, and closing after three frames, upon which the
+  watching stops and the game plays on; and the window's layout, the pixel size for each example's frame, the
+  window's size, the band, the centred picture and the pixels as bytes
+- the command line options, and their defaults, applied to screens with and without rows and a snapshot
+
+## In a window
+
+The same frames can go to a window instead, drawn with [raylib](https://www.raylib.com) as retro pixels: every
+canvas pixel a sharp square, the status line in a band underneath, and the learnt values and the curve exactly as in
+the terminal, since the views draw into the same canvas. It is an optional sub-project, off by default, so that
+`relearn.hpp` and the default build keep no dependencies:
+
+```bash
+brew install raylib                   # macOS; for Linux, see below
+cmake .. -DBUILD_WINDOW=On
+make win_racetrack
+./win_racetrack --watch               # the same options as the terminal's, in a window
+./win_mountain_car --watch --delay 10 --snapshot last.png
+```
+
+On Linux, `sudo apt install libraylib-dev` works on the newest Ubuntu releases only (24.04 does not have it), and
+elsewhere raylib builds from source in a minute, which is what the CI does:
+
+```bash
+sudo apt install libgl1-mesa-dev libx11-dev libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev
+git clone --depth 1 --branch 6.2 https://github.com/raysan5/raylib.git
+cmake -S raylib -B raylib/build -DBUILD_SHARED_LIBS=ON -DBUILD_EXAMPLES=OFF -DGLFW_BUILD_WAYLAND=OFF
+cmake --build raylib/build -j4 && sudo cmake --install raylib/build && sudo ldconfig
+```
+
+The seven examples that take `--watch` are built again as `win_<game>`, and for them `--watch` opens a window.
+Whilst it is open, space pauses and resumes, S saves a screenshot (`relearn-<n>.png`, in the current directory),
+and closing the window, or Escape, stops the watching for the rest of the program, which goes on without it. The
+window stays open on the last frame when its game is over, until space is pressed or it is closed (with `--snapshot`
+nobody is assumed to be watching, and it closes by itself). The window is only looked after whilst a frame is being shown: between two watched episodes the program is busy learning
+and the window sits still until the next one, so the system may call it unresponsive for a while. `--snapshot file.png` saves
+the last frame when the window closes, which is how the two pictures below were taken.
+
+![Mountain Car in the window: the hill, the car and the flag on the left, the plane of values on the right, the learning curve under them](../images/mountain_car_window.png)
+
+![the racetrack in the window: the optimal policy driving, the car's velocity as a tail behind it](../images/racetrack_window.png)
+
+### How the window works
+
+`watched` takes a second template parameter, the *screen*, which is where its frames go: `terminal_screen`, the
+default, or `window_screen`. A screen is any class with three members, so a third kind (a file of frames, a test's
+recorder) is a few lines:
+
+```cpp
+bool fits(unsigned int lines) const;                 // does a frame of so many rows fit? (a window: always)
+void too_tall(unsigned int lines);                    // say so, before any frame, if it does not
+bool show(const games::canvas & c,                    // one frame: false once the screen is closed
+          const std::string & status,
+          const std::string & title);
+```
+
+`watch_options::apply` tells a screen what it can take and no more: the terminal's height goes to a screen with
+`rows`, the snapshot's file to one with `snapshot`, each through the same expression-SFINAE overload pair the games
+use for `start_episode()`.
+
+`examples/window/layout.hpp` is the geometry, with no raylib in it, so that it is tested with everything else:
+`window_layout` picks the screen pixels to a canvas pixel (the most that keep the window within 960 x 640, between 2
+and 16), gives the window's size with the band, keeps it at least 480 wide with the picture centred, and turns a
+canvas into the bytes a texture takes. `examples/window/window.hpp` is the only header that includes `raylib.h`:
+`window_screen` opens the window at the first frame, loads the canvas as a texture with point filtering, updates it
+every frame, and draws it scaled with the status under it.
+
+The examples choose their screen at compile time: built by the sub-project they are compiled with `RELEARN_WINDOW`
+defined, and `using screen = games::window_screen;` instead of the terminal, so the same source gives `ex_<game>`
+and `win_<game>`. The sub-project finds raylib through its CMake config (Homebrew, vcpkg, a source build), or as a
+plain library and header.
 
 ## What is next
 
-The same views, in a window: the roadmap's raylib sub-project, off by default, drawing the very same canvas as
-retro pixels, so a view is written once and shown either way.
+The games that have no view yet, and, for the window, a `view3d` hook for the games that want a camera.
 
 ## References
 
