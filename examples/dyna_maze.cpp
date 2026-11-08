@@ -16,19 +16,27 @@
  * The program succeeds if planning learns the maze in fewer episodes, and if
  * Dyna-Q+ reaches the goal more often than Dyna-Q in both changing mazes.
  *
+ * Run it with `--watch` to see the first run of each n cross the maze (Figure 8.2): its first three episodes, then
+ * every 10th, and the greedy path at the end, the cells coloured by the values learnt so far (have a look at
+ * docs/watch.md). With n = 50, the second episode already goes almost straight to the goal.
+ *
  * @see games/dyna_maze.hpp for the layouts
  */
 #include "games/dyna_maze.hpp"
+#include "games/views.hpp"
 #include <cstdlib>
 #include <iomanip>
 #include <iostream>
 #include <map>
+#include <string>
 #include <vector>
 
 // set shortcuts to the game, to its relearn types, and to the learner
 using game_type    = games::dyna_maze;
 using types        = games::types<game_type>;
 using learner_type = relearn::dyna_q<types::state, types::action>;
+// whether, and how, to watch the agents play (from the command line)
+games::watch_options options;
 
 /**
  * @brief the moves of each episode in the Dyna maze, averaged over many runs (Figure 8.2)
@@ -48,20 +56,27 @@ std::vector<double> moves_per_episode(unsigned int planning_steps,
     std::vector<double> moves(episodes, 0);
     for (unsigned int run = 1; run <= runs; run++) {
         std::mt19937 prng(run);
-        game_type maze;
+        games::watched<game_type> maze{game_type()};
         types::policy memory;
         learner_type learner(0.1, 0.95, planning_steps, run + 1000);
+        // watched, the cells are coloured by the values being learnt
+        options.apply(maze);
+        maze.memory = &memory;
+        maze.title  = "Dyna-Q, n = " + std::to_string(planning_steps);
         // the ε-greedy agent, with ε = 0.1
         auto agent = [&](const game_type::state_type & s,
                          const std::vector<unsigned int> & legal) {
             return games::epsilon_greedy<game_type>(memory, s, legal, 0.1, prng);
         };
-        // play the episodes, learning (and planning) after every move
+        // play the episodes, learning (and planning) after every move;
+        // the first run is watched: its first three episodes, then every 10th, and the greedy path after them
         for (unsigned int i = 0; i < episodes; i++) {
+            maze.on = options.on && run == 1 && (i < 3 || (i + 1) % 10 == 0);
             auto r = games::play_online(maze, agent, learner, memory, 100000);
             moves[i] += static_cast<double>(r.steps) / runs;
         }
-        // then follow the learnt policy greedily, without exploring
+        // then follow the learnt policy greedily, without exploring; watched too, in the first run
+        maze.on = options.on && run == 1;
         auto greedy_agent = [&](const game_type::state_type & s,
                                 const std::vector<unsigned int> & legal) {
             return games::greedy<game_type>(memory, s, legal, prng);
@@ -167,8 +182,10 @@ void print_goals(unsigned long report,
     }
 }
 
-int main()
+int main(int argc,
+         char ** argv)
 {
+    options = games::watch_options::parse(argc, argv);
     std::cout << std::fixed << std::setprecision(1);
 
     // 1. Figure 8.2: moves per episode, with n = 0, 5 and 50, over 30 runs

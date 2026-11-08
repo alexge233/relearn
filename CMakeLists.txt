@@ -122,6 +122,8 @@ if (BUILD_TESTS)
     add_test(prioritized_sweeping_test test_prioritized_sweeping)
     add_executable(test_dynamic_programming tests/dynamic_programming_test.cpp)
     add_test(dynamic_programming_test test_dynamic_programming)
+    add_executable(test_watch tests/watch_test.cpp)
+    add_test(watch_test test_watch)
 
     # every part of the library compiles on its own (see tests/headers)
     foreach(part core schedules q_learning sarsa double_q_learning dyna monte_carlo bandits

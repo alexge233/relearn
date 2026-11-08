@@ -113,6 +113,18 @@ public:
         return static_cast<state_type>(((row * cols_ + column) * 5 + vx) * 5 + vy);
     }
 
+    /// @return the number of rows of the track
+    int rows() const
+    {
+        return rows_;
+    }
+
+    /// @return the number of columns of the track
+    int columns() const
+    {
+        return cols_;
+    }
+
     /// @return the terminal state: the car has crossed the finish line
     state_type finished() const
     {

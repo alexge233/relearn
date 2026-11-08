@@ -14,10 +14,14 @@
  * half the states, if from 8 sweeps heuristic search 3 moves deep beats the greedy policy, and if from 3 sweeps the
  * rollouts do.
  *
+ * Run it with `--watch` to see the optimal policy drive five races, noise and all, once value iteration has found it
+ * (have a look at docs/watch.md).
+ *
  * @see games/racetrack.hpp for the rules
  * @see docs/planning.md for the algorithms
  */
 #include "games/racetrack.hpp"
+#include "games/views.hpp"
 #include <algorithm>
 #include <cmath>
 #include <cstdlib>
@@ -112,8 +116,10 @@ types::action best(const game_type::model_type & model,
     return actions[b];
 }
 
-int main()
+int main(int argc,
+         char ** argv)
 {
+    const auto options = games::watch_options::parse(argc, argv);
     std::cout << std::fixed;
     game_type track;
     auto model = track.model();
@@ -159,6 +165,21 @@ int main()
     std::cout << "    RTDP: " << std::setprecision(0) << mean_trials << " trials, " << mean_updates << " updates, of "
               << mean_states << " states (" << std::setprecision(1) << 100 * mean_states / live
               << "%), until its greedy policy is within 0.05 steps of the optimal one (" << runs << " runs)" << std::endl;
+
+    // watched: the optimal policy drives five races, with the noise of the game
+    if (options.on) {
+        games::watched<game_type> car{game_type(track.default_track(), true, 3)};
+        options.apply(car);
+        car.title = "racetrack, the optimal policy";
+        auto driver = [&](const unsigned int & s, const std::vector<unsigned int> &) {
+            return best(model, types::state(s), [&](const types::state & x, const types::action & a) {
+                return sweeps.q_value(model, x, a);
+            }).trait();
+        };
+        for (int race = 0; race < 5; race++) {
+            games::play(car, driver, 1000);
+        }
+    }
 
     // 2. planning from the values of a few sweeps
     std::cout << std::endl << "Planning from rough values (a few sweeps of value iteration from 0): steps from the start line" << std::endl;

@@ -44,6 +44,16 @@ jobs:
           timeout 300 ./ex_gridworld_offline
           cd ..
 
+      - name: watch a game, headless
+        run: |
+          cd build
+          # the frames go to a file: the watch mode must run through, drawing with the 256-colour palette
+          # (no COLORTERM here) and with 24-bit colour
+          ./ex_cliff_walking --watch --delay 0 --every 10 > watched.txt
+          test -s watched.txt
+          COLORTERM=truecolor ./ex_frozen_lake --watch --delay 0 --every 10 > watched.txt
+          grep -q $'\e\[38;2;' watched.txt
+
       - name: run the games
         run: |
           cd build
