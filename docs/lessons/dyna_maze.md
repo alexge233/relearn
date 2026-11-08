@@ -69,7 +69,8 @@ planning one step at a time and shows what it is told, so nothing in the lesson 
 `tests/planning_lesson_test.cpp` checks that a session learns exactly what the library's own loop does for `n` = 0, 5 and
 50 from the same seed, that `n = 0` is Q-learning, that the formula shown holds at every step, real or imagined, against
 the value in the policy, that what it remembers of a move is what the game does, and that planning needs far fewer real
-moves and ends on the 14-move path.
+moves and ends close to the 14-move path. Close, not always on it: over 30 runs of 300 episodes at `n = 50`, about two in three
+find 14 moves and the rest 16, since a move the best known path never makes is only tried by chance.
 
 ## References
 
