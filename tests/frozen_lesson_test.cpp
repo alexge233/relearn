@@ -152,6 +152,101 @@ TEST_CASE("which way the ice turned a move", "[frozen]")
     REQUIRE(lessons::turn_of({0, 1}, 0, {0, 1}, 4, 4) == -1);
 }
 
+TEST_CASE("the way a move goes when it goes as chosen: a straight line", "[frozen][slide]")
+{
+    const position from{1, 1};
+    const position to{2, 1};
+    const auto middle = lessons::slide_path(from, 1, to, 0, 0.5);
+    REQUIRE(middle.x == Approx(1.5));
+    REQUIRE(middle.y == Approx(1));
+    REQUIRE(lessons::slide_path(from, 1, to, 0, 0).x == Approx(1));
+    REQUIRE(lessons::slide_path(from, 1, to, 0, 1).x == Approx(2));
+}
+
+TEST_CASE("the way a slip goes: off as chosen, then the ice takes it", "[frozen][slide]")
+{
+    // it chose right, and the ice sent it down
+    const position from{1, 1};
+    const position to{1, 2};
+    const auto start = lessons::slide_path(from, 1, to, 1, 0);
+    REQUIRE(start.x == Approx(1));
+    REQUIRE(start.y == Approx(1));
+    // on the way out it only moves the way it chose
+    const auto out = lessons::slide_path(from, 1, to, 1, 0.2);
+    REQUIRE(out.x == Approx(1.15));
+    REQUIRE(out.y == Approx(1));
+    // the turn: as far as it gets
+    const auto pivot = lessons::slide_path(from, 1, to, 1, 0.4);
+    REQUIRE(pivot.x == Approx(1.3));
+    REQUIRE(pivot.y == Approx(1));
+    // no jump as the ice takes over
+    const auto after = lessons::slide_path(from, 1, to, 1, 0.4001);
+    REQUIRE(after.x == Approx(pivot.x).margin(0.001));
+    REQUIRE(after.y == Approx(pivot.y).margin(0.001));
+    const auto end = lessons::slide_path(from, 1, to, 1, 1);
+    REQUIRE(end.x == Approx(1));
+    REQUIRE(end.y == Approx(2));
+    // kept in its range
+    REQUIRE(lessons::slide_path(from, 1, to, 1, 5).y == Approx(2));
+    REQUIRE(lessons::slide_path(from, 1, to, 1, -1).x == Approx(1));
+}
+
+TEST_CASE("a slip into the edge goes out and comes back", "[frozen][slide]")
+{
+    const position from{0, 1};
+    const auto pivot = lessons::slide_path(from, 0, from, -1, 0.4);
+    REQUIRE(pivot.y == Approx(0.7));
+    REQUIRE(pivot.x == Approx(0));
+    const auto end = lessons::slide_path(from, 0, from, -1, 1);
+    REQUIRE(end.y == Approx(1));
+    REQUIRE(end.x == Approx(0));
+}
+
+TEST_CASE("the animation of a step, paused or not", "[frozen][slide]")
+{
+    lessons::controls c;
+    c.slow_down_to(2);
+    REQUIRE(c.rate() == 2);
+    c.steps_for(0.1);
+    REQUIRE(c.animation() == Approx(0.1 / lessons::controls::longest_animation));
+    // the step that comes due starts it again
+    REQUIRE(c.steps_for(0.4) == 1);
+    REQUIRE(c.animation() == 0);
+    // and it stops at the end, however long the step lasts
+    c.paused = true;
+    c.steps_for(1);
+    REQUIRE(c.animation() == 1);
+    // one step asked for by hand has its animation too
+    c.single_step();
+    REQUIRE(c.steps_for(0.01) == 1);
+    REQUIRE(c.animation() == 0);
+    c.steps_for(0.225);
+    REQUIRE(c.animation() == Approx(0.5));
+    // at a speed where a step is shorter, so is the animation
+    c.paused = false;
+    while (c.rate() < 10) {
+        c.faster();
+    }
+    c.steps_for(0.2);
+    REQUIRE(c.animation() == 0);
+    c.steps_for(0.05);
+    REQUIRE(c.animation() == Approx(0.5).margin(0.11));
+}
+
+TEST_CASE("slowing down to a speed", "[frozen][slide]")
+{
+    lessons::controls c;
+    REQUIRE(c.rate() == 5);
+    c.slow_down_to(5);
+    REQUIRE(c.rate() == 5);
+    c.slow_down_to(100);
+    REQUIRE(c.rate() == 5);
+    c.slow_down_to(2);
+    REQUIRE(c.rate() == 2);
+    c.slow_down_to(0.5);
+    REQUIRE(c.rate() == 1);
+}
+
 TEST_CASE("what is said about the ice", "[frozen][words]")
 {
     REQUIRE(lessons::slip_words(names, {1, 1}, 1, {2, 1}, 4, 4).empty());

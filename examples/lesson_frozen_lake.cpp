@@ -106,6 +106,9 @@ public:
         look.town(11, 6, x, y, scale);
         look.dungeon(5, 7, x + 3 * side, y + 3 * side, WHITE, scale);
         traveller(look, now, shown, x, y, side);
+        if (shown.followable_steps()) {
+            slip_marks(look, now, shown, x, y, side);
+        }
         DrawRectangleLinesEx({x - 1, y - 1, columns() * side + 2, rows() * side + 2}, 1, lessons::ink::line);
         the_ice_decides(look, now, x + columns() * side, y + 78);
     }
@@ -215,15 +218,100 @@ private:
             falling(look, now, shown.death, x, y, side);
             return;
         }
-        const games::position to = now.at();
-        float cx = static_cast<float>(to.x);
-        float cy = static_cast<float>(to.y);
-        if (shown.gliding()) {
-            const auto t = static_cast<float>(shown.progress());
-            cx = now.from().x + (to.x - now.from().x) * t;
-            cy = now.from().y + (to.y - now.from().y) * t;
+        const auto at = where(now, shown.followable_steps() ? shown.animation() : 1.0);
+        const auto px = static_cast<float>(x + at.x * side);
+        const auto py = static_cast<float>(y + at.y * side);
+        look.dungeon(1, 7, px, py, WHITE, scale);
+        if (shown.followable_steps() && slipped(now)) {
+            // kept under the top bar when it is on the first row
+            const float label = std::max(y + 2, py - 14);
+            look.write("Slip!", px + 21, label + 1, 16, BLACK, true);
+            look.write("Slip!", px + 20, label, 16, lessons::ink::next, true);
         }
-        look.dungeon(1, 7, x + cx * side, y + cy * side, WHITE, scale);
+    }
+
+    /// @return where the traveller is, @param t of the way through its last step
+    lessons::spot where(const lessons::session & now,
+                        double t) const
+    {
+        if (!now.latest().valid) {
+            return lessons::spot{static_cast<double>(now.at().x), static_cast<double>(now.at().y)};
+        }
+        return lessons::slide_path(now.from(), now.last_action(), now.at(), turn(now), t);
+    }
+
+    /// @return how the ice turned the last move
+    int turn(const lessons::session & now) const
+    {
+        return lessons::turn_of(now.from(), now.last_action(), now.at(), columns(), rows());
+    }
+
+    /// @return true if the ice sent the last move somewhere else
+    bool slipped(const lessons::session & now) const
+    {
+        return now.latest().valid && turn(now) != 0;
+    }
+
+    /// @brief on the ice: a white arrow for the move it chose, an orange one for where the ice sent it, and a spray where it skids
+    void slip_marks(const lessons::studio & look,
+                    const lessons::session & now,
+                    const lessons::controls & shown,
+                    float x,
+                    float y,
+                    float side) const
+    {
+        if (!now.latest().valid) {
+            return;
+        }
+        const games::position from = now.from();
+        const unsigned int tried = now.last_action();
+        const Vector2 centre{x + (from.x + 0.5f) * side, y + (from.y + 0.5f) * side};
+        const games::position aim = lessons::moved_to(from, tried);
+        const bool off_the_lake = lessons::on_board(aim, columns(), rows()) != aim;
+        arrow_on_ice(look, centre, aim.x - from.x, aim.y - from.y, (off_the_lake ? 0.34f : 0.62f) * side, tried, Color{255, 255, 255, 235});
+        if (!slipped(now)) {
+            return;
+        }
+        const unsigned int way = lessons::turned(tried, turn(now));
+        const games::position got = lessons::moved_to(from, way);
+        const bool bumped = now.at() == from;
+        arrow_on_ice(look, centre, got.x - from.x, got.y - from.y, (bumped ? 0.34f : 0.72f) * side, way, lessons::ink::next);
+        spray(centre, aim.x - from.x, aim.y - from.y, side, static_cast<float>(shown.animation()));
+    }
+
+    /// @brief a thick arrow of @param length from @param start, along (@param dx, @param dy), for the move @param a
+    void arrow_on_ice(const lessons::studio & look,
+                      const Vector2 & start,
+                      int dx,
+                      int dy,
+                      float length,
+                      unsigned int a,
+                      Color c) const
+    {
+        const Vector2 tip{start.x + dx * length, start.y + dy * length};
+        const Vector2 shadow{1.5f, 1.5f};
+        DrawLineEx({start.x + shadow.x, start.y + shadow.y}, {tip.x + shadow.x, tip.y + shadow.y}, 6, Color{0, 0, 0, 110});
+        DrawLineEx(start, tip, 6, c);
+        look.arrow(tip.x + 1, tip.y + 1, a, Color{0, 0, 0, 110}, 15);
+        look.arrow(tip.x, tip.y, a, c, 15);
+    }
+
+    /// @brief ice flying up where the skid starts, @param t of the way through the step
+    void spray(const Vector2 & centre,
+               int dx,
+               int dy,
+               float side,
+               float t) const
+    {
+        if (t < 0.35f || t > 0.85f) {
+            return;
+        }
+        const float spread = (t - 0.35f) * 60;
+        const Vector2 skid{centre.x + dx * side * 0.3f, centre.y + dy * side * 0.3f};
+        for (int i = 0; i < 8; i++) {
+            const float angle = static_cast<float>(i) * 0.785f + 0.3f;
+            DrawCircle(static_cast<int>(skid.x + std::cos(angle) * spread), static_cast<int>(skid.y + std::sin(angle) * spread), 2.5f, Color{255, 255, 255, 220});
+        }
     }
 
     /// @brief the traveller sliding in and turning blue, rings of water, and its ghost floating off
@@ -235,14 +323,14 @@ private:
                  float side) const
     {
         using part = lessons::death_scene::part;
-        const games::position from = now.from();
         const games::position hole = now.at();
         const float left = x + hole.x * side;
         const float top  = y + hole.y * side;
         const auto t = static_cast<float>(scene.along());
         if (scene.shown() == part::walker) {
             const auto fade = static_cast<unsigned char>(255 * (1 - t));
-            look.dungeon(1, 7, x + (from.x + (hole.x - from.x) * t) * side, y + (from.y + (hole.y - from.y) * t) * side, Color{fade, fade, 255, 255}, scale);
+            const auto at = where(now, t);
+            look.dungeon(1, 7, static_cast<float>(x + at.x * side), static_cast<float>(y + at.y * side), Color{fade, fade, 255, 255}, scale);
         }
         else {
             rings(left + side / 2, top + side / 2, side, scene.shown() == part::skull ? t : 1.0f);
@@ -299,8 +387,8 @@ private:
             const float word = look.width(names[way], 16, chosen);
             look.write(names[way], left + box / 2 - word / 2, y + 108, 16, chosen ? lessons::ink::gold : lessons::ink::dim, chosen);
         }
-        look.write("A value averages all three.", x + 32, y + 140, 16, lessons::ink::dim);
-        look.write("A good move is a safe one.", x + 32, y + 158, 16, lessons::ink::dim);
+        look.write("White: what it chose.", x + 32, y + 140, 16, WHITE);
+        look.write("Orange: what the ice did.", x + 32, y + 158, 16, lessons::ink::next);
     }
 
     /// @brief the colours of the values, in a small space
@@ -334,6 +422,7 @@ int main(int argc,
                    "The rest of the time the ice sends you sideways. The same move, from the same place, can win or lose.",
                    "So there is no safe path to memorise. All there is to learn is which move gives the best odds from each cell.",
                    "Watch the arrows. Sometimes the wisest move is to walk away from the treasure."};
+    about.start_rate = 2;
     about.watch_for = "The same move can turn out differently, so each value is an average of what the ice has done.";
     std::vector<std::unique_ptr<lessons::session>> learners;
     learners.emplace_back(new lessons::frozen_session<lessons::q_learning_rule<frozen_grid>>(frozen_grid(1), alpha, gamma, epsilon, 1, limit));

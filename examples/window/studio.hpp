@@ -393,6 +393,7 @@ public:
         prepare_crawl();
         in_intro_ = !options_.no_intro;
         shown_.sound = !options_.mute;
+        shown_.slow_down_to(about_.start_rate);
         if (!capture) {
             sound_.open();
             sound_.set_on(shown_.sound);

@@ -154,6 +154,45 @@ inline std::string slip_words(const std::vector<std::string> & names,
 }
 
 /**
+ * @struct spot
+ * @brief a place on the board, between cells
+ */
+struct spot
+{
+    double x;
+    double y;
+};
+
+/**
+ * @brief where the traveller is during a step: it sets off the way it chose, then the ice takes it
+ * @param from is the cell it left, @param tried the move chosen, @param to the cell reached
+ * @param turn says how the ice turned it, as `turn_of` does
+ * @param t is how far the step has got, from 0 to 1
+ * @return a straight line if it went as chosen, and otherwise a start the wrong way, then a skid to where it ended
+ */
+inline spot slide_path(const position & from,
+                       unsigned int tried,
+                       const position & to,
+                       int turn,
+                       double t)
+{
+    const double pivot = 0.3;   // how far it gets the way it chose
+    const double turning = 0.4; // the part of the step before the ice takes over
+    t = std::max(0.0, std::min(1.0, t));
+    if (turn == 0) {
+        return spot{from.x + (to.x - from.x) * t, from.y + (to.y - from.y) * t};
+    }
+    const position aim = moved_to(from, tried);
+    const spot out{from.x + (aim.x - from.x) * pivot, from.y + (aim.y - from.y) * pivot};
+    if (t < turning) {
+        const double part = t / turning;
+        return spot{from.x + (out.x - from.x) * part, from.y + (out.y - from.y) * part};
+    }
+    const double part = (t - turning) / (1 - turning);
+    return spot{out.x + (to.x - out.x) * part, out.y + (to.y - out.y) * part};
+}
+
+/**
  * @class frozen_session
  * @brief a learner on the ice: a hole is a fall, and the curve is how often it has been winning lately
  * @tparam rule is the learner: `q_learning_rule`, `sarsa_rule` or `expected_sarsa_rule`
