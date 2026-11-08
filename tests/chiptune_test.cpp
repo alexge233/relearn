@@ -312,6 +312,41 @@ TEST_CASE("the tune plays the melody it is written with", "[chiptune][music]")
     REQUIRE(strength(music, 8 * step, 9 * step, lessons::frequency_of("G2")) > 3 * strength(music, 8 * step, 9 * step, lessons::frequency_of("C#3")));
 }
 
+TEST_CASE("every voice is in the mix, at its own loudness", "[chiptune][music]")
+{
+    const sound_book book;
+    const auto & music = book.music();
+    const double step = static_cast<double>(sound_book::samples_per_step) / sample_rate;
+    // how much of a voice, rendered alone, is in the tune: 1 if it is all there, 0 if it is missing
+    const auto share = [&](lessons::waveform & voice, const std::string & text, const lessons::envelope & shape, double level) {
+        lessons::mixer alone(music.size());
+        alone.play(voice, lessons::score(text), step, shape, level);
+        const auto part = alone.samples();
+        double common = 0;
+        double own = 0;
+        for (std::size_t i = 0; i < music.size(); i++) {
+            common += static_cast<double>(music[i]) * part[i];
+            own += static_cast<double>(part[i]) * part[i];
+        }
+        return common / own;
+    };
+    lessons::envelope plucked;
+    plucked.decay = 0.06;
+    plucked.sustain = 0.25;
+    lessons::envelope hit;
+    hit.decay = 0.025;
+    hit.sustain = 0;
+    lessons::pulse_wave half(0.5);
+    lessons::pulse_wave thin(0.125);
+    lessons::triangle_wave soft;
+    lessons::noise_wave hiss;
+    REQUIRE(share(half, sound_book::melody(), lessons::envelope(), 0.62) == Approx(1).margin(0.1));
+    // the quiet harmony shares notes with the loud melody, which adds about a half; alone it would be 0.56
+    REQUIRE(share(thin, sound_book::harmony(), plucked, 0.2) == Approx(1.56).margin(0.2));
+    REQUIRE(share(soft, sound_book::bass(), plucked, 0.42) == Approx(1).margin(0.1));
+    REQUIRE(share(hiss, sound_book::drums(), hit, 0.2) == Approx(1).margin(0.1));
+}
+
 TEST_CASE("every bar starts on a note of its chord", "[chiptune][music]")
 {
     const lessons::score melody(sound_book::melody());
