@@ -209,6 +209,35 @@ TEST_CASE("a note sounds at its pitch and in its place", "[chiptune]")
     REQUIRE(peak({s.begin() + sample_rate / 4, s.begin() + sample_rate / 2}) > 15000);
 }
 
+TEST_CASE("every note of noise starts the same way", "[chiptune]")
+{
+    lessons::noise_wave hiss;
+    lessons::envelope flat;
+    flat.sustain = 1;
+    lessons::mixer mix(2000);
+    mix.slide(hiss, 4000, 4000, 0, 0.02, flat, 1);
+    mix.slide(hiss, 4000, 4000, 0.025, 0.02, flat, 1);
+    const auto s = mix.samples();
+    const auto gap = static_cast<std::size_t>(0.025 * sample_rate);
+    for (std::size_t i = 0; i < static_cast<std::size_t>(0.02 * sample_rate); i++) {
+        REQUIRE(s[i] == s[gap + i]);
+    }
+}
+
+TEST_CASE("a held note sounds for all its steps", "[chiptune]")
+{
+    const double step = 0.1;
+    lessons::mixer mix(static_cast<std::size_t>(0.5 * sample_rate));
+    lessons::pulse_wave w(0.5);
+    lessons::envelope flat;
+    flat.sustain = 1;
+    mix.play(w, lessons::score("A4 - - . ."), step, flat, 1);
+    const auto s = mix.samples();
+    const auto at = [](double seconds) { return static_cast<std::size_t>(seconds * sample_rate); };
+    REQUIRE(peak({s.begin() + at(0.2), s.begin() + at(0.29)}) > 15000);
+    REQUIRE(peak({s.begin() + at(0.3) + 1, s.end()}) == 0);
+}
+
 TEST_CASE("the level scales a note, and voices add up", "[chiptune]")
 {
     lessons::envelope flat;
