@@ -578,7 +578,8 @@ private:
         std::vector<hot_zone> out;
         out.push_back({32, 46, 576, 40, "The demo's name, which learner is running, and how the current episode is going. The return is the sum of its rewards so far."});
         out.push_back({32, 92 + board_.height(), 576, 32, "The colour scale: blue is where it expects to do badly, gold where it expects to do well."});
-        out.push_back({640, 50, 304, 34, "The value of each move from the cell it just left. It usually picks the highest."});
+        out.push_back({640, 50, 304, 34, "The value of each move from the cell it just left. It usually picks the highest. The white outline is the one it took."});
+        out.push_back({640, 278, 304, 40, "Epsilon picks the move, before the formula runs, so Q-learning's formula has no epsilon: its max ignores what happens next. SARSA feels it through the move it really makes, and Expected SARSA averages with it."});
         out.push_back({956, 50, 300, 270, "How well each whole episode went. It should climb as it learns, then level off."});
         out.push_back({24, 332, static_cast<float>(width_px) - 48, 36, "The whole learning rule. Rest the mouse on any term to see what it means."});
         out.push_back({24, 516, 776, 204, "The step that just happened, read out as sentences. It is the formula above, in words."});
@@ -589,7 +590,8 @@ private:
         const auto names = board_.moves();
         const position p = now().from();
         for (std::size_t a = 0; a < names.size(); a++) {
-            out.push_back({640, 84 + static_cast<float>(a) * 56, 304, 44, "Q(s, " + names[a] + "): what it believes moving " + names[a] + " from that cell is worth: " + two_decimals(now().q(p, static_cast<unsigned int>(a))) + "."});
+            const Vector2 middle = wedge_middle(static_cast<unsigned int>(a));
+            out.push_back({middle.x - 44, middle.y - 30, 88, 60, "Q(s, " + names[a] + "): what it believes moving " + names[a] + " from that cell is worth: " + two_decimals(now().q(p, static_cast<unsigned int>(a))) + ". Gold is the best of the four, blue the worst."});
         }
         const float side = static_cast<float>(studio::cell);
         for (int r = 0; r < board_.rows(); r++) {
@@ -784,19 +786,79 @@ private:
             low = a == 0 ? v : std::min(low, v);
             high = a == 0 ? v : std::max(high, v);
         }
-        for (std::size_t a = 0; a < names.size(); a++) {
-            const auto action = static_cast<unsigned int>(a);
-            const float y = 84 + static_cast<float>(a) * 56;
-            const double v = now().q(p, action);
-            const bool taken = now().latest().valid && action == now().last_action();
-            const Color c = taken ? ink::gold : ink::text;
-            look_.write(names[a], 654, y, 16, c, taken);
-            const std::string number = two_decimals(v);
-            look_.write(number, 930 - look_.width(number, 16), y, 16, c, taken);
-            DrawRectangleRounded({654, y + 22, 276, 12}, 0.5f, 6, Color{44, 46, 80, 255});
-            const double t = scaled(v, low, high);
-            DrawRectangleGradientH(654, static_cast<int>(y) + 22, static_cast<int>(276 * (0.08 + 0.92 * t)), 12, colour(heat_colour(0.1)), colour(heat_colour(0.2 + 0.8 * t)));
+        const bool moved = now().latest().valid;
+        for (unsigned int a = 0; a < names.size(); a++) {
+            draw_wedge(a, colour(heat_colour(belief_heat(now().q(p, a), low, high))));
         }
+        if (moved) {
+            draw_wedge_outline(now().last_action());
+        }
+        for (unsigned int a = 0; a < names.size(); a++) {
+            write_on_heat(names[a], a, -18, moved && a == now().last_action());
+            write_on_heat(two_decimals(now().q(p, a)), a, 0, moved && a == now().last_action());
+        }
+        DrawCircle(static_cast<int>(wedges_x), static_cast<int>(wedges_y), 15, ink::panel);
+        const float side = look_.width("s", 16, true);
+        look_.write("s", wedges_x - side / 2, wedges_y - 9, 16, ink::text, true);
+        if (moved) {
+            look_.write(choice_words(names[now().last_action()], now().explored()), 654, 280, 16, now().explored() ? ink::next : ink::gold, true);
+        }
+        look_.write(exploring_words(now().epsilon()), 654, 298, 16, ink::dim);
+    }
+
+    /// @return which corners are the outer ends of the wedge of move @param a (up, right, down, left)
+    static std::pair<int, int> wedge_corners(unsigned int a)
+    {
+        return {static_cast<int>(a), static_cast<int>((a + 1) % 4)};
+    }
+
+    /// @return a corner of the square of beliefs, clockwise from the top left
+    static Vector2 corner(int which)
+    {
+        static const float signs[4][2] = {{-1, -1}, {1, -1}, {1, 1}, {-1, 1}};
+        return {wedges_x + signs[which][0] * wedges_half, wedges_y + signs[which][1] * wedges_half};
+    }
+
+    /// @brief fill the wedge of move @param a
+    void draw_wedge(unsigned int a,
+                    Color c) const
+    {
+        const auto ends = wedge_corners(a);
+        const Vector2 centre{wedges_x, wedges_y};
+        DrawTriangle(centre, corner(ends.first), corner(ends.second), c);
+        DrawTriangle(centre, corner(ends.second), corner(ends.first), c);
+        DrawLineEx(centre, corner(ends.first), 2, ink::panel);
+        DrawLineEx(centre, corner(ends.second), 2, ink::panel);
+    }
+
+    /// @brief ring the wedge of the move it took
+    void draw_wedge_outline(unsigned int a) const
+    {
+        const auto ends = wedge_corners(a);
+        const Vector2 centre{wedges_x, wedges_y};
+        DrawLineEx(centre, corner(ends.first), 3, WHITE);
+        DrawLineEx(corner(ends.first), corner(ends.second), 3, WHITE);
+        DrawLineEx(corner(ends.second), centre, 3, WHITE);
+    }
+
+    /// @return the middle of the wedge of move @param a
+    static Vector2 wedge_middle(unsigned int a)
+    {
+        static const float dirs[4][2] = {{0, -1}, {1, 0}, {0, 1}, {-1, 0}};
+        return {wedges_x + dirs[a][0] * wedges_half * 0.6f, wedges_y + dirs[a][1] * wedges_half * 0.6f};
+    }
+
+    /// @brief write @param text in the wedge of move @param a, @param dy below its middle, with a shadow to read on any colour
+    void write_on_heat(const std::string & text,
+                       unsigned int a,
+                       float dy,
+                       bool heavy) const
+    {
+        const Vector2 at = wedge_middle(a);
+        const float x = at.x - look_.width(text, 16, heavy) / 2;
+        const float y = at.y - 1 + dy;
+        look_.write(text, x + 1, y + 1, 16, Color{0, 0, 0, 220}, heavy);
+        look_.write(text, x, y, 16, WHITE, heavy);
     }
 
     /// @brief the learning curve
@@ -934,13 +996,13 @@ private:
         look_.write("What you are looking at", 196, y, 16, ink::gold, true);
         y += 28;
         for (const std::string & s : {std::string("The board: the game. ") + board_.legend(),
-                                      std::string("Its beliefs: Q(s,a), what it thinks each move from the last cell is worth. The move it took is gold."),
+                                      std::string("Its beliefs: Q(s,a), what it thinks each move from the last cell is worth, gold for the best, blue for the worst. The white outline is the move it took."),
                                       std::string("Learning curve: the total reward of each episode. Higher is better."),
                                       std::string("The formula: the whole learning rule. Every term has its real value at this step."),
                                       std::string("In plain words: the same step, as a sentence."),
                                       std::string("alpha (speed): how far a belief moves towards what really happened."),
                                       std::string("gamma (future): how much what comes later counts against what comes now."),
-                                      std::string("epsilon (explore): how often it moves at random instead of following the arrows. Drag the three sliders to try other values.")}) {
+                                      std::string("epsilon (explore): how often it moves at random instead of following the arrows. It picks the move, so it is not a term of Q-learning's formula. Drag the three sliders to try other values.")}) {
             for (const auto & line : wrap_text(s, 112)) {
                 look_.write(line, 196, y, 16, ink::text);
                 y += 22;
@@ -1030,6 +1092,11 @@ private:
     std::vector<std::unique_ptr<session>> learners_;
     board_type board_;
     lesson_options options_;
+    /// the square of beliefs: its centre and half its side
+    static constexpr float wedges_x = 792;
+    static constexpr float wedges_y = 180;
+    static constexpr float wedges_half = 92;
+
     studio look_;
     speaker sound_;
     controls shown_;

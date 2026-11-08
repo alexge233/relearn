@@ -61,7 +61,11 @@ learns on its own.
 
 - **The board**: the game. The colours run from blue, where the walker expects to do badly, to gold, where it expects
   to do well; they are the best `Q` of each cell, smoothed between cells. Only cells it has visited are coloured.
-- **Its beliefs in that cell**: the four `Q` values of the cell the last step started from. The move it took is in gold.
+- **Its beliefs in that cell**: the four `Q` values of the cell the last step started from, as a square cut into four, one
+  triangle per move: gold is the best of the four, blue the worst, and the white outline is the move it took. Under it,
+  whether that move was its best guess or a random try. Epsilon acts here, picking the move before the formula runs, so
+  Q-learning's formula has no epsilon in it: SARSA feels it through the move it really makes, and Expected SARSA
+  averages with it.
 - **Learning curve**: the total reward of each episode, with the episode under way moving at its end, so that it
   starts at the first step. The first episodes, far below the rest, are cut off at -300.
 - **The whole idea**: the formula, each term over its value at this step. The numbers are read from the update the
@@ -77,6 +81,7 @@ Every entry of the top bar can be clicked, and has a key:
 | Key | |
 |---|---|
 | Space | pause and resume |
+| M | the music and the sounds, on or off (`--mute` starts silent) |
 | N or Right | one step (pauses first) |
 | - and = | slower and faster, from 1 to 3000 steps a second |
 | R | restart: a new episode, keeping what was learnt |

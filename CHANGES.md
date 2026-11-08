@@ -13,6 +13,10 @@ of each one; this is the short version.
 - Sliders for alpha, gamma and epsilon, changing how it learns whilst it runs; the learning curve moves from the
   first step.
 - Help bubbles: rest the mouse on anything on the main screen and it says what it is.
+- `examples/window/chiptune.hpp`: an original chiptune loop and the sound effects, written as code; M and the top bar
+  turn them on and off, `--mute` starts silent; `tests/chiptune_test.cpp` measures the samples.
+- The beliefs in a cell are a heatmap, one triangle per move, and it says whether the move was a best guess or a
+  random try, which is where epsilon acts.
 - `examples/lesson_cliff_walking.cpp`: the first lesson, with Kenney's tiles and a smooth map of the values.
 - `examples/window/assets/`: Kenney's Tiny Town and Tiny Dungeon and the Pixel Operator font, all CC0, with credits.
 - `tests/lesson_test.cpp`: the numbers on the screen against the library's at every step, a session against

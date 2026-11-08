@@ -327,6 +327,8 @@ public:
     virtual unsigned int last_action() const = 0;
     /// @return true if the last step was punished: more than a step's cost
     virtual bool punished() const = 0;
+    /// @return true if the move of the last step was not one of the best it knew when it chose it
+    virtual bool explored() const = 0;
     /// @return true if some action of @param p has been learnt
     virtual bool known(const position & p) const = 0;
     /// @return the value of move @param a in cell @param p (0 if never tried)
@@ -423,6 +425,7 @@ public:
         n.believed = memory_.value(state(s_), action(a_));
         from_ = s_;
         last_ = a_;
+        explored_ = next_explored_;
         auto out = game_.step(a_);
         n.reward = out.reward;
         steps_++;
@@ -476,6 +479,7 @@ public:
     position from() const override { return from_; }
     unsigned int last_action() const override { return last_; }
     bool punished() const override { return punished_; }
+    bool explored() const override { return explored_; }
 
     bool known(const position & p) const override
     {
@@ -565,7 +569,9 @@ private:
     typename game_type::action_type choose(const typename game_type::state_type & s,
                                            const std::vector<typename game_type::action_type> & legal)
     {
-        return epsilon_greedy<game_type>(memory_, s, legal, epsilon_, prng_);
+        const auto chosen = epsilon_greedy<game_type>(memory_, s, legal, epsilon_, prng_);
+        next_explored_ = q(s, chosen) < best(s);
+        return chosen;
     }
 
     /// @brief start an episode
@@ -603,6 +609,8 @@ private:
     std::size_t steps_ = 0;
     double total_ = 0;
     bool punished_ = false;
+    bool explored_ = false;
+    bool next_explored_ = false;
     bool playing_ = false;
 };
 
@@ -863,6 +871,27 @@ inline double scaled(double v,
                      double high)
 {
     return high > low ? (v - low) / (high - low) : 1.0;
+}
+
+/// @return where a move's belief sits on the colour scale of its cell: the middle when nothing tells them apart yet
+inline double belief_heat(double v,
+                          double low,
+                          double high)
+{
+    return high > low ? scaled(v, low, high) : 0.5;
+}
+
+/// @return how the move @param name was chosen, @param explored if it was not the best it knew
+inline std::string choice_words(const std::string & name,
+                                bool explored)
+{
+    return "It went " + name + (explored ? ": a random try" : ": its best guess");
+}
+
+/// @return what @param epsilon means, in words
+inline std::string exploring_words(double epsilon)
+{
+    return "epsilon " + two_decimals(epsilon) + ": random " + std::to_string(static_cast<int>(epsilon * 100 + 0.5)) + "% of the time";
 }
 
 /// @return the rows of the pixel glyph of @param symbol ("alpha", "gamma", "epsilon", "arrow"), empty if it has none

@@ -736,3 +736,107 @@ TEST_CASE("the crawl, and the command line", "[lesson][intro]")
     const char * dangling[] = {"p", "--capture"};
     REQUIRE(lessons::lesson_options::parse(2, const_cast<char **>(dangling)).capture.empty());
 }
+
+TEST_CASE("a move's place on the colour scale of its cell", "[lesson][beliefs]")
+{
+    REQUIRE(lessons::belief_heat(-10, -10, -2) == Approx(0));
+    REQUIRE(lessons::belief_heat(-2, -10, -2) == Approx(1));
+    REQUIRE(lessons::belief_heat(-6, -10, -2) == Approx(0.5));
+    REQUIRE(lessons::belief_heat(-8, -10, -2) == Approx(0.25));
+    // nothing learnt yet: neither the best nor the worst
+    REQUIRE(lessons::belief_heat(0, 0, 0) == Approx(0.5));
+}
+
+TEST_CASE("the words of how a move was chosen", "[lesson][beliefs]")
+{
+    REQUIRE(lessons::choice_words("up", false) == "It went up: its best guess");
+    REQUIRE(lessons::choice_words("left", true) == "It went left: a random try");
+    REQUIRE(lessons::exploring_words(0.1) == "epsilon 0.10: random 10% of the time");
+    REQUIRE(lessons::exploring_words(0) == "epsilon 0.00: random 0% of the time");
+    REQUIRE(lessons::exploring_words(1) == "epsilon 1.00: random 100% of the time");
+    REQUIRE(lessons::exploring_words(0.29) == "epsilon 0.29: random 29% of the time");
+}
+
+namespace
+{
+/// @return the share of @param steps in which the move was not the best known, after @param warm steps of learning
+template <class rule>
+double share_explored(double epsilon,
+                      int warm,
+                      int steps)
+{
+    lessons::tabular_session<rules, rule> s(rules(), 0.5, 1.0, 0.1, 11);
+    for (int i = 0; i < warm; i++) {
+        s.step();
+    }
+    s.set_epsilon(epsilon);
+    // the move already chosen was chosen at the old epsilon
+    s.step();
+    int explored = 0;
+    for (int i = 0; i < steps; i++) {
+        s.step();
+        explored += s.explored();
+    }
+    return static_cast<double>(explored) / steps;
+}
+
+template <class rule>
+void check_explored()
+{
+    // it never leaves its best guess without epsilon
+    REQUIRE(share_explored<rule>(0, 20000, 5000) == 0);
+    // at random, one move in four is the best one (a little more often, when moves tie): about three in four are not
+    const double always = share_explored<rule>(1, 20000, 20000);
+    REQUIRE(always > 0.6);
+    REQUIRE(always < 0.78);
+    // and epsilon of those three in four, otherwise
+    const double some = share_explored<rule>(0.2, 20000, 20000);
+    REQUIRE(some > 0.11);
+    REQUIRE(some < 0.17);
+}
+} // namespace
+
+TEST_CASE("a session knows whether a move was a random try", "[lesson][beliefs]")
+{
+    check_explored<q_learning_rule<rules>>();
+    check_explored<sarsa_rule<rules>>();
+    check_explored<expected_sarsa_rule<rules>>();
+}
+
+TEST_CASE("whether it explored belongs to the move just made, not the next", "[lesson][beliefs]")
+{
+    // the beliefs are read before each step; a step back into the cell it left changes them after the choice, so skip those
+    lessons::tabular_session<rules, q_learning_rule<rules>> s(rules(), 0.5, 1.0, 1.0, 5);
+    REQUIRE(!s.explored());
+    s.step();
+    int compared = 0;
+    for (int i = 0; i < 4000; i++) {
+        const auto p = s.at();
+        const bool same_cell_again = s.from() == p;
+        const bool fresh = !s.playing();
+        double best = -1e9;
+        std::vector<double> values;
+        for (unsigned int a = 0; a < 4; a++) {
+            values.push_back(s.q(p, a));
+            best = std::max(best, values.back());
+        }
+        s.step();
+        if (!same_cell_again && !fresh) {
+            REQUIRE(s.explored() == (values[s.last_action()] < best));
+            compared++;
+        }
+    }
+    REQUIRE(compared > 2000);
+}
+
+TEST_CASE("knowing how it chose changes nothing it plays", "[lesson][beliefs]")
+{
+    lessons::tabular_session<rules, sarsa_rule<rules>> s(rules(), 0.5, 1.0, 0.1, 3);
+    lessons::tabular_session<rules, sarsa_rule<rules>> t(rules(), 0.5, 1.0, 0.1, 3);
+    for (int i = 0; i < 3000; i++) {
+        s.step();
+        t.step();
+        s.explored();
+        REQUIRE(s.last_action() == t.last_action());
+    }
+}
