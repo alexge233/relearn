@@ -1001,7 +1001,7 @@ private:
         const auto terms = formula_terms(now().latest(), now().next_symbol(), now().next_label());
         std::vector<float> widths;
         const auto columns = layout_formula(terms, widths);
-        const float y = formula_top() + 36;
+        const float y = formula_top() + (board_.tall() ? 36.0f : 40.0f);
         for (std::size_t i = 0; i < terms.size(); i++) {
             const term & t = terms[i];
             const Color c = colour_of(t.kind);
