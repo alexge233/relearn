@@ -35,6 +35,12 @@ public:
         return static_cast<float>(scale * lessons::studio::tile_side);
     }
 
+    /// @return nothing: there is nothing to add about a step here
+    std::string aside(const lessons::session &) const
+    {
+        return "";
+    }
+
     /// @return the columns of the board
     int columns() const
     {

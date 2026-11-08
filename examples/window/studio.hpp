@@ -11,6 +11,7 @@
  *     std::string describe(const session & now, int column, int row) const;   // what a bubble says about a cell
  *     int columns() const;  int rows() const;   // of the board
  *     float cell() const;               // the side of a cell, in screen pixels
+ *     std::string aside(const session & now) const;   // something to add about the last step, or nothing
  *
  * The music and the effects are chiptune.hpp's, played by `speaker`. Keys and mouse do the same things (H shows them all). The window is 1280 x 732, drawn at its native resolution.
  */
@@ -1015,7 +1016,8 @@ private:
             y += 88;
         }
         y += 8;
-        look_.write(about_.watch_for, 40, y, 16, ink::reward);
+        const std::string aside = board_.aside(now());
+        look_.write(aside.empty() ? about_.watch_for : aside, 40, y, 16, aside.empty() ? ink::reward : ink::next, !aside.empty());
         look_.write(now().idea(), 40, y + 20, 16, ink::gold);
         const std::string policy = "It follows the arrows, with a random move " + std::to_string(static_cast<int>(now().epsilon() * 100 + 0.5)) + "% of the time, so that it keeps exploring.";
         look_.write(policy, 40, y + 40, 16, ink::dim);

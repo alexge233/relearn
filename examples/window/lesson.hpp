@@ -1047,7 +1047,7 @@ inline double belief_heat(double v,
 inline std::string choice_words(const std::string & name,
                                 bool explored)
 {
-    return "It went " + name + (explored ? ": a random try" : ": its best guess");
+    return "It chose " + name + (explored ? ": a random try" : ": its best guess");
 }
 
 /// @return what @param epsilon means, in words

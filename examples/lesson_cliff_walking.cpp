@@ -35,6 +35,12 @@ public:
         return lessons::studio::cell;
     }
 
+    /// @return nothing: there is nothing to add about a step here
+    std::string aside(const lessons::session &) const
+    {
+        return "";
+    }
+
     /// @return the columns of the board
     int columns() const
     {
