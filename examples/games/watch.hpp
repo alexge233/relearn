@@ -489,14 +489,101 @@ struct terminal
 };
 
 /**
+ * @class terminal_screen
+ * @brief where the frames go in the terminal: each one drawn from the top of the screen over the one before, the
+ *        cursor hidden meanwhile and shown again at the end, or on Ctrl-C
+ *
+ * A *screen* is where `watched` shows its frames. Any class with `fits(lines)`, `too_tall(lines)` and
+ * `show(canvas, status, title)` is one; the window of the optional raylib sub-project is another.
+ */
+class terminal_screen
+{
+public:
+    /// the rows of the terminal, if known (0: not checked): `watch_options::apply` reads them
+    unsigned int rows = 0;
+
+    /// @brief a screen writing to @param out (the terminal)
+    explicit terminal_screen(std::ostream & out = std::cout)
+    : out_(&out)
+    {}
+
+    /// @brief show the cursor again, below the picture, if any frame was shown
+    ~terminal_screen()
+    {
+        if (shown_) {
+            *out_ << terminal::show_cursor() << std::endl;
+        }
+    }
+
+    /// @return the rows of the terminal a canvas of @param height pixels takes, with the status line under it
+    static unsigned int lines_of(unsigned int height)
+    {
+        return (height + 1) / 2 + 1;
+    }
+
+    /// @return the canvas rendered for this terminal: in 24-bit colour if it has it, else in the 256-colour palette
+    static std::string render(const canvas & c)
+    {
+        return truecolour::available() ? c.render<truecolour>() : c.render<colour_256>();
+    }
+
+    /// @return true if a frame of @param lines rows fits the terminal, or its height is not known
+    bool fits(unsigned int lines) const
+    {
+        return rows == 0 || lines <= rows;
+    }
+
+    /// @brief say, before any frame, that a frame of @param lines rows does not fit the terminal
+    void too_tall(unsigned int lines)
+    {
+        *out_ << "the picture needs " << lines << " rows, and the terminal has " << rows
+              << ": make it taller to watch it whole" << std::endl;
+    }
+
+    /**
+     * @brief show one frame: the canvas and the status line under it, from the top of the screen
+     * @return true: a terminal is never closed
+     *
+     * The first frame hides the cursor and clears the screen. The status line ends with a newline, so that whatever
+     * the program prints next goes below it, and the rest of the screen is cleared after it.
+     */
+    bool show(const canvas & c,
+              const std::string & status,
+              const std::string &)
+    {
+        if (!shown_) {
+            terminal::restore_on_interrupt();
+            *out_ << terminal::hide_cursor() << terminal::clear();
+            shown_ = true;
+        }
+        *out_ << terminal::home() << render(c) << status << "\n" << terminal::clear_below() << std::flush;
+        return true;
+    }
+
+    /// @return true once a frame has been shown
+    bool shown() const
+    {
+        return shown_;
+    }
+
+private:
+    // where the frames go
+    std::ostream * out_;
+    // true once a frame has been shown
+    bool shown_ = false;
+};
+
+/**
  * @class watched
  * @brief a game that draws itself as it is played: wraps a game, and draws its state after every step
  * @tparam game_type is the game, which must have a `view<game_type>`
+ * @tparam screen_type is where the frames go: the terminal, or a window
  *
  * It plays exactly as the game it wraps: `reset()`, `step()` and `actions()` are forwarded, and nothing is drawn
  * (nor written) whilst `on` is false, so an example can watch some episodes and not others.
  */
-template <class game_type>
+template <class game_type,
+          class screen_type = terminal_screen>
 class watched
 {
     static_assert(has_view<game_type>::value, "this game has no view<game_type>: it cannot be watched");
@@ -519,28 +606,33 @@ public:
     const policy_type * memory = nullptr;
     /// the name shown in the status line
     std::string title;
-    /// the height of the learning curve under the game, in pixels (0: no curve)
+    /// the height of the learning curve under the game, in pixels (0: no curve): the curve is dropped if the
+    /// frame does not fit the screen with it, and a note is written, once, if the frame does not fit at all
     unsigned int curve_height = 16;
-    /// the rows of the terminal, if known (0: not checked): the curve is dropped if the frame does not fit with it,
-    /// and a note is written, once, if the frame does not fit at all
-    unsigned int terminal_rows = 0;
 
     /**
      * @brief wrap @param game
-     * @param out is where the frames are written (the terminal)
+     * @param screen is where the frames go
      */
     explicit watched(game_type game,
-                     std::ostream & out = std::cout)
+                     screen_type screen = screen_type())
     : game_(std::move(game)),
-      out_(out)
+      screen_(std::move(screen))
     {}
 
-    /// @brief show the cursor again, below the picture, if any frame was drawn
-    ~watched()
+    /**
+     * @brief wrap @param game, with the frames written to @param out: a terminal
+     */
+    watched(game_type game,
+            std::ostream & out)
+    : game_(std::move(game)),
+      screen_(out)
+    {}
+
+    /// @return the screen the frames go to
+    screen_type & screen()
     {
-        if (drawn_) {
-            out_ << terminal::show_cursor() << std::endl;
-        }
+        return screen_;
     }
 
     /// @return the wrapped game
@@ -620,40 +712,47 @@ public:
         return game_.actions(s);
     }
 
-    /// @brief draw the game as it is now, if `on`, and wait `delay` milliseconds
+    /// @brief draw the game as it is now, if `on`, and wait `delay` milliseconds; once the screen says it is
+    ///        closed (a window shut by the user), nothing more is drawn
     void frame()
     {
         if (!on) {
             return;
         }
-        if (!drawn_) {
+        if (!fitted_) {
             fit();
-            terminal::restore_on_interrupt();
-            out_ << terminal::hide_cursor() << terminal::clear();
-            drawn_ = true;
+            fitted_ = true;
         }
-        // the status line ends the frame with a newline, so that whatever the program prints next goes below it
-        out_ << terminal::home() << picture() << status() << "\n" << terminal::clear_below() << std::flush;
+        if (!screen_.show(drawing(), status(), title)) {
+            on = false;
+            return;
+        }
         if (delay > 0) {
             std::this_thread::sleep_for(std::chrono::milliseconds(delay));
         }
     }
 
-    /// @return the frame as text: the game, and the learning curve under it, rendered for this terminal
-    std::string picture() const
+    /// @return the frame as a picture: the game, and the learning curve under it
+    canvas drawing() const
     {
         canvas c(view_type::width(), view_type::height() + gap(), colours::black);
         view_type::draw(c, game_, at_, memory);
         if (curve_height > 0) {
             plot_curve(c, 0, static_cast<int>(view_type::height() + 1), view_type::width(), curve_height, returns_);
         }
-        return truecolour::available() ? c.render<truecolour>() : c.render<colour_256>();
+        return c;
     }
 
-    /// @return the rows of the terminal a frame takes: the picture's lines and the status line
+    /// @return the frame as text, rendered for this terminal
+    std::string picture() const
+    {
+        return terminal_screen::render(drawing());
+    }
+
+    /// @return the rows of a terminal a frame takes: the picture's lines and the status line
     unsigned int lines() const
     {
-        return (view_type::height() + gap() + 1) / 2 + 1;
+        return terminal_screen::lines_of(view_type::height() + gap());
     }
 
     /// @return the status line: the title, the episode, its steps and its return so far
@@ -674,26 +773,22 @@ private:
         return curve_height > 0 ? curve_height + 1 : 0;
     }
 
-    /// @brief make the frame fit `terminal_rows`, if known: without the curve if need be, and with a note if it
-    ///        cannot fit at all
+    /// @brief make the frame fit the screen, if it says how much fits: without the curve if need be, and with a
+    ///        note if it cannot fit at all
     void fit()
     {
-        if (terminal_rows == 0) {
-            return;
-        }
-        if (lines() > terminal_rows) {
+        if (!screen_.fits(lines())) {
             curve_height = 0;
         }
-        if (lines() > terminal_rows) {
-            out_ << "the picture needs " << lines() << " rows, and the terminal has " << terminal_rows
-                 << ": make it taller to watch it whole" << std::endl;
+        if (!screen_.fits(lines())) {
+            screen_.too_tall(lines());
         }
     }
 
     // the wrapped game
     game_type game_;
     // where the frames go
-    std::ostream & out_;
+    screen_type screen_;
     // the state the game is in
     state_type at_{};
     // the episodes started, the steps and the return of the current one, whether it has ended, and the returns of
@@ -703,13 +798,14 @@ private:
     double total_ = 0;
     bool closed_ = false;
     std::vector<double> returns_;
-    // true once a frame has been drawn
-    bool drawn_ = false;
+    // true once the frame has been made to fit the screen
+    bool fitted_ = false;
 };
 
 /**
  * @struct watch_options
- * @brief what the examples take from the command line: `--watch` to draw, `--delay ms` between frames, and `--every n` steps
+ * @brief what the examples take from the command line: `--watch` to draw, `--delay ms` between frames, `--every n`
+ *        steps, and, for a window, `--snapshot file.png` to save its last frame
  */
 struct watch_options
 {
@@ -719,6 +815,8 @@ struct watch_options
     unsigned int delay = 30;
     /// steps between frames (`--every`), 1 unless given
     unsigned int every = 1;
+    /// a file to save the window's last frame to (`--snapshot`), if the screen is a window
+    std::string snapshot;
 
     /// @brief read the options from the command line
     static watch_options parse(int argc,
@@ -736,19 +834,52 @@ struct watch_options
             else if (arg == "--every" && i + 1 < argc) {
                 options.every = static_cast<unsigned int>(std::max(1, std::atoi(argv[++i])));
             }
+            else if (arg == "--snapshot" && i + 1 < argc) {
+                options.snapshot = argv[++i];
+            }
         }
         return options;
     }
 
-    /// @brief set @param game up as the options say, and tell it the terminal's height
-    template <class game_type>
-    void apply(watched<game_type> & game) const
+    /// @brief set @param game up as the options say, and its screen too: the terminal's height, @param rows (this
+    ///        terminal's unless given), if it has rows, and the snapshot, if it takes one
+    template <class game_type,
+              class screen_type>
+    void apply(watched<game_type, screen_type> & game,
+               unsigned int rows = terminal::rows()) const
     {
         game.on    = on;
         game.delay = delay;
         game.every = every;
-        game.terminal_rows = terminal::rows();
+        set_rows(game.screen(), rows, 0);
+        set_snapshot(game.screen(), snapshot, 0);
     }
+
+private:
+    /// @brief a screen with `rows` (the terminal) is told how many the terminal has
+    template <class screen_type>
+    static auto set_rows(screen_type & screen, unsigned int rows, int) -> decltype(screen.rows = rows, void())
+    {
+        screen.rows = rows;
+    }
+
+    /// @brief any other screen (a window) has no rows to be told
+    template <class screen_type>
+    static void set_rows(screen_type &, unsigned int, long)
+    {}
+
+    /// @brief a screen with a `snapshot` (a window) is told the file to save
+    template <class screen_type>
+    static auto set_snapshot(screen_type & screen, const std::string & file, int)
+        -> decltype(screen.snapshot = file, void())
+    {
+        screen.snapshot = file;
+    }
+
+    /// @brief any other screen (the terminal) takes none
+    template <class screen_type>
+    static void set_snapshot(screen_type &, const std::string &, long)
+    {}
 };
 } // namespace games
 #endif

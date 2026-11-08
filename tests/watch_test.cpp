@@ -4,6 +4,7 @@
  * the game it wraps, and draws when, and only when, it should.
  */
 #include "../examples/games/views.hpp"
+#include "../examples/window/layout.hpp"
 #include <sstream>
 #define CATCH_CONFIG_MAIN
 #include "catch.hpp"
@@ -921,7 +922,7 @@ TEST_CASE("watched: fits the terminal, dropping the curve, or says so", "[watch]
         std::ostringstream out;
         games::watched<game_type> game(game_type(), out);
         game.delay = 0;
-        game.terminal_rows = 20;
+        game.screen().rows = 20;
         game.reset();
         REQUIRE(game.curve_height == 16);
         REQUIRE(game.lines() == 18);
@@ -932,7 +933,7 @@ TEST_CASE("watched: fits the terminal, dropping the curve, or says so", "[watch]
         std::ostringstream out;
         games::watched<game_type> game(game_type(), out);
         game.delay = 0;
-        game.terminal_rows = 12;
+        game.screen().rows = 12;
         game.reset();
         REQUIRE(game.curve_height == 0);
         REQUIRE(game.lines() == 9);
@@ -943,7 +944,7 @@ TEST_CASE("watched: fits the terminal, dropping the curve, or says so", "[watch]
         std::ostringstream out;
         games::watched<game_type> game(game_type(), out);
         game.delay = 0;
-        game.terminal_rows = 5;
+        game.screen().rows = 5;
         game.reset();
         game.step(games::up);
         REQUIRE(game.curve_height == 0);
@@ -1022,6 +1023,10 @@ TEST_CASE("watch_options: the command line", "[watch][options]")
     // a negative delay is none
     const char * negative[] = {"prog", "--delay", "-5"};
     REQUIRE(games::watch_options::parse(3, const_cast<char **>(negative)).delay == 0);
+    // the snapshot's file, for a window
+    REQUIRE(defaults.snapshot.empty());
+    const char * shot[] = {"prog", "--snapshot", "frame.png"};
+    REQUIRE(games::watch_options::parse(3, const_cast<char **>(shot)).snapshot == "frame.png");
     // applied to a watched game, which is also told the terminal's height
     std::ostringstream out;
     games::watched<games::cliff_walking> game(games::cliff_walking(), out);
@@ -1029,7 +1034,204 @@ TEST_CASE("watch_options: the command line", "[watch][options]")
     REQUIRE(game.on);
     REQUIRE(game.delay == 5);
     REQUIRE(game.every == 3);
-    REQUIRE(game.terminal_rows == games::terminal::rows());
+    REQUIRE(game.screen().rows == games::terminal::rows());
+    given.apply(game, 24);
+    REQUIRE(game.screen().rows == 24);
     defaults.apply(game);
     REQUIRE(!game.on);
+}
+
+namespace
+{
+/// @brief a screen for the tests: it records what it is shown, and closes after three frames, as a window shut by
+///        the user would
+struct recording_screen
+{
+    std::vector<std::string> statuses;
+    std::string title;
+    games::canvas last{1, 1};
+    unsigned int frames = 0;
+
+    bool fits(unsigned int) const
+    {
+        return true;
+    }
+
+    void too_tall(unsigned int)
+    {}
+
+    bool show(const games::canvas & c,
+              const std::string & status,
+              const std::string & name)
+    {
+        frames++;
+        statuses.push_back(status);
+        title = name;
+        last  = c;
+        return frames < 3;
+    }
+};
+} // namespace
+
+TEST_CASE("terminal_screen: rows, the note, and the frames it writes", "[watch][screen]")
+{
+    // a canvas of h pixels is (h + 1) / 2 lines, and the status line one more
+    REQUIRE(games::terminal_screen::lines_of(16) == 9);
+    REQUIRE(games::terminal_screen::lines_of(33) == 18);
+    REQUIRE(games::terminal_screen::lines_of(1) == 2);
+    // with the rows unknown everything fits; with 10 rows, 10 lines do and 11 do not
+    std::ostringstream out;
+    games::terminal_screen screen(out);
+    REQUIRE(screen.rows == 0);
+    REQUIRE(screen.fits(1000));
+    screen.rows = 10;
+    REQUIRE(screen.fits(10));
+    REQUIRE(!screen.fits(11));
+    // the note names both heights
+    screen.rows = 5;
+    screen.too_tall(12);
+    REQUIRE(out.str() == "the picture needs 12 rows, and the terminal has 5: make it taller to watch it whole\n");
+    REQUIRE(!screen.shown());
+    // the first frame hides the cursor and clears the screen, and every frame is the canvas, the status, a newline
+    // and the rest of the screen cleared, from the top
+    games::canvas c(1, 2);
+    c.plot(0, 0, {255, 0, 0});
+    const std::string before = out.str();
+    REQUIRE(screen.show(c, "status one", "a title"));
+    REQUIRE(screen.shown());
+    const std::string first = out.str().substr(before.size());
+    REQUIRE(first == std::string(games::terminal::hide_cursor()) + games::terminal::clear() + games::terminal::home() +
+                     games::terminal_screen::render(c) + "status one\n" + games::terminal::clear_below());
+    REQUIRE(screen.show(c, "status two", "a title"));
+    const std::string second = out.str().substr(before.size() + first.size());
+    REQUIRE(second == std::string(games::terminal::home()) + games::terminal_screen::render(c) + "status two\n" +
+                      games::terminal::clear_below());
+    // render follows the terminal's colours
+    setenv("COLORTERM", "truecolor", 1);
+    REQUIRE(games::terminal_screen::render(c) == c.render<games::truecolour>());
+    unsetenv("COLORTERM");
+    REQUIRE(games::terminal_screen::render(c) == c.render<games::colour_256>());
+    // the cursor comes back when the screen goes, if anything was shown
+    {
+        std::ostringstream quiet;
+        {
+            games::terminal_screen none(quiet);
+            none.rows = 3;
+        }
+        REQUIRE(quiet.str().empty());
+        std::ostringstream used;
+        {
+            games::terminal_screen some(used);
+            some.show(c, "s", "");
+        }
+        REQUIRE(used.str().compare(used.str().size() - std::strlen(games::terminal::show_cursor()) - 1,
+                                   std::strlen(games::terminal::show_cursor()), games::terminal::show_cursor()) == 0);
+        REQUIRE(used.str().back() == '\n');
+    }
+}
+
+TEST_CASE("watched: any screen, given the drawing, the status and the title, and closing stops the watching", "[watch][screen]")
+{
+    using game_type = games::cliff_walking;
+    games::watched<game_type, recording_screen> game{game_type()};
+    game.delay = 0;
+    game.title = "cliff";
+    game.reset();
+    REQUIRE(game.screen().frames == 1);
+    REQUIRE(game.screen().title == "cliff");
+    REQUIRE(game.screen().statuses.back() == "cliff  episode 1  step 0  return 0");
+    // the canvas given is the drawing: the game and the curve
+    game.step(games::up);
+    REQUIRE(game.screen().frames == 2);
+    const games::canvas drawn = game.drawing();
+    REQUIRE(game.screen().last.width() == drawn.width());
+    REQUIRE(game.screen().last.height() == drawn.height());
+    REQUIRE(game.screen().last.height() == 33);
+    for (int x = 0; x < static_cast<int>(drawn.width()); x++) {
+        for (int y = 0; y < static_cast<int>(drawn.height()); y++) {
+            REQUIRE(game.screen().last.at(x, y) == drawn.at(x, y));
+        }
+    }
+    REQUIRE(game.screen().last.at(1, 9) == games::colours::agent);
+    // the third frame closes the screen: the watching stops, and the game plays on without drawing
+    REQUIRE(game.on);
+    game.step(games::up);
+    REQUIRE(game.screen().frames == 3);
+    REQUIRE(!game.on);
+    game.step(games::up);
+    game.reset();
+    REQUIRE(game.screen().frames == 3);
+    REQUIRE(game.episode() == 2);
+    // the options apply to any screen: a screen without rows is simply not told the terminal's, and one without a
+    // snapshot not given a file; one with a snapshot is
+    const char * argv[] = {"prog", "--watch", "--delay", "7", "--snapshot", "last.png"};
+    games::watch_options::parse(6, const_cast<char **>(argv)).apply(game);
+    REQUIRE(game.on);
+    REQUIRE(game.delay == 7);
+    struct snapping_screen : recording_screen
+    {
+        std::string snapshot;
+    };
+    games::watched<game_type, snapping_screen> snapping{game_type()};
+    games::watch_options::parse(6, const_cast<char **>(argv)).apply(snapping);
+    REQUIRE(snapping.screen().snapshot == "last.png");
+    // the curve is never dropped: a screen that says everything fits keeps it
+    games::watched<game_type, recording_screen> fresh{game_type()};
+    fresh.delay = 0;
+    fresh.reset();
+    REQUIRE(fresh.curve_height == 16);
+}
+
+TEST_CASE("window_layout: the pixel size, the window and the band, and the pixels as bytes", "[watch][window]")
+{
+    using layout = games::window_layout;
+    // Cliff Walking's frame, 48 x 33: 960 / 48 = 20 and (640 - 28) / 33 = 18 both allow more than the largest, 16
+    REQUIRE(layout::pixel_size(48, 33) == 16);
+    // Mountain Car's, 129 x 49: 960 / 129 = 7 is the limit
+    REQUIRE(layout::pixel_size(129, 49) == 7);
+    // the racetrack's, 34 x 81: 612 / 81 = 7
+    REQUIRE(layout::pixel_size(34, 81) == 7);
+    // 10 x 45: the height is the limit, and the band counts: 13 x 45 + 28 is 613, 14 x 45 + 28 would be 658
+    REQUIRE(layout::pixel_size(10, 45) == 13);
+    // too wide even at 1 pixel: the smallest, 2, all the same
+    REQUIRE(layout::pixel_size(500, 10) == 2);
+    REQUIRE(layout::pixel_size(0, 0) == 16);
+    // the window: the picture scaled, and the band under it
+    layout cliff(48, 33);
+    REQUIRE(cliff.pixel() == 16);
+    REQUIRE(cliff.window_width() == 768);
+    REQUIRE(cliff.picture_left() == 0);
+    REQUIRE(cliff.window_height() == 528 + 28);
+    REQUIRE(cliff.band_top() == 528);
+    REQUIRE(cliff.text_top() == 533);
+    // a pixel size given is kept; a picture narrower than 480 is centred in a window that wide
+    layout small(48, 33, 4);
+    REQUIRE(small.pixel() == 4);
+    REQUIRE(small.window_width() == 480);
+    REQUIRE(small.picture_left() == (480 - 192) / 2);
+    REQUIRE(small.window_height() == 132 + 28);
+    // the racetrack's picture, 34 x 81 at 7: 238 wide, centred
+    layout track(34, 81);
+    REQUIRE(track.window_width() == 480);
+    REQUIRE(track.picture_left() == 121);
+    REQUIRE(track.window_height() == 567 + 28);
+    // the status line's text: 18 when it fits, smaller in proportion when it does not, 10 at the least
+    REQUIRE(layout::text_size(464, 300) == 18);
+    REQUIRE(layout::text_size(464, 464) == 18);
+    REQUIRE(layout::text_size(464, 600) == 13);
+    REQUIRE(layout::text_size(464, 928) == 9 + 1);
+    REQUIRE(layout::text_size(464, 5000) == 10);
+    REQUIRE(layout::text_size(0, 0) == 18);
+    // smaller text sits lower in the band, still centred
+    REQUIRE(cliff.text_top(18) == 533);
+    REQUIRE(cliff.text_top(10) == 537);
+    REQUIRE(cliff.text_top(40) == 528);
+    // the bytes: red, green and blue of each pixel, row by row
+    games::canvas c(2, 2);
+    c.plot(0, 0, {1, 2, 3});
+    c.plot(1, 0, {4, 5, 6});
+    c.plot(0, 1, {7, 8, 9});
+    c.plot(1, 1, {10, 11, 12});
+    REQUIRE(layout::bytes(c) == std::vector<unsigned char>{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12});
+    REQUIRE(layout::bytes(games::canvas(3, 2)).size() == 18);
 }
