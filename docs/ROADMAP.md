@@ -77,6 +77,10 @@ docs will explain why.
     very same canvas: now in too, as `win_<game>` for the same seven games; still to come, views for the games
     that have none yet, and a `view3d` hook for those that want a camera
 
+- Lessons: demos that explain themselves, with an intro, a top bar you can click, and the formula on the screen with
+  its real numbers at every step. Cliff Walking is the first ([lessons/cliff_walking.md](lessons/cliff_walking.md));
+  the other games are to follow.
+
 ### New games, to show each algorithm at its best
 
 Every algorithm already has a game, but some of them deserve one that shows what they are really good at. These

@@ -237,6 +237,11 @@ defined, and `using screen = games::window_screen;` instead of the terminal, so 
 and `win_<game>`. The sub-project finds raylib through its CMake config (Homebrew, vcpkg, a source build), or as a
 plain library and header.
 
+## Lessons
+
+A lesson goes further than watching: it explains what is on the screen. Have a look at
+[lessons/cliff_walking.md](lessons/cliff_walking.md).
+
 ## What is next
 
 The games that have no view yet, and, for the window, a `view3d` hook for the games that want a camera.

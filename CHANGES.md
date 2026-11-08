@@ -3,6 +3,19 @@
 What each change to relearn did, newest first. The pull requests hold the details, the measurements and the review
 of each one; this is the short version.
 
+## Lessons: demos that explain themselves
+
+- `examples/window/lesson.hpp`, with no graphics in it: the numbers of an update, the formula's columns, the plain
+  words, the rules of Q-learning, SARSA and Expected SARSA, `tabular_session` (playing and learning one step at a
+  time, behind the `session` interface), the controls, the top bar's layout and clicks.
+- `examples/window/studio.hpp`: draws a lesson with raylib, at native resolution: the crawling intro, the clickable
+  top bar, the board, the beliefs, the learning curve, the formula with its real numbers, the plain words and the help.
+- `examples/lesson_cliff_walking.cpp`: the first lesson, with Kenney's tiles and a smooth map of the values.
+- `examples/window/assets/`: Kenney's Tiny Town and Tiny Dungeon and the Pixel Operator font, all CC0, with credits.
+- `tests/lesson_test.cpp`: the numbers on the screen against the library's at every step, a session against
+  `games::play_online`, and the words, columns, controls and clicks worked out by hand.
+- `docs/lessons/cliff_walking.md`, and the README, the roadmap and `docs/watch.md` point to it.
+
 ## Watching the agents play, in a window
 
 - `watched<game_type, screen_type>`: the frames go to a *screen*, `terminal_screen` (the default, what the terminal
