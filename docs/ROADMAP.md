@@ -78,8 +78,9 @@ docs will explain why.
     that have none yet, and a `view3d` hook for those that want a camera
 
 - Lessons: demos that explain themselves, with an intro, a top bar you can click, and the formula on the screen with
-  its real numbers at every step. Cliff Walking is the first ([lessons/cliff_walking.md](lessons/cliff_walking.md));
-  the other games are to follow.
+  its real numbers at every step. In so far: [Cliff Walking](lessons/cliff_walking.md),
+  [the Dyna maze](lessons/dyna_maze.md) and [FrozenLake](lessons/frozen_lake.md). To port next: GridWorld and Blackjack,
+  the two original examples of the library; the other games are to follow.
 
 ### New games, to show each algorithm at its best
 
