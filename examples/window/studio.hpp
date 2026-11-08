@@ -556,7 +556,7 @@ private:
         DrawLine(static_cast<int>(x), static_cast<int>(y + h), static_cast<int>(x + w), static_cast<int>(y + h), ink::line);
         DrawLine(static_cast<int>(x), static_cast<int>(y), static_cast<int>(x), static_cast<int>(y + h), ink::line);
         look_.write("reward per episode, over time", x, y + h + 6, 16, ink::dim);
-        const auto & values = now().returns();
+        const auto values = curve_points(now().returns(), static_cast<std::size_t>(w) / 2);
         if (values.size() < 2) {
             return;
         }
@@ -576,7 +576,7 @@ private:
             const float y2 = row(values[i + 1]);
             // the shading under the line, one column of pixels at a time, so that it follows the slope
             for (int column = static_cast<int>(x1); column < static_cast<int>(x2) + 1; column++) {
-                const float along = x2 > x1 ? std::min(1.0f, (static_cast<float>(column) - x1) / (x2 - x1)) : 0.0f;
+                const float along = x2 > x1 ? std::max(0.0f, std::min(1.0f, (static_cast<float>(column) - x1) / (x2 - x1))) : 0.0f;
                 const float surface = y1 + (y2 - y1) * along;
                 DrawRectangleGradientV(column, static_cast<int>(surface), 1, static_cast<int>(y + h - surface),
                                        Fade(ink::reward, 0.26f), Fade(ink::reward, 0.02f));
@@ -714,7 +714,7 @@ private:
         // stop at an update with something to explain: the first, after some learning, with a real surprise
         for (int i = 0; i < 20000; i++) {
             now().step();
-            if (i > 2500 && std::fabs(now().latest().surprise()) > 2 && !now().punished()) {
+            if (i > 900 && std::fabs(now().latest().surprise()) > 2 && !now().punished()) {
                 break;
             }
         }

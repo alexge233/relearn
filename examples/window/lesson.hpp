@@ -872,6 +872,31 @@ inline double lowest_shown(const std::vector<double> & values,
 }
 
 /**
+ * @brief the points of a learning curve
+ * @param values are the returns of the episodes, oldest first
+ * @param columns is the most points there is room for
+ * @return @param values, or, if there are more of them than columns, the mean of those falling in each column
+ */
+inline std::vector<double> curve_points(const std::vector<double> & values,
+                                        std::size_t columns)
+{
+    if (values.size() <= columns || columns == 0) {
+        return values;
+    }
+    std::vector<double> sums(columns, 0);
+    std::vector<std::size_t> counts(columns, 0);
+    for (std::size_t i = 0; i < values.size(); i++) {
+        const std::size_t column = i * columns / values.size();
+        sums[column] += values[i];
+        counts[column]++;
+    }
+    for (std::size_t c = 0; c < columns; c++) {
+        sums[c] /= static_cast<double>(counts[c]);
+    }
+    return sums;
+}
+
+/**
  * @struct info
  * @brief what a lesson says about itself
  */

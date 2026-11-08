@@ -469,6 +469,21 @@ TEST_CASE("the colours of the values, and the scale", "[lesson][colours]")
     REQUIRE(lessons::lowest_shown({}, -300) == 0);
 }
 
+TEST_CASE("the points of a learning curve", "[lesson][colours]")
+{
+    // few values are left alone
+    REQUIRE(lessons::curve_points({1, 2, 3}, 3) == std::vector<double>{1, 2, 3});
+    REQUIRE(lessons::curve_points({1, 2, 3}, 0) == std::vector<double>{1, 2, 3});
+    REQUIRE(lessons::curve_points({}, 5).empty());
+    // 4 values into 2 columns are the means of each half
+    REQUIRE(lessons::curve_points({-5, 5, 8, 12}, 2) == std::vector<double>{0, 10});
+    // 5 values into 3 columns: 2, 2 and 1 of them
+    REQUIRE(lessons::curve_points({1, 3, 5, 7, 9}, 3) == std::vector<double>{2, 6, 9});
+    // never more points than columns, whatever the number of episodes
+    REQUIRE(lessons::curve_points(std::vector<double>(100000, -13), 136).size() == 136);
+    REQUIRE(lessons::curve_points(std::vector<double>(100000, -13), 136)[135] == Approx(-13));
+}
+
 TEST_CASE("the drawn symbols", "[lesson][glyphs]")
 {
     for (const char * name : {"alpha", "gamma", "epsilon", "arrow"}) {
