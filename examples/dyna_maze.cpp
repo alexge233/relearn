@@ -31,6 +31,13 @@
 #include <string>
 #include <vector>
 
+// the frames go to the terminal, or, built by the window sub-project, to a raylib window
+#ifdef RELEARN_WINDOW
+#include "window/window.hpp"
+using screen = games::window_screen;
+#else
+using screen = games::terminal_screen;
+#endif
 // set shortcuts to the game, to its relearn types, and to the learner
 using game_type    = games::dyna_maze;
 using types        = games::types<game_type>;
@@ -56,7 +63,7 @@ std::vector<double> moves_per_episode(unsigned int planning_steps,
     std::vector<double> moves(episodes, 0);
     for (unsigned int run = 1; run <= runs; run++) {
         std::mt19937 prng(run);
-        games::watched<game_type> maze{game_type()};
+        games::watched<game_type, screen> maze{game_type()};
         types::policy memory;
         learner_type learner(0.1, 0.95, planning_steps, run + 1000);
         // watched, the cells are coloured by the values being learnt

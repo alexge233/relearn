@@ -33,6 +33,13 @@
 #include <random>
 #include <vector>
 
+// the frames go to the terminal, or, built by the window sub-project, to a raylib window
+#ifdef RELEARN_WINDOW
+#include "window/window.hpp"
+using screen = games::window_screen;
+#else
+using screen = games::terminal_screen;
+#endif
 // set shortcuts to the game and to its relearn types
 using game_type = games::racetrack;
 using types     = games::types<game_type>;
@@ -168,7 +175,7 @@ int main(int argc,
 
     // watched: the optimal policy drives five races, with the noise of the game
     if (options.on) {
-        games::watched<game_type> car{game_type(track.default_track(), true, 3)};
+        games::watched<game_type, screen> car{game_type(track.default_track(), true, 3)};
         options.apply(car);
         car.title = "racetrack, the optimal policy";
         auto driver = [&](const unsigned int & s, const std::vector<unsigned int> &) {

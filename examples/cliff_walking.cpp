@@ -29,9 +29,16 @@
 #include <iostream>
 #include <string>
 
+// the frames go to the terminal, or, built by the window sub-project, to a raylib window
+#ifdef RELEARN_WINDOW
+#include "window/window.hpp"
+using screen = games::window_screen;
+#else
+using screen = games::terminal_screen;
+#endif
 // set shortcuts to the game, to the game as it is watched, and to its relearn types
 using rules     = games::cliff_walking;
-using game_type = games::watched<rules>;
+using game_type = games::watched<rules, screen>;
 using types     = games::types<game_type>;
 
 // the settings of Sutton & Barto, Example 6.6

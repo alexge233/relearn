@@ -62,6 +62,13 @@ set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -O3 -mtune=native -march
 message(STATUS "CXX Flags: " ${CMAKE_CXX_FLAGS})
 message(STATUS "CXX Linker: " ${CMAKE_EXE_LINKER_FLAGS})
 
+# the window: the watched examples drawn with raylib, as win_<game> (see examples/window/), off by default;
+# after the flags above, so that it builds with the same ones
+option(BUILD_WINDOW "build the examples with the raylib window as their screen" OFF)
+if (BUILD_WINDOW)
+    add_subdirectory(${EXAMPLES}/window)
+endif()
+
 # if building tests
 if (BUILD_TESTS)
     message(STATUS "Checking ${PROJECT_SOURCE_DIR}/tests/catch.hpp")
