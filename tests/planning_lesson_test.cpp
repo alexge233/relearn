@@ -225,9 +225,11 @@ TEST_CASE("the curve counts moves, and shows the episode under way", "[planning]
 TEST_CASE("restart drops what was left to imagine, and keeps what was learnt", "[planning]")
 {
     dyna s(rules(), alpha, gamma_, epsilon, 5, 3);
-    for (int i = 0; i < 301; i++) {
+    for (int i = 0; i < 303; i++) {
         s.step();
     }
+    REQUIRE(s.imagining());
+    REQUIRE(s.imagined_count() == 2);
     const auto real = s.real_steps();
     const double kept = s.q(rules().start(), 1);
     s.restart();
@@ -244,7 +246,7 @@ TEST_CASE("reset forgets everything, its memory too, and plays the same again", 
 {
     dyna s(rules(), alpha, gamma_, epsilon, 5, 3);
     dyna fresh(rules(), alpha, gamma_, epsilon, 5, 3);
-    for (int i = 0; i < 2000; i++) {
+    while (s.curve().empty()) {
         s.step();
     }
     s.reset();
@@ -253,8 +255,7 @@ TEST_CASE("reset forgets everything, its memory too, and plays the same again", 
     REQUIRE(s.curve().empty());
     REQUIRE(!s.imagining());
     REQUIRE(!s.remembers(rules().start()));
-    // reset starts an episode; so does the fresh one
-    fresh.reset();
+    // a session that was never reset: the first move of its first step is the first move of the reset one
     for (int i = 0; i < 2000; i++) {
         s.step();
         fresh.step();
