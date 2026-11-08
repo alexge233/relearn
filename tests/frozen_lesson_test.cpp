@@ -146,6 +146,8 @@ TEST_CASE("which way the ice turned a move", "[frozen]")
     REQUIRE(lessons::turn_of(from, 0, {2, 1}, 4, 4) == 1);
     // into the edge: choosing up on the top row and staying is as chosen
     REQUIRE(lessons::turn_of({1, 0}, 0, {1, 0}, 4, 4) == 0);
+    // in a corner two moves stay put: as chosen comes first
+    REQUIRE(lessons::turn_of({0, 0}, 0, {0, 0}, 4, 4) == 0);
     // sliding left into the edge when it chose up
     REQUIRE(lessons::turn_of({0, 1}, 0, {0, 1}, 4, 4) == -1);
 }
