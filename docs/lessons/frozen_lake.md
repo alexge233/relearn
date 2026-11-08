@@ -42,15 +42,15 @@ changes what a value means:
 
 1. Run it slowly, and watch "The ice decides". Count how often the move goes as chosen.
 2. Raise the speed until the curve climbs, and find the arrows that point away from the treasure.
-3. Set α to 1. Each value then becomes whatever happened last, with no averaging, and the curve collapses.
-4. Set ε to 0 and press Z. With nothing to explore, it can settle on a poor plan early.
+3. Set α to 1 and press Z. Each value then becomes whatever happened last, with no averaging: it wins about 2% of the time, against about 63% at α = 0.1.
+4. Set ε to 0 and press Z. With nothing to explore, it settles on a poor plan early and wins about 4% of the time.
 
 ## How it is made, and tested
 
 `examples/window/frozen.hpp` adapts the game to the lessons: `frozen_lake` numbers its moves left, down, right, up, and the
 lessons use up, right, down, left. `tests/frozen_lesson_test.cpp` checks that the moves really go a third of the time each way,
 that the formula on the screen holds at every step for each learner, that a session learns exactly what `games::play_online`
-does from the same seed, and that the best moves it learns win about 73% of the games.
+does from the same seed, and that after 20,000 episodes the best moves it has learnt win more than 55% of the games (73% in that run; about 63% on average after 5,000).
 
 ## References
 
