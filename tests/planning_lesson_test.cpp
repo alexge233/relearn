@@ -219,7 +219,7 @@ TEST_CASE("the curve counts moves, and shows the episode under way", "[planning]
     }
     REQUIRE(s.curve()[0] == s.real_steps());
     REQUIRE(s.curve_label() == "moves to the treasure, per episode");
-    REQUIRE(lessons::live_curve(s).size() == 1);
+    REQUIRE(lessons::live_curve(s) == s.curve());
 }
 
 TEST_CASE("restart drops what was left to imagine, and keeps what was learnt", "[planning]")

@@ -312,13 +312,21 @@ TEST_CASE("dyna_q: on_imagined is told every imagined step, exactly", "[dyna_q]"
         REQUIRE(memory.value(i.state, i.action) == Approx(i.after));
     };
     const state a(1.0, std::string("a"));
-    const state b(0.0, std::string("b"));
+    const state b(0.5, std::string("b"));
     const action go("go");
-    // one real step of a chain of two, then one that ends it
+    // one real step of a chain of two, then one that ends it, so that a's next value is not always 0
     learner(episode{{a, go}, {b, go}}, memory, false);
     REQUIRE(told.size() == 4);
     learner(episode{{b, go}}, memory, true);
     REQUIRE(told.size() == 8);
+    // b has been learnt from now on: what a imagines next has something to read
+    learner(episode{{a, go}, {b, go}}, memory, false);
+    REQUIRE(told.size() == 12);
+    bool read_it = false;
+    for (const auto & i : told) {
+        read_it = read_it || i.next_value > 0;
+    }
+    REQUIRE(read_it);
     for (const auto & i : told) {
         const value_of_target expected{i.terminal ? i.reward : i.reward + 0.9 * i.next_value};
         REQUIRE(i.after == Approx(i.before + 0.5 * (expected.target - i.before)));
@@ -329,7 +337,7 @@ TEST_CASE("dyna_q: on_imagined is told every imagined step, exactly", "[dyna_q]"
             REQUIRE(!i.terminal);
         }
         else {
-            REQUIRE(i.reward == 0.0);
+            REQUIRE(i.reward == 0.5);
             REQUIRE(i.terminal);
             REQUIRE(i.next_value == 0.0);
         }
