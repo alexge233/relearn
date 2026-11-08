@@ -131,6 +131,8 @@ if (BUILD_TESTS)
     add_test(dynamic_programming_test test_dynamic_programming)
     add_executable(test_watch tests/watch_test.cpp)
     add_test(watch_test test_watch)
+    add_executable(test_lesson tests/lesson_test.cpp)
+    add_test(lesson_test test_lesson)
 
     # every part of the library compiles on its own (see tests/headers)
     foreach(part core schedules q_learning sarsa double_q_learning dyna monte_carlo bandits
