@@ -294,6 +294,32 @@ struct expected_sarsa_rule
 };
 
 /**
+ * @class planner
+ * @brief what a learner that imagines steps can say about them
+ */
+class planner
+{
+public:
+    virtual ~planner() = default;
+    /// @return true if the last step was imagined
+    virtual bool imagining() const = 0;
+    /// @return the cell the last imagined step led to
+    virtual position imagined_to() const = 0;
+    /// @return which imagined step it is, from 1, since the last real one
+    virtual unsigned int imagined_count() const = 0;
+    /// @return how many steps it imagines after each real one
+    virtual unsigned int planning_steps() const = 0;
+    /// @brief set how many it imagines, from the next real step on
+    virtual void set_planning_steps(unsigned int n) = 0;
+    /// @return the real steps taken, over all the episodes
+    virtual std::size_t real_steps() const = 0;
+    /// @return the steps imagined, over all the episodes
+    virtual std::size_t imagined_steps() const = 0;
+    /// @return true if it remembers making a move in cell @param p
+    virtual bool remembers(const position & p) const = 0;
+};
+
+/**
  * @class session
  * @brief a learner playing a grid game one step at a time, as a lesson sees it
  */
@@ -363,6 +389,24 @@ public:
     virtual void set_epsilon(double value) = 0;
     /// @brief go back to the values the lesson started with
     virtual void restore_settings() = 0;
+
+    /// @return what the learning curve plots, one value per episode; the return, unless a learner says otherwise
+    virtual const std::vector<double> & curve() const { return returns(); }
+    /// @return where the episode under way stands on that curve
+    virtual double curve_now() const { return total(); }
+    /// @return what the curve shows
+    virtual std::string curve_label() const { return "reward per episode, over time"; }
+    /// @return what a bubble says about the curve
+    virtual std::string curve_help() const { return "How well each whole episode went. It should climb as it learns, then level off."; }
+    /// @return what the title line says after the episode and the step
+    virtual std::string tally() const
+    {
+        const std::string sum = two_decimals(total());
+        return "return " + sum.substr(0, sum.find('.'));
+    }
+    /// @return its planning, if it plans: nullptr otherwise
+    virtual planner * plans() { return nullptr; }
+    virtual const planner * plans() const { return nullptr; }
 };
 
 /**
@@ -549,7 +593,7 @@ public:
         return memory_;
     }
 
-private:
+protected:
     /// @return @param value kept between 0 and 1
     static double unit(double value)
     {
@@ -955,6 +999,12 @@ inline double scaled(double v,
     return high > low ? (v - low) / (high - low) : 1.0;
 }
 
+/// @return @param v with no decimals if it is a whole number, and two if not
+inline std::string plain_number(double v)
+{
+    return v == std::floor(v) ? std::to_string(static_cast<long>(v)) : two_decimals(v);
+}
+
 /// @return the cell the move @param a (up, right, down, left) leads to from @param from, if nothing stops it
 inline position moved_to(const position & from,
                          unsigned int a)
@@ -1119,9 +1169,9 @@ inline std::vector<double> curve_points(const std::vector<double> & values,
 ///         earned until now, so that the curve moves from the very first step
 inline std::vector<double> live_curve(const session & now)
 {
-    std::vector<double> values = now.returns();
+    std::vector<double> values = now.curve();
     if (now.playing() && now.steps() > 0) {
-        values.push_back(now.total());
+        values.push_back(now.curve_now());
     }
     return values;
 }

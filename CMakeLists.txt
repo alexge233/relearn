@@ -133,6 +133,8 @@ if (BUILD_TESTS)
     add_test(watch_test test_watch)
     add_executable(test_lesson tests/lesson_test.cpp)
     add_test(lesson_test test_lesson)
+    add_executable(test_planning_lesson tests/planning_lesson_test.cpp)
+    add_test(planning_lesson_test test_planning_lesson)
     add_executable(test_chiptune tests/chiptune_test.cpp)
     add_test(chiptune_test test_chiptune)
 
