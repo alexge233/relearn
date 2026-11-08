@@ -60,6 +60,39 @@ The controls are those of [Cliff Walking](cliff_walking.md#controls). The top ba
 3. Press Tab to reach `n = 0`, then `n = 50`, and compare the curves. The book's Figure 8.2 is this comparison.
 4. Drag `n` to 50 and raise the speed: the colours fill the maze in a few real moves.
 
+## Questions people ask
+
+**Is Dyna-Q a special version of Q-learning?** Yes: Q-learning with a memory. With `n = 0` it is exactly Q-learning. The
+maze is only the small world from the book that shows it off.
+
+**So it has an episodic memory?** Not quite. It does not keep episodes or their order, only one entry per cell and move:
+"last time I did this here, I got this and ended up there". Each new visit overwrites the old one, and replay picks
+entries at random, more like shuffling flashcards than reliving a journey. Values still spread backwards, because
+neighbouring entries keep being replayed.
+
+**Then it improves its policy without exploring?** It improves it without new experience, but it can discover nothing new. Replay
+works out what the facts it has imply: it can never imagine a cell it has not been in, or a move it has not made there. So it
+must still explore for real. Exploring gathers facts, and planning works out what they imply.
+
+**What trains what?** The word "model" is the confusing one. In reinforcement learning, the model is the memory, the facts
+about how the world behaves. What is trained is the table `Q`, from two sources with one formula:
+
+| | What it is | What it does |
+|---|---|---|
+| Real step | Moving in the world | Updates `Q`, and writes to the memory |
+| Memory (the model) | Facts about what happened | Supplies the imagined steps |
+| Imagined step | Replaying a fact | Updates `Q`, and nothing else |
+| `Q` | How good each move is believed to be | Decides which move to make |
+
+Exploring is only part of the real steps: 90% of them here exploit, taking the best known move, and 10% explore at random.
+Both kinds feed the memory.
+
+**How does this relate to DQN?** DQN is Q-learning with a neural network in place of the table, so that it can cope with
+far too many states to list. It keeps a replay buffer of recent steps and trains on random batches of them, which is Dyna's
+trick at scale; random batches also stop consecutive, nearly identical frames from upsetting the network. Be careful with the words:
+in deep learning, "the model" means the network, but DQN is called *model-free*, as its network only predicts values, not what
+the world will do next. Dreamer and MuZero do learn a neural model of the world, and train inside it.
+
 ## How it is made, and tested
 
 `relearn::dyna_q` tells `on_imagined` what each imagined step did. `examples/window/planning.hpp` runs the library's
