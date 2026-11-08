@@ -749,8 +749,8 @@ TEST_CASE("a move's place on the colour scale of its cell", "[lesson][beliefs]")
 
 TEST_CASE("the words of how a move was chosen", "[lesson][beliefs]")
 {
-    REQUIRE(lessons::choice_words("up", false) == "It went up: its best guess");
-    REQUIRE(lessons::choice_words("left", true) == "It went left: a random try");
+    REQUIRE(lessons::choice_words("up", false) == "It chose up: its best guess");
+    REQUIRE(lessons::choice_words("left", true) == "It chose left: a random try");
     REQUIRE(lessons::exploring_words(0.1) == "epsilon 0.10: random 10% of the time");
     REQUIRE(lessons::exploring_words(0) == "epsilon 0.00: random 0% of the time");
     REQUIRE(lessons::exploring_words(1) == "epsilon 1.00: random 100% of the time");

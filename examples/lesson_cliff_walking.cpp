@@ -35,6 +35,18 @@ public:
         return lessons::studio::cell;
     }
 
+    /// @return false: this board is wide, and fits under the title
+    bool tall() const
+    {
+        return false;
+    }
+
+    /// @return nothing: there is nothing to add about a step here
+    std::string aside(const lessons::session &) const
+    {
+        return "";
+    }
+
     /// @return the columns of the board
     int columns() const
     {

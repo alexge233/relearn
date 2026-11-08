@@ -135,6 +135,8 @@ if (BUILD_TESTS)
     add_test(lesson_test test_lesson)
     add_executable(test_planning_lesson tests/planning_lesson_test.cpp)
     add_test(planning_lesson_test test_planning_lesson)
+    add_executable(test_frozen_lesson tests/frozen_lesson_test.cpp)
+    add_test(frozen_lesson_test test_frozen_lesson)
     add_executable(test_chiptune tests/chiptune_test.cpp)
     add_test(chiptune_test test_chiptune)
 

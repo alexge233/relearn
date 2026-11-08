@@ -11,6 +11,8 @@
  *     std::string describe(const session & now, int column, int row) const;   // what a bubble says about a cell
  *     int columns() const;  int rows() const;   // of the board
  *     float cell() const;               // the side of a cell, in screen pixels
+ *     bool tall() const;                // true for a square board, which takes the height of the title and draws its own colour scale
+ *     std::string aside(const session & now) const;   // something to add about the last step, or nothing
  *
  * The music and the effects are chiptune.hpp's, played by `speaker`. Keys and mouse do the same things (H shows them all). The window is 1280 x 732, drawn at its native resolution.
  */
@@ -146,6 +148,26 @@ public:
         tile(dungeon_, col, row, x, y, tint, scale);
     }
 
+    /**
+     * @brief draw a tile of the dungeon's sheet held at an angle
+     * @param col and @param row choose the tile, drawn in the square at (@param x, @param y)
+     * @param degrees turns it about its middle, @param size multiplies it, @param tint colours it, @param scale is the art's zoom
+     */
+    void dungeon_held(int col,
+                      int row,
+                      float x,
+                      float y,
+                      float degrees,
+                      float size,
+                      Color tint,
+                      int scale) const
+    {
+        const float side = static_cast<float>(tile_side);
+        const float target = side * static_cast<float>(scale);
+        const float drawn = target * size;
+        DrawTexturePro(dungeon_, {col * side, row * side, side, side}, {x + target / 2, y + target / 2, drawn, drawn}, {drawn / 2, drawn / 2}, degrees, tint);
+    }
+
     /// @brief draw the skull at (@param x, @param y), the size of a tile
     void skull(float x,
                float y) const
@@ -174,16 +196,16 @@ public:
         }
     }
 
-    /// @brief draw an arrow for move @param a (up, right, down, left) centred on (@param cx, @param cy)
+    /// @brief draw an arrow for move @param a (up, right, down, left) centred on (@param cx, @param cy), @param s pixels from its middle to its tip
     void arrow(float cx,
                float cy,
                unsigned int a,
-               Color c) const
+               Color c,
+               float s = 9) const
     {
         static const float dirs[4][2] = {{0, -1}, {1, 0}, {0, 1}, {-1, 0}};
         const float dx = dirs[a][0];
         const float dy = dirs[a][1];
-        const float s = 9;
         const Vector2 tip{cx + dx * s, cy + dy * s};
         const Vector2 one{cx - dx * s * 0.4f + dy * s * 0.7f, cy - dy * s * 0.4f - dx * s * 0.7f};
         const Vector2 two{cx - dx * s * 0.4f - dy * s * 0.7f, cy - dy * s * 0.4f + dx * s * 0.7f};
@@ -391,6 +413,7 @@ public:
         prepare_crawl();
         in_intro_ = !options_.no_intro;
         shown_.sound = !options_.mute;
+        shown_.slow_down_to(about_.start_rate);
         if (!capture) {
             sound_.open();
             sound_.set_on(shown_.sound);
@@ -474,6 +497,18 @@ private:
                 quit_ = true;
             }
         }
+    }
+
+    /// @return the top of the board
+    float board_top() const
+    {
+        return board_.tall() ? 40.0f : 92.0f;
+    }
+
+    /// @return the top of the formula's panel: a tall board pushes it down, into the slack the panel has
+    float formula_top() const
+    {
+        return board_.tall() ? 368.0f : 332.0f;
     }
 
     /// @return true if the last step was imagined
@@ -637,12 +672,17 @@ private:
     std::vector<hot_zone> zones()
     {
         std::vector<hot_zone> out;
-        out.push_back({32, 46, 576, 40, "The demo's name, which learner is running, and how the current episode is going. The return is the sum of its rewards so far."});
-        out.push_back({32, 92 + board_.height(), 576, 32, "The colour scale: blue is where it expects to do badly, gold where it expects to do well."});
+        if (board_.tall()) {
+            out.push_back({368, 44, 256, 72, "The demo's name, which learner is running, and how far it has got."});
+        }
+        else {
+            out.push_back({32, 46, 576, 40, "The demo's name, which learner is running, and how the current episode is going. The return is the sum of its rewards so far."});
+            out.push_back({32, 92 + board_.height(), 576, 32, "The colour scale: blue is where it expects to do badly, gold where it expects to do well."});
+        }
         out.push_back({640, 50, 304, 34, "The value of each move from the cell it just left. It usually picks the highest. The white outline is the one it took."});
         out.push_back({640, 278, 304, 40, "Epsilon picks the move, before the formula runs, so Q-learning's formula has no epsilon: its max ignores what happens next. SARSA feels it through the move it really makes, and Expected SARSA averages with it."});
         out.push_back({956, 50, 300, 270, now().curve_help()});
-        out.push_back({24, 332, static_cast<float>(width_px) - 48, 36, "The whole learning rule. Rest the mouse on any term to see what it means."});
+        out.push_back({24, formula_top(), static_cast<float>(width_px) - 48, 36, "The whole learning rule. Rest the mouse on any term to see what it means."});
         out.push_back({24, 516, 776, 204, "The step that just happened, read out as sentences. It is the formula above, in words."});
         out.push_back({812, 516, 444, 40, "Drag a slider and the learner changes from its next step. Each learner keeps its own settings."});
         out.push_back({820, slider_y(0) - 10, 430, 34, "alpha, the learning rate. High: learns fast but jumps around. Low: slow and steady. At 0 it never learns."});
@@ -660,7 +700,7 @@ private:
         const float side = board_.cell();
         for (int r = 0; r < board_.rows(); r++) {
             for (int c = 0; c < board_.columns(); c++) {
-                out.push_back({32 + c * side, 92 + r * side, side, side, board_.describe(now(), c, r)});
+                out.push_back({32 + c * side, board_top() + r * side, side, side, board_.describe(now(), c, r)});
             }
         }
         const auto terms = formula_terms(now().latest(), now().next_symbol(), now().next_label());
@@ -669,7 +709,7 @@ private:
         for (std::size_t i = 0; i < terms.size(); i++) {
             const std::string text = term_help(terms[i], now().idea());
             if (!text.empty()) {
-                out.push_back({columns[i].x, 368, columns[i].width, 134, text});
+                out.push_back({columns[i].x, formula_top() + 36, columns[i].width, 508 - formula_top() - 36, text});
             }
         }
         for (const auto & item : menu()) {
@@ -978,11 +1018,11 @@ private:
     void draw_formula()
     {
         const planner * p = learners_[current_]->plans();
-        look_.panel(24, 332, width_px - 48, 176, formula_title(imagining(), p != nullptr ? p->imagined_count() : 0, p != nullptr ? p->planning_steps() : 0));
+        look_.panel(24, formula_top(), width_px - 48, 508 - formula_top(), formula_title(imagining(), p != nullptr ? p->imagined_count() : 0, p != nullptr ? p->planning_steps() : 0));
         const auto terms = formula_terms(now().latest(), now().next_symbol(), now().next_label());
         std::vector<float> widths;
         const auto columns = layout_formula(terms, widths);
-        const float y = 372;
+        const float y = formula_top() + (board_.tall() ? 36.0f : 40.0f);
         for (std::size_t i = 0; i < terms.size(); i++) {
             const term & t = terms[i];
             const Color c = colour_of(t.kind);
@@ -1015,7 +1055,8 @@ private:
             y += 88;
         }
         y += 8;
-        look_.write(about_.watch_for, 40, y, 16, ink::reward);
+        const std::string aside = board_.aside(now());
+        look_.write(aside.empty() ? about_.watch_for : aside, 40, y, 16, aside.empty() ? ink::reward : ink::next, !aside.empty());
         look_.write(now().idea(), 40, y + 20, 16, ink::gold);
         const std::string policy = "It follows the arrows, with a random move " + std::to_string(static_cast<int>(now().epsilon() * 100 + 0.5)) + "% of the time, so that it keeps exploring.";
         look_.write(policy, 40, y + 40, 16, ink::dim);
@@ -1082,14 +1123,26 @@ private:
     }
 
     /// @brief the main screen
-    void draw_main()
+    /// @brief the name of the demo and how far it has got
+    void draw_title()
     {
-        DrawRectangleGradientV(0, 0, width_px, height_px, ink::top, ink::bottom);
-        look_.write(about_.title, 32, 46, 32, ink::text, true);
-        const std::string state = now().name() + "   episode " + std::to_string(now().episode()) + "   step " + std::to_string(now().steps()) +
-                                  "   " + now().tally() + (shown_.paused ? "   PAUSED" : "");
-        look_.write(state, 44 + look_.width(about_.title, 32, true), 60, 16, shown_.paused ? ink::gold : ink::dim);
-        board_.draw(look_, now(), shown_, 32, 92);
+        const std::string episode = now().name() + "   episode " + std::to_string(now().episode()) + "   step " + std::to_string(now().steps());
+        const std::string rest = now().tally() + (shown_.paused ? "   PAUSED" : "");
+        const Color tint = shown_.paused ? ink::gold : ink::dim;
+        if (board_.tall()) {
+            look_.write(about_.title, 368, 44, 32, ink::text, true);
+            look_.write(episode, 368, 80, 16, tint);
+            look_.write(rest, 368, 98, 16, tint);
+        }
+        else {
+            look_.write(about_.title, 32, 46, 32, ink::text, true);
+            look_.write(episode + "   " + rest, 44 + look_.width(about_.title, 32, true), 60, 16, tint);
+        }
+    }
+
+    /// @brief the colours of the values, under the board
+    void draw_colour_scale()
+    {
         const float scale_y = 92 + board_.height() + 8;
         for (int i = 0; i < 576; i++) {
             DrawRectangle(32 + i, static_cast<int>(scale_y), 1, 8, colour(heat_colour(i / 575.0)));
@@ -1099,6 +1152,16 @@ private:
         look_.write(better, 32 + 576 - look_.width(better, 16), scale_y + 8, 16, ink::dim);
         const std::string meaning = "how good it believes each cell is";
         look_.write(meaning, 32 + 288 - look_.width(meaning, 16) / 2, scale_y + 8, 16, ink::text);
+    }
+
+    void draw_main()
+    {
+        DrawRectangleGradientV(0, 0, width_px, height_px, ink::top, ink::bottom);
+        draw_title();
+        board_.draw(look_, now(), shown_, 32, board_top());
+        if (!board_.tall()) {
+            draw_colour_scale();
+        }
         draw_beliefs();
         draw_curve();
         draw_formula();

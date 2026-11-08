@@ -3,6 +3,15 @@
 What each change to relearn did, newest first. The pull requests hold the details, the measurements and the review
 of each one; this is the short version.
 
+## Lessons: FrozenLake
+
+- `examples/lesson_frozen_lake.cpp`: a traveller on slippery ice, a panel showing what the ice can do to the move chosen,
+  and a splash for a fall.
+- `examples/window/frozen.hpp`: `frozen_grid`, the lake as the lessons see a game; `frozen_session`, for which a hole is a
+  fall and the curve the share won lately; the words for a slip.
+- `tests/frozen_lesson_test.cpp`, `docs/lessons/frozen_lake.md`, and the lesson in the README and the CI.
+- `docs/lessons/dyna_maze.md` has the questions people ask.
+
 ## Lessons: the Dyna maze
 
 - `examples/lesson_dyna_maze.cpp`: a wizard who imagines steps between its real ones, seen as a ghost, with a map of what

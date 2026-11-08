@@ -110,7 +110,7 @@ jobs:
           mkdir build
           cd build
           cmake .. -DBUILD_WINDOW=ON
-          make win_cliff_walking win_windy_gridworld win_dyna_maze win_frozen_lake win_racetrack win_mountain_car win_cart_pole lesson_cliff_walking lesson_dyna_maze
+          make win_cliff_walking win_windy_gridworld win_dyna_maze win_frozen_lake win_racetrack win_mountain_car win_cart_pole lesson_cliff_walking lesson_dyna_maze lesson_frozen_lake
 
   check-window-macos:
     runs-on: macos-latest
@@ -125,7 +125,7 @@ jobs:
           mkdir build
           cd build
           cmake .. -DBUILD_WINDOW=ON
-          make win_cliff_walking win_windy_gridworld win_dyna_maze win_frozen_lake win_racetrack win_mountain_car win_cart_pole lesson_cliff_walking lesson_dyna_maze
+          make win_cliff_walking win_windy_gridworld win_dyna_maze win_frozen_lake win_racetrack win_mountain_car win_cart_pole lesson_cliff_walking lesson_dyna_maze lesson_frozen_lake
 
   # Apple Clang and its standard library (libc++), as on a Mac: Clang rejects some code
   # GCC only warns about (e.g., narrowing in braces), and libc++'s random distributions

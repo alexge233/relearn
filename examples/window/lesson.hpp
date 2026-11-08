@@ -863,6 +863,9 @@ public:
         return paused || gliding();
     }
 
+    /// the longest the animation of a step lasts, in seconds
+    static constexpr double longest_animation = 0.45;
+
     /// @brief ask for one step, which also pauses
     void single_step()
     {
@@ -876,6 +879,38 @@ public:
      * @return how many steps: none during a death, those asked for one by one if paused, else as many as the speed has built up
      */
     unsigned int steps_for(double seconds)
+    {
+        since_step_ += seconds;
+        const unsigned int steps = due(seconds);
+        if (steps > 0) {
+            since_step_ = 0;
+        }
+        return steps;
+    }
+
+    /// @brief start slower than the usual speed, if @param steps_per_second asks for it
+    void slow_down_to(double steps_per_second)
+    {
+        while (rate() > steps_per_second && index_ > 0) {
+            slower();
+        }
+    }
+
+    /// @return how far the animation of the last step has got, from 0 to 1, whether paused or not
+    double animation() const
+    {
+        return std::min(1.0, since_step_ / std::min(longest_animation, 1.0 / rate()));
+    }
+
+    /// @return how far the agent is between its last two cells, from 0 to 1, whilst gliding
+    double progress() const
+    {
+        return paused || !gliding() ? 1.0 : std::min(1.0, due_);
+    }
+
+private:
+    /// @return the steps to play in a frame of @param seconds
+    unsigned int due(double seconds)
     {
         if (death.running()) {
             return 0;
@@ -892,15 +927,9 @@ public:
         return whole;
     }
 
-    /// @return how far the agent is between its last two cells, from 0 to 1, whilst gliding
-    double progress() const
-    {
-        return paused || !gliding() ? 1.0 : std::min(1.0, due_);
-    }
-
-private:
     std::size_t index_ = 2;
     double due_ = 0;
+    double since_step_ = 0;
     unsigned int pending_ = 0;
 };
 
@@ -1047,7 +1076,7 @@ inline double belief_heat(double v,
 inline std::string choice_words(const std::string & name,
                                 bool explored)
 {
-    return "It went " + name + (explored ? ": a random try" : ": its best guess");
+    return "It chose " + name + (explored ? ": a random try" : ": its best guess");
 }
 
 /// @return what @param epsilon means, in words
@@ -1388,6 +1417,8 @@ struct info
     std::vector<std::string> intro;
     /// the sentence on what to watch
     std::string watch_for;
+    /// the speed it starts at, in steps per second
+    double start_rate = 5;
 };
 
 /**
