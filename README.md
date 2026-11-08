@@ -460,6 +460,25 @@ The `tests/games_test.cpp` tests the rules of every game, and that the learners 
 either exact solutions (`tests/solvers.hpp`: value iteration, relative value iteration, exact blackjack, breadth-first search) or the
 optimal results given by the book.
 
+## Watching the agents play
+
+Seven of the examples take `--watch`, and draw the game in the terminal as the agent plays it, in colour, as small
+pixels made of half-block characters, with the cells coloured by the values learnt so far and a learning curve
+underneath:
+
+```bash
+./ex_cliff_walking --watch              # Q-learning, SARSA and Expected SARSA, the first run of each
+./ex_dyna_maze --watch --every 5        # one frame every 5 steps
+./ex_mountain_car --watch --delay 10    # 10 ms between frames, next to the plane of values (Figure 10.1)
+```
+
+The others are `windy_gridworld`, `frozen_lake`, `racetrack` (the optimal policy driving) and `cart_pole`. Each
+watches a few episodes, the first three and then one every so often, and plays the rest as fast as before; without
+`--watch` every example runs exactly as it did. It is all in `examples/games/watch.hpp` (the canvas, and
+`games::watched`, a game that draws the game it wraps) and `examples/games/views.hpp` (how each game is drawn), and
+the library knows nothing about it; have a look at [docs/watch.md](docs/watch.md) for how it works, and how to give a
+new game a view.
+
 # Contributing
 
 Contributions are welcome! Please read [CONTRIBUTING.md](CONTRIBUTING.md) first,
@@ -469,7 +488,7 @@ AI-generated contributions are welcome, as long as they have been reviewed and a
 # TODO
 
 1. watch the agents play: a `--watch` mode for the examples, with one drawing hook for two views
-   - in the terminal, as good old ASCII art
+   - in the terminal, as small pixels in colour: done, have a look at [docs/watch.md](docs/watch.md)
    - in a window, as retro pixel art: 2D, drawn at a low resolution and scaled up with sharp pixels,
      with sprites and a 16-colour palette defined in the code (so no asset files), a pixel font, optional
      chiptune sounds generated in code, and the learning shown in the same style (a pixel learning
