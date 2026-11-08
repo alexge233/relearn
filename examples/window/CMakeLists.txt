@@ -28,7 +28,7 @@ foreach(game ${WINDOW_GAMES})
 endforeach()
 
 # the lessons: demos that explain themselves, each with its own intro, top bar and live formula
-set(LESSONS cliff_walking)
+set(LESSONS cliff_walking dyna_maze)
 foreach(lesson ${LESSONS})
     add_executable(lesson_${lesson} ${PROJECT_SOURCE_DIR}/examples/lesson_${lesson}.cpp)
     target_compile_definitions(lesson_${lesson} PRIVATE RELEARN_ASSETS="${PROJECT_SOURCE_DIR}/examples/window/assets")
