@@ -3,6 +3,14 @@
 What each change to relearn did, newest first. The pull requests hold the details, the measurements and the review
 of each one; this is the short version.
 
+## Lessons: the Dyna maze
+
+- `examples/lesson_dyna_maze.cpp`: a wizard who imagines steps between its real ones, seen as a ghost, with a map of what
+  it remembers and a slider for `n`.
+- `relearn::dyna_q` has an optional `on_imagined`, told what every imagined step did, which changes nothing when unset.
+- `examples/window/planning.hpp`: `dyna_session`, the library's planning run one step at a time, behind `session`.
+- `tests/planning_lesson_test.cpp`, `docs/lessons/dyna_maze.md`, and the lesson in the README and the CI.
+
 ## Lessons: demos that explain themselves
 
 - `examples/window/lesson.hpp`, with no graphics in it: the numbers of an update, the formula's columns, the plain

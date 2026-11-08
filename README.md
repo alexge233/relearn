@@ -494,11 +494,13 @@ which builds the seven as `win_<game>`:
 A lesson is a demo that explains itself, for anyone new to reinforcement learning: an intro saying what the game is,
 a top bar you can click, and the whole learning rule on the screen, each term with its real value at the step just
 taken, and the same step in plain words. `lesson_cliff_walking` is the first, built with the window (have a look at
-[docs/lessons/cliff_walking.md](docs/lessons/cliff_walking.md)):
+[docs/lessons/cliff_walking.md](docs/lessons/cliff_walking.md)), and `lesson_dyna_maze` shows planning
+([docs/lessons/dyna_maze.md](docs/lessons/dyna_maze.md)):
 
 ```bash
-make lesson_cliff_walking
+make lesson_cliff_walking lesson_dyna_maze
 ./lesson_cliff_walking                  # H shows the controls
+./lesson_dyna_maze                      # planning: a ghost imagines steps between the real ones
 ```
 
 ![the Cliff Walking lesson](images/lesson_cliff_walking.png)

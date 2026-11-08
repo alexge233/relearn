@@ -1,0 +1,77 @@
+# The Dyna Maze: a lesson
+
+A wizard learns its way through a maze, and between its real steps it imagines others, from what it remembers. It
+learns from those with the very same formula.
+
+```bash
+mkdir build && cd build
+cmake .. -DBUILD_WINDOW=On
+make lesson_dyna_maze
+./lesson_dyna_maze
+```
+
+## The task
+
+A maze of 9 by 6 cells, from the signpost on the left to the treasure in the top right corner (Sutton and Barto,
+Example 8.1). Walls and the border keep the wizard where it is.
+
+- A **state** `s` is the cell the wizard is in.
+- An **action** `a` is a move: up, right, down or left.
+- The **reward** `r` is 1 for reaching the treasure, which ends the episode, and 0 for everything else. The discount
+  `γ = 0.95` is what makes a shorter way better.
+
+The shortest way is 14 moves. Learning with so little reward is slow: after a first walk of about a thousand moves,
+one single value changes, the one next to the treasure.
+
+## What Dyna-Q adds
+
+After each real step, it does three things:
+
+1. It learns from the step, as Q-learning does.
+2. It **remembers** it: taking `a` in `s` gave `r` and led to `s'`.
+3. It **plans**, `n` times: it picks a cell it has been in and a move it made there, at random, asks its memory what
+   happened, and learns from that with the same formula.
+
+```
+Q(s,a) ← Q(s,a) + α [ r + γ max Q(s',a') - Q(s,a) ]
+```
+
+So one real value can spread all the way back along the path during a single pause, instead of one cell per episode.
+
+## What is on the screen
+
+- **The maze**: the wizard moves only on real steps. **The ghost** is an imagined step, going from the cell it picked to
+  where its memory says that led. The colours are how good it believes each cell is, and the arrows its best known moves.
+- **What it remembers**: a map of the cells it has been in, the only ones it can imagine, and how many real and
+  imagined steps it has made.
+- **Its beliefs in that cell**, for the cell of the last step, real or imagined.
+- **Learning curve**: the real moves each episode took. It should fall.
+- **The formula**, with the real numbers of this step. Its title says when the step was imagined, and which one.
+- **In plain words**: the same step, and where its facts came from.
+- **Try other values**: α, γ, ε, and `n`, from 0 to 50, from the next real step on.
+
+The controls are those of [Cliff Walking](cliff_walking.md#controls). The top bar's list and the Tab key switch between
+`n = 5`, `n = 0` (plain Q-learning) and `n = 50`, each with its own memory.
+
+## What to try
+
+1. Run `n = 5` slowly, and watch the first episode. Nothing is learnt until the treasure, so the ghosts change nothing.
+2. Watch the second episode: the ghosts near the treasure start to carry its value backwards.
+3. Press Tab to reach `n = 0`, then `n = 50`, and compare the curves. The book's Figure 8.2 is this comparison.
+4. Drag `n` to 50 and raise the speed: the colours fill the maze in a few real moves.
+
+## How it is made, and tested
+
+`relearn::dyna_q` tells `on_imagined` what each imagined step did. `examples/window/planning.hpp` runs the library's
+planning one step at a time and shows what it is told, so nothing in the lesson computes an update.
+`examples/lesson_dyna_maze.cpp` is this lesson's board and text.
+
+`tests/planning_lesson_test.cpp` checks that a session learns exactly what the library's own loop does for `n` = 0, 5 and
+50 from the same seed, that `n = 0` is Q-learning, that the formula shown holds at every step, real or imagined, against
+the value in the policy, that what it remembers of a move is what the game does, and that planning needs far fewer real
+moves and ends close to the 14-move path. Close, not always on it: over 30 runs of 300 episodes at `n = 50`, about two in three
+find 14 moves and the rest 16, since a move the best known path never makes is only tried by chance.
+
+## References
+
+Sutton and Barto, *Reinforcement Learning: An Introduction*, second edition, Section 8.2 and Example 8.1.

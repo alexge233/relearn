@@ -10,11 +10,12 @@
  *     std::vector<std::string> moves() const;   // the names of the moves
  *     std::string describe(const session & now, int column, int row) const;   // what a bubble says about a cell
  *     int columns() const;  int rows() const;   // of the board
+ *     float cell() const;               // the side of a cell, in screen pixels
  *
  * The music and the effects are chiptune.hpp's, played by `speaker`. Keys and mouse do the same things (H shows them all). The window is 1280 x 732, drawn at its native resolution.
  */
 #include "chiptune.hpp"
-#include "lesson.hpp"
+#include "planning.hpp"
 #include <raylib.h>
 #include <rlgl.h>
 #include <functional>
@@ -128,9 +129,10 @@ public:
     void town(int col,
               int row,
               float x,
-              float y) const
+              float y,
+              int scale = zoom) const
     {
-        tile(town_, col, row, x, y);
+        tile(town_, col, row, x, y, WHITE, scale);
     }
 
     /// @brief draw a tile of the dungeon's sheet, tinted @param tint
@@ -138,9 +140,10 @@ public:
                  int row,
                  float x,
                  float y,
-                 Color tint = WHITE) const
+                 Color tint = WHITE,
+                 int scale = zoom) const
     {
-        tile(dungeon_, col, row, x, y, tint);
+        tile(dungeon_, col, row, x, y, tint, scale);
     }
 
     /// @brief draw the skull at (@param x, @param y), the size of a tile
@@ -235,10 +238,11 @@ private:
               int row,
               float x,
               float y,
-              Color tint = WHITE) const
+              Color tint,
+              int scale) const
     {
         const float side = static_cast<float>(tile_side);
-        const float target = static_cast<float>(cell);
+        const float target = static_cast<float>(tile_side * scale);
         DrawTexturePro(sheet, {col * side, row * side, side, side}, {x, y, target, target}, {0, 0}, 0, tint);
     }
 
@@ -435,7 +439,7 @@ private:
         if (!shown_.help) {
             for (unsigned int n = shown_.steps_for(seconds); n > 0; n--) {
                 now().step();
-                if (shown_.followable_steps()) {
+                if (shown_.followable_steps() && !imagining()) {
                     sound_.play(cue_of(now().punished(), now().latest().ended));
                     if (now().punished()) {
                         shown_.death.begin();
@@ -472,9 +476,31 @@ private:
         }
     }
 
-    /// @brief the three settings, as sliders: alpha, gamma, epsilon
+    /// @return true if the last step was imagined
+    bool imagining() const
+    {
+        const planner * p = learners_[current_]->plans();
+        return p != nullptr && p->imagining();
+    }
+
+    /// @return how many sliders this learner has: a planner has a fourth
+    int slider_count() const
+    {
+        return learners_[current_]->plans() != nullptr ? 4 : 3;
+    }
+
+    /// @return the values slider @param which goes through
+    static slider_range range_of(int which)
+    {
+        return which == 3 ? slider_range{0, 50, 1} : slider_range{0, 1, 0.01};
+    }
+
+    /// @brief the settings, as sliders: alpha, gamma, epsilon, and n for a planner
     double setting(int which)
     {
+        if (which == 3) {
+            return now().plans()->planning_steps();
+        }
         return which == 0 ? now().alpha() : (which == 1 ? now().gamma() : now().epsilon());
     }
 
@@ -482,7 +508,10 @@ private:
     void set_setting(int which,
                      double value)
     {
-        if (which == 0) {
+        if (which == 3) {
+            now().plans()->set_planning_steps(static_cast<unsigned int>(value + 0.5));
+        }
+        else if (which == 0) {
             now().set_alpha(value);
         }
         else if (which == 1) {
@@ -496,7 +525,7 @@ private:
     /// @return the screen height of slider @param which
     float slider_y(int which) const
     {
-        return 562.0f + static_cast<float>(which) * 42.0f;
+        return slider_count() == 4 ? 556.0f + static_cast<float>(which) * 34.0f : 562.0f + static_cast<float>(which) * 42.0f;
     }
 
     /// @brief drag a slider with the mouse, and the button that puts the settings back
@@ -510,7 +539,7 @@ private:
             return;
         }
         if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
-            for (int i = 0; i < 3; i++) {
+            for (int i = 0; i < slider_count(); i++) {
                 if (at.x >= slider_left - 8 && at.x <= slider_left + slider_width + 8 && at.y >= slider_y(i) - 8 && at.y <= slider_y(i) + 22) {
                     dragging_ = i;
                 }
@@ -520,7 +549,7 @@ private:
             }
         }
         if (dragging_ >= 0) {
-            set_setting(dragging_, slider_value(slider_range{0, 1, 0.01}, at.x, slider_left, slider_width));
+            set_setting(dragging_, slider_value(range_of(dragging_), at.x, slider_left, slider_width));
         }
     }
 
@@ -612,20 +641,23 @@ private:
         out.push_back({32, 92 + board_.height(), 576, 32, "The colour scale: blue is where it expects to do badly, gold where it expects to do well."});
         out.push_back({640, 50, 304, 34, "The value of each move from the cell it just left. It usually picks the highest. The white outline is the one it took."});
         out.push_back({640, 278, 304, 40, "Epsilon picks the move, before the formula runs, so Q-learning's formula has no epsilon: its max ignores what happens next. SARSA feels it through the move it really makes, and Expected SARSA averages with it."});
-        out.push_back({956, 50, 300, 270, "How well each whole episode went. It should climb as it learns, then level off."});
+        out.push_back({956, 50, 300, 270, now().curve_help()});
         out.push_back({24, 332, static_cast<float>(width_px) - 48, 36, "The whole learning rule. Rest the mouse on any term to see what it means."});
         out.push_back({24, 516, 776, 204, "The step that just happened, read out as sentences. It is the formula above, in words."});
         out.push_back({812, 516, 444, 40, "Drag a slider and the learner changes from its next step. Each learner keeps its own settings."});
         out.push_back({820, slider_y(0) - 10, 430, 34, "alpha, the learning rate. High: learns fast but jumps around. Low: slow and steady. At 0 it never learns."});
         out.push_back({820, slider_y(1) - 10, 430, 34, "gamma, the discount. Lower it and the walker cares less about the far-off treasure: values fade with distance. At 1 all rewards count."});
         out.push_back({820, slider_y(2) - 10, 430, 34, "epsilon, how often it moves at random. At 0 it never tries anything new; at 1 it ignores what it has learnt. Watch how many falls change."});
+        if (slider_count() == 4) {
+            out.push_back({820, slider_y(3) - 10, 430, 34, "n, how many steps it imagines after each real one. At 0 it is plain Q-learning. Try 50: it needs far fewer real moves."});
+        }
         const auto names = board_.moves();
         const position p = now().from();
         for (std::size_t a = 0; a < names.size(); a++) {
             const Vector2 middle = wedge_middle(static_cast<unsigned int>(a));
             out.push_back({middle.x - 44, middle.y - 30, 88, 60, "Q(s, " + names[a] + "): what it believes moving " + names[a] + " from that cell is worth: " + two_decimals(now().q(p, static_cast<unsigned int>(a))) + ". Gold is the best of the four, blue the worst."});
         }
-        const float side = static_cast<float>(studio::cell);
+        const float side = board_.cell();
         for (int r = 0; r < board_.rows(); r++) {
             for (int c = 0; c < board_.columns(); c++) {
                 out.push_back({32 + c * side, 92 + r * side, side, side, board_.describe(now(), c, r)});
@@ -832,7 +864,10 @@ private:
         DrawCircle(static_cast<int>(wedges_x), static_cast<int>(wedges_y), 15, ink::panel);
         const float side = look_.width("s", 16, true);
         look_.write("s", wedges_x - side / 2, wedges_y - 9, 16, ink::text, true);
-        if (moved) {
+        if (imagining()) {
+            look_.write("Imagined " + names[now().last_action()] + ": from memory", 654, 280, 16, ink::belief, true);
+        }
+        else if (moved) {
             look_.write(choice_words(names[now().last_action()], now().explored()), 654, 280, 16, now().explored() ? ink::next : ink::gold, true);
         }
         look_.write(exploring_words(now().epsilon()), 654, 298, 16, ink::dim);
@@ -903,7 +938,7 @@ private:
         const float h = 200;
         DrawLine(static_cast<int>(x), static_cast<int>(y + h), static_cast<int>(x + w), static_cast<int>(y + h), ink::line);
         DrawLine(static_cast<int>(x), static_cast<int>(y), static_cast<int>(x), static_cast<int>(y + h), ink::line);
-        look_.write("reward per episode, over time", x, y + h + 6, 16, ink::dim);
+        look_.write(now().curve_label(), x, y + h + 6, 16, ink::dim);
         auto values = curve_points(live_curve(now()), static_cast<std::size_t>(w) / 2);
         if (values.empty()) {
             return;
@@ -935,14 +970,15 @@ private:
             }
             DrawLineEx({x1, y1}, {x2, y2}, 1.5f, ink::reward);
         }
-        const std::string top = two_decimals(high);
+        const std::string top = plain_number(high);
         look_.write(top, x + 6, y, 16, ink::dim);
     }
 
     /// @brief the formula, each term over its number and what it means
     void draw_formula()
     {
-        look_.panel(24, 332, width_px - 48, 176, "The whole idea, with the numbers from this step");
+        const planner * p = learners_[current_]->plans();
+        look_.panel(24, 332, width_px - 48, 176, formula_title(imagining(), p != nullptr ? p->imagined_count() : 0, p != nullptr ? p->planning_steps() : 0));
         const auto terms = formula_terms(now().latest(), now().next_symbol(), now().next_label());
         std::vector<float> widths;
         const auto columns = layout_formula(terms, widths);
@@ -968,7 +1004,8 @@ private:
         float y = 544;
         if (now().latest().valid) {
             const auto names = board_.moves();
-            for (const auto & line : plain_words(now().latest(), names[now().last_action()], now().next_words())) {
+            const auto & words = imagining() ? imagined_words : plain_words;
+            for (const auto & line : words(now().latest(), names[now().last_action()], now().next_words())) {
                 look_.write(line, 40, y, 16, ink::text);
                 y += 22;
             }
@@ -990,19 +1027,19 @@ private:
         look_.panel(812, 516, 444, 204, "Try other values");
         DrawRectangleRounded({1096, 522, 144, 26}, 0.3f, 6, Color{58, 54, 104, 255});
         look_.write("Lesson's values", 1110, 527, 16, ink::text);
-        const slider_range range{0, 1, 0.01};
-        const char * glyphs[3] = {"alpha", "gamma", "epsilon"};
-        const char * words[3] = {"speed", "future", "explore"};
-        const Color colours[3] = {ink::gold, ink::future, ink::belief};
-        for (int i = 0; i < 3; i++) {
+        const char * glyphs[4] = {"alpha", "gamma", "epsilon", "n"};
+        const char * words[4] = {"speed", "future", "explore", "imagine"};
+        const Color colours[4] = {ink::gold, ink::future, ink::belief, ink::next};
+        for (int i = 0; i < slider_count(); i++) {
             const float y = slider_y(i);
+            const slider_range range = range_of(i);
             look_.write(words[i], 828, y, 16, colours[i]);
             look_.symbol(glyphs[i], 894, y - 12, colours[i]);
             DrawRectangleRounded({slider_left, y + 4, slider_width, 8}, 0.5f, 6, Color{44, 46, 80, 255});
             const float at = slider_left + slider_width * static_cast<float>(slider_fraction(range, setting(i)));
             DrawRectangleRounded({slider_left, y + 4, at - slider_left, 8}, 0.5f, 6, colours[i]);
             DrawCircle(static_cast<int>(at), static_cast<int>(y) + 8, 8, dragging_ == i ? WHITE : ink::text);
-            const std::string number = two_decimals(setting(i));
+            const std::string number = i == 3 ? std::to_string(static_cast<int>(setting(i))) : two_decimals(setting(i));
             look_.write(number, 1242 - look_.width(number, 16), y, 16, colours[i], true);
         }
         look_.write("Changes apply from the next step. Z starts afresh.", 828, 694, 16, ink::dim);
@@ -1050,7 +1087,7 @@ private:
         DrawRectangleGradientV(0, 0, width_px, height_px, ink::top, ink::bottom);
         look_.write(about_.title, 32, 46, 32, ink::text, true);
         const std::string state = now().name() + "   episode " + std::to_string(now().episode()) + "   step " + std::to_string(now().steps()) +
-                                  "   return " + two_decimals(now().total()).substr(0, two_decimals(now().total()).find('.')) + (shown_.paused ? "   PAUSED" : "");
+                                  "   " + now().tally() + (shown_.paused ? "   PAUSED" : "");
         look_.write(state, 44 + look_.width(about_.title, 32, true), 60, 16, shown_.paused ? ink::gold : ink::dim);
         board_.draw(look_, now(), shown_, 32, 92);
         const float scale_y = 92 + board_.height() + 8;
@@ -1104,6 +1141,9 @@ private:
         }
         shown_.death.begin();
         for (const double seconds : {0.15, 0.27, 0.3}) {
+            if (!now().punished()) {
+                break;
+            }
             shown_.death.advance(seconds);
             frame();
             frame();

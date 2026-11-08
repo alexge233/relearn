@@ -29,6 +29,12 @@ public:
         return 4.0f * lessons::studio::cell;
     }
 
+    /// @return the side of a cell, in screen pixels
+    float cell() const
+    {
+        return lessons::studio::cell;
+    }
+
     /// @return the columns of the board
     int columns() const
     {
